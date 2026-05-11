@@ -1,0 +1,155 @@
+import 'package:flutter/material.dart';
+import '../app_colors.dart';
+import '../models/todo.dart';
+import '../services/supabase_service.dart';
+import 'todo_card.dart';
+import 'todo_edit_screen.dart';
+import 'todo_status_dialog.dart';
+
+class TodoListScreen extends StatelessWidget {
+  const TodoListScreen({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: AppColors.background,
+      appBar: AppBar(
+        backgroundColor: AppColors.surface,
+        title: const Text('Todos',
+            style: TextStyle(
+                color: AppColors.textPrimary, fontWeight: FontWeight.bold)),
+        actions: [
+          Padding(
+            padding: const EdgeInsets.only(right: 8),
+            child: TextButton.icon(
+              onPressed: () {},
+              icon: const Icon(Icons.drag_indicator,
+                  size: 14, color: AppColors.textSecondary),
+              label: const Text('In Woche ziehen',
+                  style: TextStyle(
+                      color: AppColors.textSecondary, fontSize: 12)),
+            ),
+          ),
+        ],
+      ),
+      body: StreamBuilder<List<Todo>>(
+        stream: SupabaseService.unscheduledTodos(),
+        builder: (ctx, snap) {
+          if (snap.connectionState == ConnectionState.waiting) {
+            return const Center(
+                child: CircularProgressIndicator(color: AppColors.primary));
+          }
+
+          final todos = snap.data ?? [];
+
+          if (todos.isEmpty) {
+            return _EmptyState(
+              onAdd: () => _openEdit(context),
+            );
+          }
+
+          return Column(
+            children: [
+              // Info-Banner
+              Container(
+                color: AppColors.primary.withOpacity(0.08),
+                padding: const EdgeInsets.symmetric(
+                    horizontal: 16, vertical: 10),
+                child: Row(
+                  children: [
+                    const Icon(Icons.touch_app_outlined,
+                        size: 16, color: AppColors.primary),
+                    const SizedBox(width: 8),
+                    const Expanded(
+                      child: Text(
+                        'Todos per Drag & Drop in die Wochenansicht ziehen',
+                        style: TextStyle(
+                            color: AppColors.primary,
+                            fontSize: 12),
+                      ),
+                    ),
+                    Text('${todos.length}',
+                        style: const TextStyle(
+                            color: AppColors.primary,
+                            fontWeight: FontWeight.bold,
+                            fontSize: 12)),
+                  ],
+                ),
+              ),
+              // Liste
+              Expanded(
+                child: ListView.builder(
+                  padding: const EdgeInsets.all(12),
+                  itemCount: todos.length,
+                  itemBuilder: (ctx, i) {
+                    final todo = todos[i];
+                    return TodoCard(
+                      todo: todo,
+                      onTap: () => TodoStatusDialog.show(
+                          context: context, todo: todo),
+                      onDelete: () => SupabaseService.deleteTodo(todo.id),
+                    );
+                  },
+                ),
+              ),
+            ],
+          );
+        },
+      ),
+      floatingActionButton: FloatingActionButton(
+        heroTag: 'todos_fab',
+        onPressed: () => _openEdit(context),
+        backgroundColor: AppColors.primary,
+        child: const Icon(Icons.add, color: Colors.white),
+      ),
+    );
+  }
+
+  void _openEdit(BuildContext context) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => const TodoEditScreen()),
+    );
+  }
+}
+
+class _EmptyState extends StatelessWidget {
+  final VoidCallback onAdd;
+  const _EmptyState({required this.onAdd});
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          const Icon(Icons.check_circle_outline,
+              size: 64, color: AppColors.textDisabled),
+          const SizedBox(height: 16),
+          const Text('Keine offenen Todos',
+              style: TextStyle(
+                  color: AppColors.textSecondary,
+                  fontSize: 16,
+                  fontWeight: FontWeight.w500)),
+          const SizedBox(height: 8),
+          const Text('Erstelle ein Todo und ziehe es in die Wochenansicht',
+              style:
+                  TextStyle(color: AppColors.textDisabled, fontSize: 13),
+              textAlign: TextAlign.center),
+          const SizedBox(height: 24),
+          ElevatedButton.icon(
+            onPressed: onAdd,
+            icon: const Icon(Icons.add),
+            label: const Text('Todo erstellen'),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppColors.primary,
+              foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(10)),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}

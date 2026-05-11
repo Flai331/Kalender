@@ -1,0 +1,21 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(flutter pub:*)",
+      "Bash(flutter analyze:*)",
+      "Bash(flutter run:*)",
+      "Bash(netstat -ano)",
+      "Bash(powershell -command \"Get-NetTCPConnection -State Listen | Where-Object {$_LocalAddress -eq ''127.0.0.1''} | Select-Object LocalPort | Sort-Object LocalPort\")",
+      "Bash(powershell -command \"Get-NetTCPConnection -State Listen | Select-Object LocalPort | Sort-Object LocalPort | Where-Object { $_LocalPort -gt 3000 -and $_LocalPort -lt 9999 }\")",
+      "Bash(cmd /c \"netstat -ano | findstr LISTENING | findstr 127.0.0.1\")",
+      "Bash(cmd /c \"netstat -ano\")",
+      "Bash(cmd /c \"wmic process where name=''''dart.exe'''' get commandline 2>nul\")",
+      "Bash(tasklist /FI \"IMAGENAME eq dart.exe\" /FO CSV)",
+      "Bash(tasklist /FI \"IMAGENAME eq flutter_tools.snapshot\" /FO CSV)",
+      "Bash(netstat -tlnp)",
+      "Bash(firebase --version)",
+      "Bash(dart pub:*)",
+      "Bash(npm install:*)"
+    ]
+  }
+}

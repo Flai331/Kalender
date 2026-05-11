@@ -1,0 +1,57 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/widget_container"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:padding="12dp"
+    android:background="#1E1E1E">
+
+    <!-- Aktiver Task + Timer -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:gravity="center_vertical"
+        android:paddingBottom="6dp">
+
+        <TextView
+            android:id="@+id/widget_active_task"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="Kein aktiver Termin"
+            android:textColor="#69F0AE"
+            android:textSize="13sp"
+            android:textStyle="bold"
+            android:maxLines="1"
+            android:ellipsize="end" />
+
+        <TextView
+            android:id="@+id/widget_timer"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text=""
+            android:textColor="#FFD740"
+            android:textSize="12sp"
+            android:textStyle="bold" />
+    </LinearLayout>
+
+    <!-- Trennlinie -->
+    <View
+        android:layout_width="match_parent"
+        android:layout_height="0.5dp"
+        android:background="#3A3A3A"
+        android:layout_marginBottom="6dp" />
+
+    <!-- Heutige Todos -->
+    <TextView
+        android:id="@+id/widget_todos"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Heute keine Todos"
+        android:textColor="#E0E0E0"
+        android:textSize="12sp"
+        android:lineSpacingMultiplier="1.4" />
+
+</LinearLayout>

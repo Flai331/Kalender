@@ -1,0 +1,45 @@
+name: kalender
+description: "Persönliche Kalender & To-Do App zur Wochenplanung"
+publish_to: 'none'
+
+version: 1.0.0+1
+
+environment:
+  sdk: ^3.11.4
+
+dependencies:
+  flutter:
+    sdk: flutter
+  cupertino_icons: ^1.0.8
+
+  # Supabase
+  supabase_flutter: ^2.8.4
+
+  # Microsoft OAuth + Outlook
+  http: ^1.4.0
+  flutter_secure_storage: ^9.2.4
+  url_launcher: ^6.3.1
+
+  # Notifications & Background
+  flutter_local_notifications: ^18.0.1
+  timezone: ^0.9.4
+
+  # Local cache
+  shared_preferences: ^2.3.0
+
+  # Feedback & Error Reporting
+  flutter_email_sender: ^6.0.3
+  image_picker: ^1.1.2
+  path_provider: ^2.1.5
+
+  # Utils
+  intl: ^0.20.0
+  uuid: ^4.5.1
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+
+flutter:
+  uses-material-design: true
