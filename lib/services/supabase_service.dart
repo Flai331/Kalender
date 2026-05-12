@@ -119,6 +119,17 @@ class SupabaseService {
     return Todo.fromJson(rows.first['data'] as Map<String, dynamic>);
   }
 
+  static Future<CalendarEvent?> getEventById(String id) async {
+    final rows = await _db
+        .from('calendar_events')
+        .select()
+        .eq('id', id)
+        .eq('user_id', _uid)
+        .limit(1);
+    if ((rows as List).isEmpty) return null;
+    return CalendarEvent.fromJson(rows.first['data'] as Map<String, dynamic>);
+  }
+
   // ── WeekNotes ──────────────────────────────────────────────────────────────
 
   static Future<WeekNote> getWeekNote(String weekKey) async {
