@@ -33,6 +33,25 @@ enum DaylightMode {
   manual,  // manuelles Zeitfenster (dueWindowStartHour/EndHour)
 }
 
+class SubTask {
+  final String id;
+  final String title;
+  final bool isDone;
+
+  SubTask({required this.id, required this.title, this.isDone = false});
+
+  SubTask copyWith({String? id, String? title, bool? isDone}) =>
+      SubTask(id: id ?? this.id, title: title ?? this.title, isDone: isDone ?? this.isDone);
+
+  Map<String, dynamic> toJson() => {'id': id, 'title': title, 'isDone': isDone};
+
+  factory SubTask.fromJson(Map<String, dynamic> json) => SubTask(
+        id: json['id'] as String,
+        title: json['title'] as String,
+        isDone: json['isDone'] as bool? ?? false,
+      );
+}
+
 class Todo {
   final String id;
   final String title;
@@ -63,6 +82,7 @@ class Todo {
   final EventCategory? requiredCategory;   // für categoryEvent + opportunistic
   final List<int>? allowedWeekdays;        // null=alle; [1..5]=Mo-Fr (1=Mo,7=So)
   final DaylightMode daylightMode;
+  final List<SubTask> subTasks;
 
   Todo({
     required this.id,
@@ -94,6 +114,7 @@ class Todo {
     this.requiredCategory,
     this.allowedWeekdays,
     this.daylightMode = DaylightMode.none,
+    this.subTasks = const [],
   });
 
   bool get isScheduled => scheduledDate != null;
@@ -155,6 +176,7 @@ class Todo {
     Object? requiredCategory = _unset,
     Object? allowedWeekdays = _unset,
     DaylightMode? daylightMode,
+    List<SubTask>? subTasks,
   }) {
     return Todo(
       id: id ?? this.id,
@@ -186,6 +208,7 @@ class Todo {
       requiredCategory: requiredCategory == _unset ? this.requiredCategory : requiredCategory as EventCategory?,
       allowedWeekdays: allowedWeekdays == _unset ? this.allowedWeekdays : allowedWeekdays as List<int>?,
       daylightMode: daylightMode ?? this.daylightMode,
+      subTasks: subTasks ?? this.subTasks,
     );
   }
 
@@ -219,6 +242,7 @@ class Todo {
         'requiredCategory': requiredCategory?.name,
         'allowedWeekdays': allowedWeekdays,
         'daylightMode': daylightMode.name,
+        'subTasks': subTasks.map((s) => s.toJson()).toList(),
       };
 
   factory Todo.fromJson(Map<String, dynamic> json) => Todo(
@@ -282,5 +306,8 @@ class Todo {
           (e) => e.name == json['daylightMode'],
           orElse: () => DaylightMode.none,
         ),
+        subTasks: (json['subTasks'] as List<dynamic>?)
+            ?.map((e) => SubTask.fromJson(e as Map<String, dynamic>))
+            .toList() ?? [],
       );
 }
