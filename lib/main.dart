@@ -21,6 +21,7 @@ import 'todos/todo_list_screen.dart';
 import 'notes/notes_screen.dart';
 import 'reminders/reminders_screen.dart';
 import 'settings/settings_screen.dart';
+import 'yearly/yearly_planner_screen.dart';
 
 final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 
@@ -151,6 +152,7 @@ class _MainScreenState extends State<MainScreen> {
     const TodoListScreen(),
     const NotesScreen(),
     const RemindersScreen(),
+    const YearlyPlannerScreen(),
     const SettingsScreen(),
   ];
 
@@ -235,6 +237,11 @@ class _MainScreenState extends State<MainScreen> {
               icon: Icon(Icons.notifications_outlined),
               activeIcon: Icon(Icons.notifications),
               label: 'Erinnerungen',
+            ),
+            BottomNavigationBarItem(
+              icon: Icon(Icons.event_repeat_outlined),
+              activeIcon: Icon(Icons.event_repeat),
+              label: 'Jahresplan',
             ),
             BottomNavigationBarItem(
               icon: Icon(Icons.settings_outlined),
