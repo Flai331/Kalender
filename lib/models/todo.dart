@@ -246,7 +246,7 @@ class Todo {
               )
             : null,
         allowedWeekdays: (json['allowedWeekdays'] as List<dynamic>?)
-            ?.map((e) => e as int)
+            ?.map((e) => (e as num).toInt())
             .toList(),
         daylightMode: DaylightMode.values.firstWhere(
           (e) => e.name == json['daylightMode'],
