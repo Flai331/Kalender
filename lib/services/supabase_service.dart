@@ -5,6 +5,7 @@ import '../models/todo.dart';
 import '../models/week_note.dart';
 import '../models/series_reminder.dart';
 import '../models/yearly_checklist.dart';
+import '../models/annual_event.dart';
 import 'auth_service.dart';
 
 class SupabaseService {
@@ -239,6 +240,31 @@ class SupabaseService {
         .delete()
         .eq('id', id)
         .eq('user_id', _uid);
+  }
+
+  // ── AnnualEvents ──────────────────────────────────────────────────────────────
+
+  static Stream<List<AnnualEvent>> annualEvents() {
+    return _db
+        .from('annual_events')
+        .stream(primaryKey: ['id'])
+        .eq('user_id', _uid)
+        .map((rows) => rows
+            .map((r) => AnnualEvent.fromJson(r['data'] as Map<String, dynamic>))
+            .toList()
+          ..sort((a, b) => a.name.compareTo(b.name)));
+  }
+
+  static Future<void> saveAnnualEvent(AnnualEvent event) async {
+    await _db.from('annual_events').upsert({
+      'id': event.id,
+      'user_id': _uid,
+      'data': event.toJson(),
+    });
+  }
+
+  static Future<void> deleteAnnualEvent(String id) async {
+    await _db.from('annual_events').delete().eq('id', id).eq('user_id', _uid);
   }
 
   // ── Batch: Todos nach einem Zeitpunkt verschieben ──────────────────────────
