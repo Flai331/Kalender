@@ -1,47 +1,36 @@
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
-import 'package:flutter/services.dart';
+import 'package:home_widget/home_widget.dart';
 import '../models/todo.dart';
 
-/// Aktualisiert das Android-Homescreen-Widget mit heutigen Todos
 class WidgetService {
-  static const _channel = MethodChannel('com.example.kalender/widget');
+  static const _appGroupId = 'group.com.example.kalender';
+  static const _androidWidgetName = 'TodoWidgetReceiver';
 
-  static Future<void> update({
-    required List<Todo> todayTodos,
-    Todo? activeTask,
-    Duration? activeTimer,
-  }) async {
+  static Future<void> init() async {
     if (kIsWeb) return;
-
-    try {
-      final todosJson = jsonEncode(todayTodos
-          .map((t) => {
-                'title': t.title,
-                'done': t.status == TodoStatus.done,
-                'estimatedMinutes': t.estimatedMinutes,
-              })
-          .toList());
-
-      final timerLabel = activeTimer != null
-          ? _formatDuration(activeTimer)
-          : '';
-
-      await _channel.invokeMethod('updateWidgetData', {
-        'today_todos': todosJson,
-        'active_task': activeTask?.title ?? '',
-        'active_timer': timerLabel,
-      });
-    } catch (e) {
-      debugPrint('WidgetService: $e');
-    }
+    await HomeWidget.setAppGroupId(_appGroupId);
   }
 
-  static String _formatDuration(Duration d) {
-    final h = d.inHours;
-    final m = d.inMinutes % 60;
-    final s = d.inSeconds % 60;
-    if (h > 0) return '${h}h ${m.toString().padLeft(2, '0')}m';
-    return '${m.toString().padLeft(2, '0')}:${s.toString().padLeft(2, '0')}';
+  /// Writes today's todos grouped by category to shared storage and triggers redraw.
+  static Future<void> update({required List<Todo> todayTodos}) async {
+    if (kIsWeb) return;
+
+    // Group by category, only scheduled + not completed
+    final grouped = <String, List<Map<String, dynamic>>>{};
+    for (final t in todayTodos) {
+      if (t.isCompleted) continue;
+      grouped.putIfAbsent(t.category, () => []).add({
+        'id': t.id,
+        'title': t.title,
+        'isDone': t.status == TodoStatus.done,
+        'estimatedMinutes': t.estimatedMinutes,
+      });
+    }
+
+    await HomeWidget.saveWidgetData<String>('todos_json', jsonEncode(grouped));
+    await HomeWidget.updateWidget(
+      androidName: _androidWidgetName,
+    );
   }
 }
