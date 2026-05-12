@@ -536,6 +536,7 @@ class _WeekScreenState extends State<WeekScreen> {
                           onEventDrop: _onEventDrop,
                           onEventTap: _onEventTap,
                           onTodoTap: _onTodoTap,
+                          onTodoDroppedOnEvent: _onTodoDroppedOnEvent,
                         ),
                       );
                     }),
@@ -571,6 +572,33 @@ class _WeekScreenState extends State<WeekScreen> {
       _blockingAllDayCats =
           prefs.getStringList('blocking_allday_cats') ?? ['vacation'];
     });
+  }
+
+  Future<void> _onTodoDroppedOnEvent(Todo todo, CalendarEvent event) async {
+    if (event.isAllDay) return;
+
+    final evStart = event.startTime.hour * 60 + event.startTime.minute;
+    final evEnd = event.endTime.hour * 60 + event.endTime.minute;
+    final total = todo.travelMinutesBefore + todo.estimatedMinutes + todo.travelMinutesAfter;
+
+    if (evEnd - evStart < total) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        content: Text('Todo passt zeitlich nicht in diesen Termin.'),
+      ));
+      return;
+    }
+
+    final newStart = evStart + todo.travelMinutesBefore;
+    final updated = todo.copyWith(
+      scheduledDate: event.startTime,
+      scheduledStartHour: newStart ~/ 60,
+      scheduledStartMinute: newStart % 60,
+      contextMode: TodoContextMode.opportunistic,
+      requiredCategory: event.category,
+    );
+    await SupabaseService.saveTodo(updated);
+    if (mounted) setState(() => _initStreams());
   }
 
   bool _dayBlockedByAllDay(DateTime day) {
@@ -852,6 +880,28 @@ class _WeekScreenState extends State<WeekScreen> {
         runningMin = blockEnd;
       }
       prevOriginalBlockEnd = blockEnd;
+    }
+
+    // Opportunity-Todos: wenn verpasstes Event → nächstes Event suchen
+    for (final todo in todayTodos) {
+      if (todo.contextMode != TodoContextMode.opportunistic) continue;
+      if (todo.status != TodoStatus.pending) continue;
+      final scheduledEnd = todo.scheduledEndTime;
+      if (scheduledEnd == null || !scheduledEnd.isBefore(now)) continue;
+      // Todo ist überfällig — suche nächstes passendes Event
+      final slot = await _findNextValidSlot(todo, today, nowMinutes);
+      if (slot == null) {
+        _noSlotTodos.add(todo.id);
+        continue;
+      }
+      final (slotDay, slotMin) = slot;
+      final newStart = slotMin + todo.travelMinutesBefore;
+      await SupabaseService.saveTodo(todo.copyWith(
+        scheduledDate: slotDay,
+        scheduledStartHour: newStart ~/ 60,
+        scheduledStartMinute: newStart % 60,
+      ));
+      shifted = true;
     }
 
     if (!mounted) return;
