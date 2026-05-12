@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 import '../app_colors.dart';
 import '../models/series_reminder.dart';
 import '../models/yearly_checklist.dart';
@@ -122,7 +122,7 @@ class _ReminderTile extends StatelessWidget {
       background: Container(
         alignment: Alignment.centerRight,
         padding: const EdgeInsets.only(right: 16),
-        color: Colors.red.withOpacity(0.2),
+        color: Colors.red.withValues(alpha: 0.2),
         child: const Icon(Icons.delete, color: Colors.redAccent),
       ),
       child: GestureDetector(
@@ -139,7 +139,7 @@ class _ReminderTile extends StatelessWidget {
               Container(
                 padding: const EdgeInsets.all(8),
                 decoration: BoxDecoration(
-                  color: AppColors.primary.withOpacity(0.15),
+                  color: AppColors.primary.withValues(alpha: 0.15),
                   borderRadius: BorderRadius.circular(8),
                 ),
                 child: const Icon(Icons.notifications_active_outlined,
@@ -168,7 +168,7 @@ class _ReminderTile extends StatelessWidget {
               Switch(
                 value: reminder.isActive,
                 onChanged: onToggle,
-                activeColor: AppColors.primary,
+                activeThumbColor: AppColors.primary,
               ),
             ],
           ),
@@ -254,7 +254,7 @@ class _ChecklistTile extends StatelessWidget {
       background: Container(
         alignment: Alignment.centerRight,
         padding: const EdgeInsets.only(right: 16),
-        color: Colors.red.withOpacity(0.2),
+        color: Colors.red.withValues(alpha: 0.2),
         child: const Icon(Icons.delete, color: Colors.redAccent),
       ),
       child: GestureDetector(

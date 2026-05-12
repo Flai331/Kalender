@@ -1,4 +1,4 @@
-import 'dart:async';
+﻿import 'dart:async';
 import 'package:flutter/material.dart';
 import '../app_colors.dart';
 import '../models/todo.dart';
@@ -323,11 +323,11 @@ class _WeekDayColumnState extends State<WeekDayColumn> {
                       child: Container(
                         decoration: BoxDecoration(
                           color: isHighlighted
-                              ? AppColors.primary.withOpacity(0.1)
+                              ? AppColors.primary.withValues(alpha: 0.1)
                               : Colors.transparent,
                           border: Border(
                             top: BorderSide(
-                              color: AppColors.divider.withOpacity(0.4),
+                              color: AppColors.divider.withValues(alpha: 0.4),
                               width: 0.5,
                             ),
                           ),
@@ -369,10 +369,10 @@ class _WeekDayColumnState extends State<WeekDayColumn> {
           child: Container(
             height: 0.5,
             color: isQuarter
-                ? AppColors.divider.withOpacity(0.45)
+                ? AppColors.divider.withValues(alpha: 0.45)
                 : isFive
-                    ? AppColors.divider.withOpacity(0.3)
-                    : AppColors.divider.withOpacity(0.15),
+                    ? AppColors.divider.withValues(alpha: 0.3)
+                    : AppColors.divider.withValues(alpha: 0.15),
           ),
         ),
       );
@@ -424,7 +424,7 @@ class _WeekDayColumnState extends State<WeekDayColumn> {
             final isTarget = candidateTodos.isNotEmpty;
             return LongPressDraggable<CalendarEvent>(
               data: event,
-              onDraggableCanceled: (_, __) => _onDragEnd(),
+              onDraggableCanceled: (velocity, offset) => _onDragEnd(),
               onDragCompleted: _onDragEnd,
               feedback: ValueListenableBuilder<int>(
                 valueListenable: SnapState.snapNotifier,
@@ -539,7 +539,7 @@ class _WeekDayColumnState extends State<WeekDayColumn> {
         height: height,
         child: LongPressDraggable<Todo>(
           data: todo,
-          onDraggableCanceled: (_, __) => _onDragEnd(),
+          onDraggableCanceled: (velocity, offset) => _onDragEnd(),
           onDragCompleted: _onDragEnd,
           feedback: ValueListenableBuilder<int>(
             valueListenable: SnapState.snapNotifier,
@@ -696,7 +696,7 @@ class _DayHeader extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(vertical: 8),
       decoration: BoxDecoration(
-        color: isToday ? AppColors.primary.withOpacity(0.15) : Colors.transparent,
+        color: isToday ? AppColors.primary.withValues(alpha: 0.15) : Colors.transparent,
         border: Border(
           bottom: BorderSide(color: AppColors.divider, width: 0.5),
         ),

@@ -241,7 +241,7 @@ class _SectionHeader extends StatelessWidget {
             ),
           ),
           if (trailing != null) const Spacer(),
-          if (trailing != null) trailing!,
+          ?trailing,
         ],
       ),
     );

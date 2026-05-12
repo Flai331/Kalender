@@ -1,4 +1,4 @@
-import 'package:file_picker/file_picker.dart';
+﻿import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../app_colors.dart';
@@ -37,11 +37,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
   Future<void> _loadSources() async {
     final sources = await IcsService.getSources();
     final outlook = await IcsService.getOutlookAllowTodoDrop();
-    if (mounted) setState(() {
-      _sources = sources;
-      _sourcesLoading = false;
-      _outlookAllowTodoDrop = outlook;
-    });
+    if (mounted) {
+      setState(() {
+        _sources = sources;
+        _sourcesLoading = false;
+        _outlookAllowTodoDrop = outlook;
+      });
+    }
   }
 
   Future<void> _loadConstraintSettings() async {
@@ -358,7 +360,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                           child: Switch(
                             value: src.allowTodoDrop,
                             onChanged: (v) => _toggleIcsAllowTodoDrop(src, v),
-                            activeColor: AppColors.primary,
+                            activeThumbColor: AppColors.primary,
                             materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
                           ),
                         ),
@@ -429,7 +431,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         color: AppColors.textSecondary, fontSize: 12)),
                 value: _outlookAllowTodoDrop,
                 onChanged: _toggleOutlookAllowTodoDrop,
-                activeColor: AppColors.primary,
+                activeThumbColor: AppColors.primary,
               ),
             ],
           ),

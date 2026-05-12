@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 import 'package:uuid/uuid.dart';
 import '../app_colors.dart';
 import '../models/todo.dart';
@@ -225,7 +225,7 @@ class _TodoEditScreenState extends State<TodoEditScreen> {
                 'Beim automatischen Zeitplan-Shift wird dieses Todo ignoriert',
                 style:
                     TextStyle(color: AppColors.textSecondary, fontSize: 12)),
-            activeColor: AppColors.fixedTag,
+            activeThumbColor: AppColors.fixedTag,
             tileColor: AppColors.card,
             shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(10)),
@@ -274,7 +274,7 @@ class _TodoEditScreenState extends State<TodoEditScreen> {
               style: const TextStyle(
                   color: AppColors.textSecondary, fontSize: 12),
             ),
-            activeColor: AppColors.primary,
+            activeThumbColor: AppColors.primary,
             tileColor: AppColors.card,
             shape:
                 RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
@@ -407,7 +407,7 @@ class _TravelTimePicker extends StatelessWidget {
                       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
                       decoration: BoxDecoration(
                         color: isSelected
-                            ? AppColors.primary.withOpacity(0.2)
+                            ? AppColors.primary.withValues(alpha: 0.2)
                             : AppColors.card,
                         borderRadius: BorderRadius.circular(8),
                         border: Border.all(
@@ -504,7 +504,7 @@ class _DurationPickerState extends State<_DurationPicker> {
                 _ctrl.clear();
                 widget.onChanged(m);
               },
-              selectedColor: AppColors.primary.withOpacity(0.3),
+              selectedColor: AppColors.primary.withValues(alpha: 0.3),
               backgroundColor: AppColors.card,
               labelStyle: TextStyle(
                   color: isSelected ? AppColors.primary : AppColors.textSecondary,
@@ -528,7 +528,7 @@ class _DurationPickerState extends State<_DurationPicker> {
               suffixStyle: const TextStyle(color: AppColors.textSecondary, fontSize: 13),
               filled: true,
               fillColor: _isCustom
-                  ? AppColors.primary.withOpacity(0.12)
+                  ? AppColors.primary.withValues(alpha: 0.12)
                   : AppColors.card,
               contentPadding:
                   const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
@@ -585,7 +585,7 @@ class _CategorySelector extends StatelessWidget {
           label: Text(e.value),
           selected: isSelected,
           onSelected: (_) => onChanged(e.key),
-          selectedColor: color.withOpacity(0.3),
+          selectedColor: color.withValues(alpha: 0.3),
           backgroundColor: AppColors.card,
           labelStyle: TextStyle(
               color: isSelected ? color : AppColors.textSecondary,
@@ -634,7 +634,7 @@ class _WindowPicker extends StatelessWidget {
               Switch(
                 value: active,
                 onChanged: (v) => onChanged(v ? 8 : null, v ? 22 : null),
-                activeColor: AppColors.primary,
+                activeThumbColor: AppColors.primary,
                 materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
               ),
             ],
@@ -682,7 +682,7 @@ class _HourDrop extends StatelessWidget {
       decoration: BoxDecoration(
         color: AppColors.background,
         borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: AppColors.primary.withOpacity(0.5)),
+        border: Border.all(color: AppColors.primary.withValues(alpha: 0.5)),
       ),
       child: DropdownButtonHideUnderline(
         child: DropdownButton<int>(
@@ -727,7 +727,7 @@ class _RepeatSelector extends StatelessWidget {
           label: Text(_labels[r] ?? r.name),
           selected: isSelected,
           onSelected: (_) => onChanged(r),
-          selectedColor: AppColors.primary.withOpacity(0.3),
+          selectedColor: AppColors.primary.withValues(alpha: 0.3),
           backgroundColor: AppColors.card,
           labelStyle: TextStyle(
               color: isSelected ? AppColors.primary : AppColors.textSecondary,
@@ -765,7 +765,7 @@ class _ContextModePicker extends StatelessWidget {
           label: Text(_labels[m] ?? m.name),
           selected: isSelected,
           onSelected: (_) => onChanged(m),
-          selectedColor: AppColors.primary.withOpacity(0.3),
+          selectedColor: AppColors.primary.withValues(alpha: 0.3),
           backgroundColor: AppColors.card,
           labelStyle: TextStyle(
             color: isSelected ? AppColors.primary : AppColors.textSecondary,
@@ -802,7 +802,7 @@ class _CategoryEventPicker extends StatelessWidget {
           label: Text(_labels[c] ?? c.name),
           selected: isSelected,
           onSelected: (_) => onChanged(isSelected ? null : c),
-          selectedColor: AppColors.primary.withOpacity(0.3),
+          selectedColor: AppColors.primary.withValues(alpha: 0.3),
           backgroundColor: AppColors.card,
           labelStyle: TextStyle(
             color: isSelected ? AppColors.primary : AppColors.textSecondary,
@@ -845,7 +845,7 @@ class _WeekdayPicker extends StatelessWidget {
             }
             onChanged(next.length == 7 ? [] : next);
           },
-          selectedColor: AppColors.primary.withOpacity(0.3),
+          selectedColor: AppColors.primary.withValues(alpha: 0.3),
           backgroundColor: AppColors.card,
           labelStyle: TextStyle(
             color: isOn ? AppColors.primary : AppColors.textSecondary,

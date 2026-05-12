@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 import '../app_colors.dart';
 import '../models/todo.dart';
 import '../services/supabase_service.dart';
@@ -73,7 +73,7 @@ class _TodoListScreenState extends State<TodoListScreen> {
             children: [
               // Info-Banner
               Container(
-                color: AppColors.primary.withOpacity(0.08),
+                color: AppColors.primary.withValues(alpha: 0.08),
                 padding: const EdgeInsets.symmetric(
                     horizontal: 16, vertical: 10),
                 child: Row(
@@ -113,6 +113,7 @@ class _TodoListScreenState extends State<TodoListScreen> {
                           await SupabaseService.deleteTodo(todo.id);
                           _refreshStream();
                         } else if (result == 'edit') {
+                          if (!context.mounted) return;
                           await Navigator.push(
                             context,
                             MaterialPageRoute(

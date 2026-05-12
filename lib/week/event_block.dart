@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 import '../app_colors.dart';
 import '../models/calendar_event.dart';
 import '../models/todo.dart';
@@ -66,7 +66,7 @@ class EventBlock extends StatelessWidget {
                 if (hasAddress)
                   Padding(
                     padding: const EdgeInsets.only(right: 3),
-                    child: Icon(Icons.location_on, size: 10, color: color.withOpacity(0.8)),
+                    child: Icon(Icons.location_on, size: 10, color: color.withValues(alpha: 0.8)),
                   ),
                 Expanded(
                   child: Text(
@@ -91,7 +91,7 @@ class EventBlock extends StatelessWidget {
                 timeStr,
                 style: TextStyle(
                   fontSize: 9,
-                  color: color.withOpacity(0.85),
+                  color: color.withValues(alpha: 0.85),
                   fontWeight: FontWeight.w500,
                 ),
                 maxLines: 1,

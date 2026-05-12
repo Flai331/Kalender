@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 import 'package:uuid/uuid.dart';
 import '../app_colors.dart';
 import '../models/series_reminder.dart';
@@ -216,7 +216,7 @@ class _ReminderEditScreenState extends State<ReminderEditScreen> {
             onChanged: (v) => setState(() => _isActive = v),
             title: const Text('Aktiv',
                 style: TextStyle(color: AppColors.textPrimary, fontSize: 14)),
-            activeColor: AppColors.primary,
+            activeThumbColor: AppColors.primary,
             tileColor: AppColors.card,
             shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(10)),

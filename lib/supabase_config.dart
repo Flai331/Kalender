@@ -1,5 +1,5 @@
 /// Supabase Konfiguration
-/// Werte aus: https://supabase.com/dashboard/project/<dein-projekt>/settings/api
+/// Werte aus dem Supabase Dashboard unter Project Settings → API
 class SupabaseConfig {
   /// Deine Projekt-URL (z.B. https://xyzabc.supabase.co)
   static const String url = 'https://bvwppinkkuolvtxjeiue.supabase.co';

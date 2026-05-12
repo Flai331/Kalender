@@ -1,4 +1,4 @@
-import 'dart:async';
+﻿import 'dart:async';
 import 'dart:math' as math;
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
@@ -620,7 +620,7 @@ class WeekScreenState extends State<WeekScreen> {
   Widget _buildChecklistBanner() {
     final checklist = _pendingChecklists.first;
     return Container(
-      color: AppColors.vacation.withOpacity(0.15),
+      color: AppColors.vacation.withValues(alpha: 0.15),
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
       child: Row(
         children: [
@@ -1637,7 +1637,7 @@ class _TimeAxis extends StatelessWidget {
             left: 0,
             right: 2,
             child: Text(
-              '${hour}:00',
+              '$hour:00',
               style: const TextStyle(fontSize: 13, color: AppColors.textSecondary),
               textAlign: TextAlign.right,
             ),
@@ -1657,12 +1657,12 @@ class _TimeAxis extends StatelessWidget {
                 left: 0,
                 right: 2,
                 child: Text(
-                  '${hour}:${min.toString().padLeft(2, '0')}',
+                  '$hour:${min.toString().padLeft(2, '0')}',
                   style: TextStyle(
                     fontSize: isQuarter ? 8 : 7,
                     color: isQuarter
                         ? AppColors.textDisabled
-                        : AppColors.textDisabled.withOpacity(0.6),
+                        : AppColors.textDisabled.withValues(alpha: 0.6),
                   ),
                   textAlign: TextAlign.right,
                 ),

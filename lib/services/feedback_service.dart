@@ -1,14 +1,11 @@
 import 'dart:convert';
 import 'dart:io';
-import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter/foundation.dart' show kIsWeb, debugPrint;
-import 'package:flutter/rendering.dart';
 import 'package:flutter_email_sender/flutter_email_sender.dart';
 import 'package:http/http.dart' as http;
 import 'package:image_picker/image_picker.dart';
-import 'package:path_provider/path_provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../app_colors.dart';
@@ -37,10 +34,6 @@ class FeedbackService {
   static void setCurrentScreen(String name) => _currentScreen = name;
   static NavigatorObserver get screenObserver => _ScreenObserver();
 
-  // Key vom RepaintBoundary in main.dart (für Auto-Screenshot)
-  static GlobalKey? _repaintKey;
-  static void setRepaintKey(GlobalKey key) => _repaintKey = key;
-
   // Navigator-Key für automatische Dialog-Öffnung ohne BuildContext
   static GlobalKey<NavigatorState>? _navigatorKey;
   static void setNavigatorKey(GlobalKey<NavigatorState> key) =>
@@ -48,7 +41,7 @@ class FeedbackService {
 
   // Verhindert dass mehrere Fehler gleichzeitig mehrere Dialoge öffnen
   static bool _dialogOpen = false;
-  static bool _capturingScreenshot = false;
+  static final bool _capturingScreenshot = false;
 
   // ── Automatisch bei abgefangenem Fehler aufrufen ────────────
   static Future<void> showAutoErrorDialog() async {
@@ -392,7 +385,7 @@ class _FeedbackDialogState extends State<_FeedbackDialog> {
                 child: ListView.separated(
                   scrollDirection: Axis.horizontal,
                   itemCount: _photoPaths.length,
-                  separatorBuilder: (_, __) => const SizedBox(width: 6),
+                  separatorBuilder: (context, index) => const SizedBox(width: 6),
                   itemBuilder: (_, i) => Stack(
                     children: [
                       ClipRRect(

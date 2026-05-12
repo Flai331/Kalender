@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 import '../app_colors.dart';
 import '../models/todo.dart';
 import '../models/calendar_event.dart' show RepeatType;
@@ -36,7 +36,7 @@ class TodoCard extends StatelessWidget {
           alignment: Alignment.centerRight,
           padding: const EdgeInsets.only(right: 16),
           decoration: BoxDecoration(
-            color: Colors.red.withOpacity(0.2),
+            color: Colors.red.withValues(alpha: 0.2),
             borderRadius: BorderRadius.circular(12),
           ),
           child: const Icon(Icons.delete, color: Colors.redAccent),
@@ -64,13 +64,13 @@ class _CardContent extends StatelessWidget {
       margin: const EdgeInsets.only(bottom: 8),
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: isDragging ? AppColors.card.withOpacity(0.95) : AppColors.card,
+        color: isDragging ? AppColors.card.withValues(alpha: 0.95) : AppColors.card,
         borderRadius: BorderRadius.circular(12),
         border: Border(left: BorderSide(color: color, width: 3)),
         boxShadow: isDragging
             ? [
                 BoxShadow(
-                  color: AppColors.primary.withOpacity(0.3),
+                  color: AppColors.primary.withValues(alpha: 0.3),
                   blurRadius: 12,
                   offset: const Offset(0, 4),
                 )
@@ -112,7 +112,7 @@ class _CardContent extends StatelessWidget {
             padding:
                 const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
             decoration: BoxDecoration(
-              color: color.withOpacity(0.15),
+              color: color.withValues(alpha: 0.15),
               borderRadius: BorderRadius.circular(6),
             ),
             child: Text(

@@ -13,14 +13,12 @@ import 'reminders/reminders_screen.dart';
 import 'settings/settings_screen.dart';
 
 final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
-final GlobalKey _repaintKey = GlobalKey();
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
   // Feedback-Service einrichten
   FeedbackService.setNavigatorKey(navigatorKey);
-  FeedbackService.setRepaintKey(_repaintKey);
 
   // Flutter-Fehler abfangen – nur loggen, kein Auto-Dialog (verhindert Loop)
   FlutterError.onError = (FlutterErrorDetails details) {
@@ -31,10 +29,6 @@ void main() async {
   // Dart-Fehler abfangen (Netzwerkfehler ignorieren)
   PlatformDispatcher.instance.onError = (error, stack) {
     final msg = error.toString();
-    final isNetworkError = msg.contains('SocketException') ||
-        msg.contains('ClientException') ||
-        msg.contains('HandshakeException') ||
-        msg.contains('host lookup');
     FeedbackService.log('PlatformError: $msg');
     return true;
   };

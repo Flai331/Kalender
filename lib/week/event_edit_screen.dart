@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 import 'package:uuid/uuid.dart';
 import '../app_colors.dart';
 import '../models/calendar_event.dart';
@@ -195,7 +195,7 @@ class _EventEditScreenState extends State<EventEditScreen> {
                 'Beim automatischen Zeitplan-Shift wird dieser Termin ignoriert',
                 style:
                     TextStyle(color: AppColors.textSecondary, fontSize: 12)),
-            activeColor: AppColors.fixedTag,
+            activeThumbColor: AppColors.fixedTag,
             tileColor: AppColors.card,
             shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(10)),
@@ -309,7 +309,7 @@ class _TravelTimePicker extends StatelessWidget {
                       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
                       decoration: BoxDecoration(
                         color: isSelected
-                            ? AppColors.primary.withOpacity(0.2)
+                            ? AppColors.primary.withValues(alpha: 0.2)
                             : AppColors.card,
                         borderRadius: BorderRadius.circular(8),
                         border: Border.all(
@@ -418,7 +418,7 @@ class _CategorySelector extends StatelessWidget {
           label: Text(_labels[c] ?? c.name),
           selected: isSelected,
           onSelected: (_) => onChanged(c),
-          selectedColor: color.withOpacity(0.3),
+          selectedColor: color.withValues(alpha: 0.3),
           backgroundColor: AppColors.card,
           labelStyle: TextStyle(
               color: isSelected ? color : AppColors.textSecondary,
@@ -456,7 +456,7 @@ class _RepeatSelector extends StatelessWidget {
           label: Text(_labels[r] ?? r.name),
           selected: isSelected,
           onSelected: (_) => onChanged(r),
-          selectedColor: AppColors.primary.withOpacity(0.3),
+          selectedColor: AppColors.primary.withValues(alpha: 0.3),
           backgroundColor: AppColors.card,
           labelStyle: TextStyle(
               color: isSelected ? AppColors.primary : AppColors.textSecondary,
