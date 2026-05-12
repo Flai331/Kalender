@@ -12,6 +12,7 @@ import '../models/yearly_checklist.dart';
 import '../services/daylight_service.dart';
 import '../services/supabase_service.dart';
 import '../services/shift_service.dart';
+import '../services/widget_service.dart';
 import '../services/ics_service.dart';
 import '../models/ics_source.dart';
 import 'week_day_column.dart';
@@ -954,6 +955,14 @@ class WeekScreenState extends State<WeekScreen> {
           stream: _todosStream,
           builder: (ctx, todoSnap) {
             _todos = todoSnap.data ?? [];
+            final now = DateTime.now();
+            final today = DateTime(now.year, now.month, now.day);
+            final todayTodos = _todos.where((t) =>
+                t.scheduledDate != null &&
+                t.scheduledDate!.year == today.year &&
+                t.scheduledDate!.month == today.month &&
+                t.scheduledDate!.day == today.day).toList();
+            WidgetService.update(todayTodos: todayTodos);
             return Column(
               children: [
                 // Fixer Header
@@ -1064,6 +1073,14 @@ class WeekScreenState extends State<WeekScreen> {
           stream: _todosStream,
           builder: (ctx, todoSnap) {
             _todos = todoSnap.data ?? [];
+            final now = DateTime.now();
+            final today = DateTime(now.year, now.month, now.day);
+            final todayTodos = _todos.where((t) =>
+                t.scheduledDate != null &&
+                t.scheduledDate!.year == today.year &&
+                t.scheduledDate!.month == today.month &&
+                t.scheduledDate!.day == today.day).toList();
+            WidgetService.update(todayTodos: todayTodos);
             return Column(
               children: [
                 // Fixer Header

@@ -1,12 +1,18 @@
+import 'dart:io';
 import 'dart:ui';
 import 'package:flutter/material.dart';
+import 'package:home_widget/home_widget.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'supabase_config.dart';
 import 'app_colors.dart';
+import 'models/todo.dart';
 import 'services/auth_service.dart';
 import 'services/feedback_service.dart';
 import 'services/reminder_service.dart';
+import 'services/supabase_service.dart';
+import 'services/widget_service.dart';
 import 'week/week_screen.dart' show WeekScreen, WeekScreenState;
+import 'todos/todo_edit_screen.dart';
 import 'todos/todo_list_screen.dart';
 import 'notes/notes_screen.dart';
 import 'reminders/reminders_screen.dart';
@@ -49,6 +55,7 @@ void main() async {
 
   await ReminderService.initialize();
   await ReminderService.requestPermissions();
+  await WidgetService.init();
 
   runApp(KalenderApp(supabaseReady: supabaseReady));
 }
@@ -121,6 +128,44 @@ class _MainScreenState extends State<MainScreen> {
     const RemindersScreen(),
     const SettingsScreen(),
   ];
+
+  @override
+  void initState() {
+    super.initState();
+    _setupWidgetListener();
+  }
+
+  void _setupWidgetListener() {
+    if (!Platform.isAndroid && !Platform.isIOS) return;
+    HomeWidget.widgetClicked.listen(_handleWidgetUri);
+    // Also handle if app was launched from widget
+    HomeWidget.initiallyLaunchedFromHomeWidget().then((uri) {
+      if (uri != null) _handleWidgetUri(uri);
+    });
+  }
+
+  void _handleWidgetUri(Uri? uri) {
+    if (uri == null) return;
+    if (uri.host == 'toggle-todo') {
+      final todoId = uri.queryParameters['todoId'];
+      if (todoId != null) _handleWidgetToggle(todoId);
+    } else if (uri.host == 'new-todo') {
+      Navigator.push(
+        context,
+        MaterialPageRoute(builder: (_) => const TodoEditScreen()),
+      );
+    }
+  }
+
+  Future<void> _handleWidgetToggle(String todoId) async {
+    final todo = await SupabaseService.getTodoById(todoId);
+    if (todo == null) return;
+    final updated = todo.copyWith(
+      status: todo.status == TodoStatus.done ? TodoStatus.pending : TodoStatus.done,
+      isCompleted: todo.status != TodoStatus.done,
+    );
+    await SupabaseService.saveTodo(updated);
+  }
 
   void _onTabTap(int i) {
     if (i == 0) _weekKey.currentState?.reload();

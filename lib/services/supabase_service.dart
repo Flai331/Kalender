@@ -95,6 +95,17 @@ class SupabaseService {
     await _db.from('todos').delete().eq('id', id).eq('user_id', _uid);
   }
 
+  static Future<Todo?> getTodoById(String id) async {
+    final rows = await _db
+        .from('todos')
+        .select()
+        .eq('id', id)
+        .eq('user_id', _uid)
+        .limit(1);
+    if ((rows as List).isEmpty) return null;
+    return Todo.fromJson(rows.first['data'] as Map<String, dynamic>);
+  }
+
   // ── WeekNotes ──────────────────────────────────────────────────────────────
 
   static Future<WeekNote> getWeekNote(String weekKey) async {
