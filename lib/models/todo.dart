@@ -83,6 +83,7 @@ class Todo {
   final List<int>? allowedWeekdays;        // null=alle; [1..5]=Mo-Fr (1=Mo,7=So)
   final DaylightMode daylightMode;
   final List<SubTask> subTasks;
+  final List<int> durationHistory; // actual minutes per completion, max 10
 
   Todo({
     required this.id,
@@ -115,6 +116,7 @@ class Todo {
     this.allowedWeekdays,
     this.daylightMode = DaylightMode.none,
     this.subTasks = const [],
+    this.durationHistory = const [],
   });
 
   bool get isScheduled => scheduledDate != null;
@@ -177,6 +179,7 @@ class Todo {
     Object? allowedWeekdays = _unset,
     DaylightMode? daylightMode,
     List<SubTask>? subTasks,
+    List<int>? durationHistory,
   }) {
     return Todo(
       id: id ?? this.id,
@@ -209,6 +212,7 @@ class Todo {
       allowedWeekdays: allowedWeekdays == _unset ? this.allowedWeekdays : allowedWeekdays as List<int>?,
       daylightMode: daylightMode ?? this.daylightMode,
       subTasks: subTasks ?? this.subTasks,
+      durationHistory: durationHistory ?? this.durationHistory,
     );
   }
 
@@ -243,6 +247,7 @@ class Todo {
         'allowedWeekdays': allowedWeekdays,
         'daylightMode': daylightMode.name,
         'subTasks': subTasks.map((s) => s.toJson()).toList(),
+        'durationHistory': durationHistory,
       };
 
   factory Todo.fromJson(Map<String, dynamic> json) => Todo(
@@ -308,6 +313,9 @@ class Todo {
         ),
         subTasks: (json['subTasks'] as List<dynamic>?)
             ?.map((e) => SubTask.fromJson(e as Map<String, dynamic>))
+            .toList() ?? [],
+        durationHistory: (json['durationHistory'] as List<dynamic>?)
+            ?.map((e) => (e as num).toInt())
             .toList() ?? [],
       );
 }
