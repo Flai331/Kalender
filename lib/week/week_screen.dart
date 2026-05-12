@@ -307,6 +307,13 @@ class WeekScreenState extends State<WeekScreen> {
     }).toList();
   }
 
+  /// Returns (blockStart, blockEnd) in minutes-since-midnight including travel.
+  static (int, int) _eventBlock(CalendarEvent e) {
+    final start = e.startTime.hour * 60 + e.startTime.minute;
+    final end   = e.endTime.hour   * 60 + e.endTime.minute;
+    return (start - e.travelMinutesBefore, end + e.travelMinutesAfter);
+  }
+
   List<Todo> _todosForDay(DateTime day) {
     final dayStart = DateTime(day.year, day.month, day.day);
     final dayEnd = dayStart.add(const Duration(days: 1));
@@ -325,12 +332,14 @@ class WeekScreenState extends State<WeekScreen> {
       Todo todo, DateTime day, int hour, int minute) async {
     final dropStart = hour * 60 + minute;
     final dropEnd = dropStart + todo.estimatedMinutes;
+    // Include todo's own travel in the drop block
+    final todoBlockStart = dropStart - todo.travelMinutesBefore;
+    final todoBlockEnd   = dropEnd   + todo.travelMinutesAfter;
     final dayEvents = _eventsForDay(day);
 
     for (final event in dayEvents) {
-      final evStart = event.startTime.hour * 60 + event.startTime.minute;
-      final evEnd = event.endTime.hour * 60 + event.endTime.minute;
-      final overlaps = dropStart < evEnd && dropEnd > evStart;
+      final (evStart, evEnd) = _eventBlock(event);
+      final overlaps = todoBlockStart < evEnd && todoBlockEnd > evStart;
       if (overlaps && !_todoDropAllowed(event)) {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(SnackBar(
@@ -1319,8 +1328,7 @@ class WeekScreenState extends State<WeekScreen> {
           if (pos + total > winEnd) break;
           final blocker = dayEvents.cast<CalendarEvent?>().firstWhere(
             (e) {
-              final es = e!.startTime.hour * 60 + e.startTime.minute;
-              final ee = e.endTime.hour * 60 + e.endTime.minute;
+              final (es, ee) = _eventBlock(e!);
               return pos < ee && pos + total > es;
             },
             orElse: () => null,
@@ -1329,7 +1337,7 @@ class WeekScreenState extends State<WeekScreen> {
             found = true;
             break;
           }
-          final newPos = blocker.endTime.hour * 60 + blocker.endTime.minute;
+          final (_, newPos) = _eventBlock(blocker);
           pos = newPos > pos ? newPos : pos + 1;
         }
         if (found) return (day, pos);
@@ -1376,10 +1384,7 @@ class WeekScreenState extends State<WeekScreen> {
       });
 
     final todayEventTuples = _timedEventsOnDay(today)
-        .map((e) => (
-              e.startTime.hour * 60 + e.startTime.minute,
-              e.endTime.hour * 60 + e.endTime.minute,
-            ))
+        .map(_eventBlock)
         .toList();
 
     int skipEvents(int pos, int totalDuration) {
