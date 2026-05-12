@@ -491,6 +491,28 @@ class WeekScreenState extends State<WeekScreen> {
     }
   }
 
+  Todo _adaptTodoTime(Todo todo) {
+    if (todo.repeatType == RepeatType.none) return todo;
+    if (todo.actualStart == null || todo.actualEnd == null) return todo;
+
+    final actualMinutes = todo.actualEnd!
+            .difference(todo.actualStart!)
+            .inMinutes -
+        todo.pausedMinutes;
+    if (actualMinutes <= 0) return todo;
+
+    final history = [...todo.durationHistory, actualMinutes];
+    final capped = history.length > 10
+        ? history.sublist(history.length - 10)
+        : history;
+    final avg = (capped.reduce((a, b) => a + b) / capped.length).round();
+
+    return todo.copyWith(
+      durationHistory: capped,
+      estimatedMinutes: avg,
+    );
+  }
+
   Future<void> _onTodoTap(Todo todo) async {
     final result =
         await TodoStatusDialog.show(context: context, todo: todo);
@@ -518,8 +540,9 @@ class WeekScreenState extends State<WeekScreen> {
         updated = todo.copyWith(status: TodoStatus.started, pauseStart: null);
         await LocalService.saveTodo(updated);
       case 'done':
-        updated = todo.copyWith(
+        final withStatus = todo.copyWith(
             status: TodoStatus.done, actualEnd: now, isCompleted: true);
+        updated = _adaptTodoTime(withStatus);
         await LocalService.saveTodo(updated);
         // Zeitplan automatisch anpassen (positiv = zu spät, negativ = früher)
         final delta = ShiftService.computeDelta(todo: todo, actualEnd: now);
