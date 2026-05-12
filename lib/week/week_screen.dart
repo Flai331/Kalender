@@ -218,10 +218,11 @@ class WeekScreenState extends State<WeekScreen> {
       CalendarEvent icsEvent, CalendarEvent Function(CalendarEvent) transform) async {
     final appEvent = transform(_convertIcsToApp(icsEvent));
     _overriddenIcsIds.add(icsEvent.id);
-    await _saveOverrides();
+    // Remove from local list BEFORE any async — prevents race with Realtime
     if (mounted) setState(() {
       _icsEvents = _icsEvents.where((e) => e.id != icsEvent.id).toList();
     });
+    _saveOverrides(); // fire-and-forget, no need to await
     await SupabaseService.saveEvent(appEvent);
     return appEvent;
   }
