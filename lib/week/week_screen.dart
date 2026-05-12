@@ -574,6 +574,8 @@ class _WeekScreenState extends State<WeekScreen> {
   }
 
   bool _dayBlockedByAllDay(DateTime day) {
+    // ICS-Events werden nur für die aktuelle Woche geladen.
+    // Ganztags-ICS-Events außerhalb der Woche blockieren daher nicht.
     final allEventsOnDay = [..._events, ..._icsEvents].where((e) =>
         e.isAllDay &&
         e.startTime.year == day.year &&
@@ -675,7 +677,8 @@ class _WeekScreenState extends State<WeekScreen> {
             found = true;
             break;
           }
-          pos = blocker.endTime.hour * 60 + blocker.endTime.minute;
+          final newPos = blocker.endTime.hour * 60 + blocker.endTime.minute;
+          pos = newPos > pos ? newPos : pos + 1;
         }
         if (found) return (day, pos);
         day = day.add(const Duration(days: 1));
@@ -757,7 +760,12 @@ class _WeekScreenState extends State<WeekScreen> {
       // Started/paused: Anker, kein Shift
       if (todo.status == TodoStatus.started ||
           todo.status == TodoStatus.paused) {
-        runningMin = blockEnd > runningMin ? blockEnd : runningMin;
+        int newMin = blockEnd > runningMin ? blockEnd : runningMin;
+        while (newMin >= 24 * 60) {
+          newMin -= 24 * 60;
+          runningDate = runningDate.add(const Duration(days: 1));
+        }
+        runningMin = newMin;
         shifted = false;
         prevOriginalBlockEnd = blockEnd;
         continue;
