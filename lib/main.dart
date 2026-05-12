@@ -189,7 +189,7 @@ class _MainScreenState extends State<MainScreen> {
       status: todo.status == TodoStatus.done ? TodoStatus.pending : TodoStatus.done,
       isCompleted: todo.status != TodoStatus.done,
     );
-    await SupabaseService.saveTodo(updated);
+    await LocalService.saveTodo(updated);
     final todayTodos = await SupabaseService.getTodosForDate(DateTime.now());
     await WidgetService.update(todayTodos: todayTodos);
   }

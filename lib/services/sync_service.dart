@@ -34,10 +34,10 @@ class SyncService {
       for (final entry in queue) {
         try {
           await _processEntry(entry);
+          await LocalService.removeFromQueue(entry.id);
         } catch (_) {
-          // Skip failed entries — will retry next sync
+          // Leave in queue — will retry next sync
         }
-        await LocalService.removeFromQueue(entry.id);
       }
     } finally {
       _syncing = false;
