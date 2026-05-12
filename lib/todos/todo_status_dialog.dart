@@ -1,8 +1,9 @@
-﻿import 'package:flutter/material.dart';
+import 'package:flutter/material.dart';
 import '../app_colors.dart';
 import '../models/todo.dart';
+import '../services/supabase_service.dart';
 
-class TodoStatusDialog extends StatelessWidget {
+class TodoStatusDialog extends StatefulWidget {
   final Todo todo;
 
   const TodoStatusDialog({super.key, required this.todo});
@@ -22,6 +23,29 @@ class TodoStatusDialog extends StatelessWidget {
   }
 
   @override
+  State<TodoStatusDialog> createState() => _TodoStatusDialogState();
+}
+
+class _TodoStatusDialogState extends State<TodoStatusDialog> {
+  late List<SubTask> _subTasks;
+
+  @override
+  void initState() {
+    super.initState();
+    _subTasks = List.from(widget.todo.subTasks);
+  }
+
+  void _toggleSubTask(String id, bool isDone) {
+    setState(() {
+      _subTasks = _subTasks
+          .map((s) => s.id == id ? s.copyWith(isDone: isDone) : s)
+          .toList();
+    });
+    final updated = widget.todo.copyWith(subTasks: _subTasks);
+    SupabaseService.saveTodo(updated);
+  }
+
+  @override
   Widget build(BuildContext context) {
     return Padding(
       padding: const EdgeInsets.all(20),
@@ -36,13 +60,13 @@ class TodoStatusDialog extends StatelessWidget {
                 height: 12,
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
-                  color: AppColors.forCategory(todo.category),
+                  color: AppColors.forCategory(widget.todo.category),
                 ),
               ),
               const SizedBox(width: 8),
               Expanded(
                 child: Text(
-                  todo.title,
+                  widget.todo.title,
                   style: const TextStyle(
                     color: AppColors.textPrimary,
                     fontWeight: FontWeight.bold,
@@ -50,7 +74,7 @@ class TodoStatusDialog extends StatelessWidget {
                   ),
                 ),
               ),
-              if (todo.isFixed)
+              if (widget.todo.isFixed)
                 const Icon(Icons.lock, size: 14, color: AppColors.fixedTag),
             ],
           ),
@@ -60,6 +84,25 @@ class TodoStatusDialog extends StatelessWidget {
             style: const TextStyle(
                 color: AppColors.textSecondary, fontSize: 13),
           ),
+          if (_subTasks.isNotEmpty) ...[
+            const SizedBox(height: 8),
+            const Divider(color: AppColors.divider),
+            ..._subTasks.map((s) => CheckboxListTile(
+                  dense: true,
+                  contentPadding: EdgeInsets.zero,
+                  value: s.isDone,
+                  activeColor: AppColors.primary,
+                  title: Text(
+                    s.title,
+                    style: TextStyle(
+                      color: AppColors.textPrimary,
+                      fontSize: 14,
+                      decoration: s.isDone ? TextDecoration.lineThrough : null,
+                    ),
+                  ),
+                  onChanged: (val) => _toggleSubTask(s.id, val ?? false),
+                )),
+          ],
           const SizedBox(height: 16),
           const Divider(color: AppColors.divider),
           const SizedBox(height: 8),
@@ -75,23 +118,23 @@ class TodoStatusDialog extends StatelessWidget {
   }
 
   String _timeInfo() {
-    if (todo.scheduledStartHour != null) {
-      final sh = todo.scheduledStartHour!;
-      final sm = todo.scheduledStartMinute ?? 0;
-      final total = sh * 60 + sm + todo.estimatedMinutes;
+    if (widget.todo.scheduledStartHour != null) {
+      final sh = widget.todo.scheduledStartHour!;
+      final sm = widget.todo.scheduledStartMinute ?? 0;
+      final total = sh * 60 + sm + widget.todo.estimatedMinutes;
       final eh = (total ~/ 60) % 24;
       final em = total % 60;
       final start = '${sh.toString().padLeft(2, '0')}:${sm.toString().padLeft(2, '0')}';
       final end   = '${eh.toString().padLeft(2, '0')}:${em.toString().padLeft(2, '0')}';
-      return '$start – $end  ·  ${todo.estimatedMinutes} Min';
+      return '$start – $end  ·  ${widget.todo.estimatedMinutes} Min';
     }
-    return '${todo.estimatedMinutes} Min geplant';
+    return '${widget.todo.estimatedMinutes} Min geplant';
   }
 
   List<Widget> _buildActions(BuildContext context) {
     final actions = <Widget>[];
 
-    if (todo.status == TodoStatus.pending) {
+    if (widget.todo.status == TodoStatus.pending) {
       actions.add(_Chip(
         label: 'Starten',
         icon: Icons.play_arrow,
@@ -99,7 +142,7 @@ class TodoStatusDialog extends StatelessWidget {
         onTap: () => Navigator.pop(context, 'start'),
       ));
     }
-    if (todo.status == TodoStatus.started) {
+    if (widget.todo.status == TodoStatus.started) {
       actions.add(_Chip(
         label: 'Pause',
         icon: Icons.pause,
@@ -113,7 +156,7 @@ class TodoStatusDialog extends StatelessWidget {
         onTap: () => Navigator.pop(context, 'done'),
       ));
     }
-    if (todo.status == TodoStatus.paused) {
+    if (widget.todo.status == TodoStatus.paused) {
       actions.add(_Chip(
         label: 'Weiter',
         icon: Icons.play_arrow,
@@ -121,7 +164,7 @@ class TodoStatusDialog extends StatelessWidget {
         onTap: () => Navigator.pop(context, 'resume'),
       ));
     }
-    if (todo.status == TodoStatus.done) {
+    if (widget.todo.status == TodoStatus.done) {
       actions.add(_Chip(
         label: 'Wieder öffnen',
         icon: Icons.undo,
@@ -130,7 +173,7 @@ class TodoStatusDialog extends StatelessWidget {
       ));
     }
 
-    if (todo.isScheduled) {
+    if (widget.todo.isScheduled) {
       actions.add(_Chip(
         label: 'Aus Kalender entfernen',
         icon: Icons.event_busy,
