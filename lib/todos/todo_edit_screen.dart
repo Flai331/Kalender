@@ -33,6 +33,7 @@ class _TodoEditScreenState extends State<TodoEditScreen> {
   EventCategory? _requiredCategory;
   late List<int> _allowedWeekdays;
   late DaylightMode _daylightMode;
+  late List<SubTask> _subTasks;
 
   bool get _isNew => widget.todo == null;
 
@@ -55,6 +56,7 @@ class _TodoEditScreenState extends State<TodoEditScreen> {
     _requiredCategory = t?.requiredCategory;
     _allowedWeekdays = List.from(t?.allowedWeekdays ?? []);
     _daylightMode = t?.daylightMode ?? DaylightMode.none;
+    _subTasks = List.from(t?.subTasks ?? []);
   }
 
   Future<void> _save() async {
@@ -89,6 +91,7 @@ class _TodoEditScreenState extends State<TodoEditScreen> {
       allowedWeekdays: _allowedWeekdays.isEmpty ? null : _allowedWeekdays,
       daylightMode: _daylightMode,
       repeatConfig: widget.todo?.repeatConfig,
+      subTasks: _subTasks,
     );
     await SupabaseService.saveTodo(todo);
     if (mounted) Navigator.pop(context);
@@ -155,9 +158,15 @@ class _TodoEditScreenState extends State<TodoEditScreen> {
           const SizedBox(height: 12),
           _Field(
               controller: _descCtrl,
-              label: 'Beschreibung',
-              hint: 'Optional...',
-              maxLines: 3),
+              label: 'Notizen',
+              hint: 'Freitext, Telefonnummer, Links...',
+              maxLines: 6),
+          const SizedBox(height: 12),
+          _SectionLabel('Checkliste'),
+          _SubTaskEditor(
+            subTasks: _subTasks,
+            onChanged: (updated) => setState(() => _subTasks = updated),
+          ),
           const SizedBox(height: 12),
           _Field(
             controller: _addressCtrl,
@@ -855,6 +864,89 @@ class _WeekdayPicker extends StatelessWidget {
               BorderSide(color: isOn ? AppColors.primary : AppColors.divider),
         );
       }),
+    );
+  }
+}
+
+class _SubTaskEditor extends StatefulWidget {
+  final List<SubTask> subTasks;
+  final ValueChanged<List<SubTask>> onChanged;
+
+  const _SubTaskEditor({required this.subTasks, required this.onChanged});
+
+  @override
+  State<_SubTaskEditor> createState() => _SubTaskEditorState();
+}
+
+class _SubTaskEditorState extends State<_SubTaskEditor> {
+  final _ctrl = TextEditingController();
+
+  @override
+  void dispose() {
+    _ctrl.dispose();
+    super.dispose();
+  }
+
+  void _add() {
+    final text = _ctrl.text.trim();
+    if (text.isEmpty) return;
+    final updated = [
+      ...widget.subTasks,
+      SubTask(id: _uuid.v4(), title: text),
+    ];
+    widget.onChanged(updated);
+    _ctrl.clear();
+  }
+
+  void _remove(String id) {
+    widget.onChanged(widget.subTasks.where((s) => s.id != id).toList());
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        ...widget.subTasks.map((s) => ListTile(
+              dense: true,
+              contentPadding: EdgeInsets.zero,
+              leading: Icon(
+                s.isDone ? Icons.check_box : Icons.check_box_outline_blank,
+                size: 18,
+                color: AppColors.textSecondary,
+              ),
+              title: Text(s.title,
+                  style: TextStyle(
+                    color: AppColors.textPrimary,
+                    fontSize: 14,
+                    decoration: s.isDone ? TextDecoration.lineThrough : null,
+                  )),
+              trailing: IconButton(
+                icon: const Icon(Icons.close, size: 16, color: AppColors.textSecondary),
+                onPressed: () => _remove(s.id),
+              ),
+            )),
+        Row(
+          children: [
+            Expanded(
+              child: TextField(
+                controller: _ctrl,
+                style: const TextStyle(color: AppColors.textPrimary, fontSize: 14),
+                decoration: const InputDecoration(
+                  hintText: 'Punkt hinzufügen...',
+                  hintStyle: TextStyle(color: AppColors.textSecondary),
+                  border: InputBorder.none,
+                ),
+                onSubmitted: (_) => _add(),
+              ),
+            ),
+            IconButton(
+              icon: const Icon(Icons.add, color: AppColors.primary),
+              onPressed: _add,
+            ),
+          ],
+        ),
+      ],
     );
   }
 }
