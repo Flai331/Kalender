@@ -18,6 +18,7 @@ class WeekDayColumn extends StatelessWidget {
   final Function(CalendarEvent event, DateTime day, int hour, int minute) onEventDrop;
   final Function(CalendarEvent event) onEventTap;
   final Function(Todo todo) onTodoTap;
+  final List<CalendarEvent> allDayEvents;
 
   const WeekDayColumn({
     super.key,
@@ -32,6 +33,7 @@ class WeekDayColumn extends StatelessWidget {
     required this.onEventDrop,
     required this.onEventTap,
     required this.onTodoTap,
+    this.allDayEvents = const [],
   });
 
   double get _minuteHeight => hourHeight / 60.0;
@@ -43,6 +45,8 @@ class WeekDayColumn extends StatelessWidget {
       children: [
         // Tages-Header
         _DayHeader(day: day, isToday: isToday),
+        if (allDayEvents.isNotEmpty)
+          _AllDayBanner(events: allDayEvents),
         // Zeitgitter
         Expanded(
           child: Stack(
@@ -171,6 +175,40 @@ class WeekDayColumn extends StatelessWidget {
         ),
       );
     }).toList();
+  }
+}
+
+class _AllDayBanner extends StatelessWidget {
+  final List<CalendarEvent> events;
+  const _AllDayBanner({required this.events});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+      color: AppColors.primary.withOpacity(0.08),
+      child: Wrap(
+        spacing: 4,
+        runSpacing: 2,
+        children: events.map((e) => Container(
+          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+          decoration: BoxDecoration(
+            color: AppColors.primary.withOpacity(0.2),
+            borderRadius: BorderRadius.circular(4),
+          ),
+          child: Text(
+            e.title,
+            style: const TextStyle(
+              fontSize: 10,
+              fontWeight: FontWeight.w500,
+              color: AppColors.textPrimary,
+            ),
+            overflow: TextOverflow.ellipsis,
+          ),
+        )).toList(),
+      ),
+    );
   }
 }
 

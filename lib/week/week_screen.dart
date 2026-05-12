@@ -503,10 +503,14 @@ class _WeekScreenState extends State<WeekScreen> {
                     ...List.generate(7, (i) {
                       final day = _weekStart.add(Duration(days: i));
                       final isToday = _isSameDay(day, DateTime.now());
+                      final dayEvents = _eventsForDay(day);
+                      final allDayEvs = dayEvents.where((e) => e.isAllDay).toList();
+                      final timedEvs  = dayEvents.where((e) => !e.isAllDay).toList();
                       return Expanded(
                         child: WeekDayColumn(
                           day: day,
-                          events: _eventsForDay(day),
+                          events: timedEvs,
+                          allDayEvents: allDayEvs,
                           todos: _todosForDay(day),
                           isToday: isToday,
                           hourHeight: _hourHeight,
