@@ -902,6 +902,12 @@ class _SubTaskEditorState extends State<_SubTaskEditor> {
     widget.onChanged(widget.subTasks.where((s) => s.id != id).toList());
   }
 
+  void _toggleDone(String id) {
+    widget.onChanged(widget.subTasks
+        .map((s) => s.id == id ? s.copyWith(isDone: !s.isDone) : s)
+        .toList());
+  }
+
   @override
   Widget build(BuildContext context) {
     return Column(
@@ -910,6 +916,7 @@ class _SubTaskEditorState extends State<_SubTaskEditor> {
         ...widget.subTasks.map((s) => ListTile(
               dense: true,
               contentPadding: EdgeInsets.zero,
+              onTap: () => _toggleDone(s.id),
               leading: Icon(
                 s.isDone ? Icons.check_box : Icons.check_box_outline_blank,
                 size: 18,
