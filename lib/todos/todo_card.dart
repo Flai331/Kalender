@@ -93,6 +93,17 @@ class _CardContent extends StatelessWidget {
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                 ),
+                if (todo.subTasks.isNotEmpty)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 2),
+                    child: Text(
+                      '${todo.subTasks.where((s) => s.isDone).length}/${todo.subTasks.length} ✓',
+                      style: const TextStyle(
+                        fontSize: 11,
+                        color: AppColors.textSecondary,
+                      ),
+                    ),
+                  ),
                 if (todo.description.isNotEmpty) ...[
                   const SizedBox(height: 2),
                   Text(
