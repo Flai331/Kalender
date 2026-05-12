@@ -9,6 +9,7 @@ class EventBlock extends StatelessWidget {
   final Todo? todo;
   final VoidCallback? onTap;
   final double heightPerMinute;
+  final bool isDropTarget;
 
   const EventBlock({
     super.key,
@@ -16,6 +17,7 @@ class EventBlock extends StatelessWidget {
     this.todo,
     this.onTap,
     this.heightPerMinute = 1.0,
+    this.isDropTarget = false,
   }) : assert(event != null || todo != null);
 
   @override
@@ -37,9 +39,11 @@ class EventBlock extends StatelessWidget {
         height: height,
         margin: const EdgeInsets.symmetric(horizontal: 1, vertical: 1),
         decoration: BoxDecoration(
-          color: color.withOpacity(0.2),
+          color: color.withValues(alpha: 0.2),
           borderRadius: BorderRadius.circular(6),
-          border: Border.all(color: color, width: 1.5),
+          border: isDropTarget
+              ? Border.all(color: Colors.white.withValues(alpha: 0.8), width: 2)
+              : Border.all(color: color, width: 1.5),
         ),
         padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
         child: Row(
