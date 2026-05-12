@@ -20,6 +20,19 @@ class RepeatConfig {
       );
 }
 
+enum TodoContextMode {
+  anyTime,        // überall planbar (Standard)
+  freeTime,       // nur in freien Slots (kein Event überlappend)
+  categoryEvent,  // nur während Events einer bestimmten Kategorie
+  opportunistic,  // weich an nächstes passendes Event hängen
+}
+
+enum DaylightMode {
+  none,    // kein Tageslicht-Filter
+  gps,     // Sonnenauf/-untergang per GPS
+  manual,  // manuelles Zeitfenster (dueWindowStartHour/EndHour)
+}
+
 class Todo {
   final String id;
   final String title;
@@ -41,6 +54,10 @@ class Todo {
   final DateTime createdAt;
   final String? outlookTaskId;  // Microsoft To Do Task ID
   final String? outlookListId;  // Microsoft To Do List ID
+  final TodoContextMode contextMode;
+  final EventCategory? requiredCategory;   // für categoryEvent + opportunistic
+  final List<int>? allowedWeekdays;        // null=alle; [1..5]=Mo-Fr (1=Mo,7=So)
+  final DaylightMode daylightMode;
 
   Todo({
     required this.id,
@@ -63,6 +80,10 @@ class Todo {
     required this.createdAt,
     this.outlookTaskId,
     this.outlookListId,
+    this.contextMode = TodoContextMode.anyTime,
+    this.requiredCategory,
+    this.allowedWeekdays,
+    this.daylightMode = DaylightMode.none,
   });
 
   bool get isScheduled => scheduledDate != null;
@@ -92,6 +113,8 @@ class Todo {
     return diff > 0 ? diff : 0;
   }
 
+  static const Object _unset = Object();
+
   Todo copyWith({
     String? id,
     String? title,
@@ -113,6 +136,10 @@ class Todo {
     DateTime? createdAt,
     String? outlookTaskId,
     String? outlookListId,
+    TodoContextMode? contextMode,
+    Object? requiredCategory = _unset,
+    Object? allowedWeekdays = _unset,
+    DaylightMode? daylightMode,
   }) {
     return Todo(
       id: id ?? this.id,
@@ -135,6 +162,10 @@ class Todo {
       createdAt: createdAt ?? this.createdAt,
       outlookTaskId: outlookTaskId ?? this.outlookTaskId,
       outlookListId: outlookListId ?? this.outlookListId,
+      contextMode: contextMode ?? this.contextMode,
+      requiredCategory: requiredCategory == _unset ? this.requiredCategory : requiredCategory as EventCategory?,
+      allowedWeekdays: allowedWeekdays == _unset ? this.allowedWeekdays : allowedWeekdays as List<int>?,
+      daylightMode: daylightMode ?? this.daylightMode,
     );
   }
 
@@ -159,6 +190,10 @@ class Todo {
         'createdAt': createdAt.toUtc().toIso8601String(),
         'outlookTaskId': outlookTaskId,
         'outlookListId': outlookListId,
+        'contextMode': contextMode.name,
+        'requiredCategory': requiredCategory?.name,
+        'allowedWeekdays': allowedWeekdays,
+        'daylightMode': daylightMode.name,
       };
 
   factory Todo.fromJson(Map<String, dynamic> json) => Todo(
@@ -200,5 +235,22 @@ class Todo {
             : DateTime.now(),
         outlookTaskId: json['outlookTaskId'] as String?,
         outlookListId: json['outlookListId'] as String?,
+        contextMode: TodoContextMode.values.firstWhere(
+          (e) => e.name == json['contextMode'],
+          orElse: () => TodoContextMode.anyTime,
+        ),
+        requiredCategory: json['requiredCategory'] != null
+            ? EventCategory.values.firstWhere(
+                (e) => e.name == json['requiredCategory'],
+                orElse: () => EventCategory.personal,
+              )
+            : null,
+        allowedWeekdays: (json['allowedWeekdays'] as List<dynamic>?)
+            ?.map((e) => e as int)
+            .toList(),
+        daylightMode: DaylightMode.values.firstWhere(
+          (e) => e.name == json['daylightMode'],
+          orElse: () => DaylightMode.none,
+        ),
       );
 }
