@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../app_colors.dart';
+import '../models/calendar_event.dart';
 import '../services/auth_service.dart';
+import '../services/daylight_service.dart';
 import '../services/feedback_service.dart';
 import '../services/ics_service.dart';
 import '../services/reminder_service.dart';
@@ -18,16 +21,37 @@ class _SettingsScreenState extends State<SettingsScreen> {
   bool _icsTesting = false;
   String? _icsError;
 
+  List<String> _blockingAllDayCats = ['vacation'];
+  int _daylightSunrise = 6;
+  int _daylightSunset = 20;
+
   @override
   void initState() {
     super.initState();
     _loadIcsUrl();
+    _loadConstraintSettings();
   }
 
   @override
   void dispose() {
     _icsController.dispose();
     super.dispose();
+  }
+
+  Future<void> _loadConstraintSettings() async {
+    final prefs = await SharedPreferences.getInstance();
+    if (!mounted) return;
+    setState(() {
+      _blockingAllDayCats =
+          prefs.getStringList('blocking_allday_cats') ?? ['vacation'];
+      _daylightSunrise = prefs.getInt('daylight_sunrise') ?? 6;
+      _daylightSunset = prefs.getInt('daylight_sunset') ?? 20;
+    });
+  }
+
+  Future<void> _saveBlockingCats() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setStringList('blocking_allday_cats', _blockingAllDayCats);
   }
 
   Future<void> _loadIcsUrl() async {
@@ -273,6 +297,138 @@ class _SettingsScreenState extends State<SettingsScreen> {
               ),
             ],
           ),
+          const SizedBox(height: 16),
+
+          // ── Planungseinschränkungen ──────────────────────────────
+          const Divider(color: AppColors.divider),
+          const Padding(
+            padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            child: Text(
+              'Auto-Shift Einschränkungen',
+              style: TextStyle(
+                color: AppColors.textSecondary,
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+
+          // Blockierende Ganztags-Kategorien
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            child: Text(
+              'Ganztags-Termine blockieren Auto-Shift:',
+              style: const TextStyle(
+                color: AppColors.textPrimary,
+                fontSize: 14,
+              ),
+            ),
+          ),
+          ...EventCategory.values.map((cat) {
+            final name = cat.name;
+            final label = switch (cat) {
+              EventCategory.work     => 'Arbeit',
+              EventCategory.sport    => 'Sport',
+              EventCategory.vacation => 'Urlaub',
+              EventCategory.personal => 'Persönlich',
+            };
+            return CheckboxListTile(
+              title: Text(label,
+                  style: const TextStyle(color: AppColors.textPrimary)),
+              value: _blockingAllDayCats.contains(name),
+              activeColor: AppColors.primary,
+              tileColor: AppColors.card,
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(8)),
+              onChanged: (on) {
+                setState(() {
+                  if (on == true) {
+                    _blockingAllDayCats.add(name);
+                  } else {
+                    _blockingAllDayCats.remove(name);
+                  }
+                });
+                _saveBlockingCats();
+              },
+            );
+          }),
+
+          const SizedBox(height: 12),
+
+          // Tageslicht-Fallback
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            child: Text(
+              'Tageslicht-Fallback (wenn kein GPS):',
+              style: const TextStyle(
+                color: AppColors.textPrimary,
+                fontSize: 14,
+              ),
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            child: Row(
+              children: [
+                Expanded(
+                  child: DropdownButtonFormField<int>(
+                    initialValue: _daylightSunrise,
+                    decoration: InputDecoration(
+                      labelText: 'Sonnenaufgang',
+                      labelStyle:
+                          const TextStyle(color: AppColors.textSecondary),
+                      filled: true,
+                      fillColor: AppColors.card,
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(8),
+                        borderSide: BorderSide.none,
+                      ),
+                    ),
+                    dropdownColor: AppColors.surface,
+                    style: const TextStyle(color: AppColors.textPrimary),
+                    items: List.generate(24, (h) => DropdownMenuItem(
+                      value: h,
+                      child: Text('${h.toString().padLeft(2, '0')}:00'),
+                    )),
+                    onChanged: (h) {
+                      if (h == null) return;
+                      setState(() => _daylightSunrise = h);
+                      DaylightService.saveSettings(_daylightSunrise, _daylightSunset);
+                    },
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: DropdownButtonFormField<int>(
+                    initialValue: _daylightSunset,
+                    decoration: InputDecoration(
+                      labelText: 'Sonnenuntergang',
+                      labelStyle:
+                          const TextStyle(color: AppColors.textSecondary),
+                      filled: true,
+                      fillColor: AppColors.card,
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(8),
+                        borderSide: BorderSide.none,
+                      ),
+                    ),
+                    dropdownColor: AppColors.surface,
+                    style: const TextStyle(color: AppColors.textPrimary),
+                    items: List.generate(24, (h) => DropdownMenuItem(
+                      value: h,
+                      child: Text('${h.toString().padLeft(2, '0')}:00'),
+                    )),
+                    onChanged: (h) {
+                      if (h == null) return;
+                      setState(() => _daylightSunset = h);
+                      DaylightService.saveSettings(_daylightSunrise, _daylightSunset);
+                    },
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 16),
         ],
       ),
     );
