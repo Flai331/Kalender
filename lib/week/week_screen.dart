@@ -669,6 +669,11 @@ class _WeekScreenState extends State<WeekScreen> {
       // Kontext-Modus
       if (todo.contextMode == TodoContextMode.categoryEvent ||
           todo.contextMode == TodoContextMode.opportunistic) {
+        if (todo.requiredCategory == null) {
+          day = day.add(const Duration(days: 1));
+          startMinute = 0;
+          continue;
+        }
         final matchEvents = _timedEventsOnDay(day)
             .where((e) => e.category == todo.requiredCategory)
             .toList();
@@ -811,6 +816,10 @@ class _WeekScreenState extends State<WeekScreen> {
             todo.daylightMode != DaylightMode.none;
 
         if (hasConstraints) {
+          if (_noSlotTodos.contains(todo.id)) {
+            prevOriginalBlockEnd = blockEnd;
+            continue;
+          }
           final slot = await _findNextValidSlot(todo, runningDate, runningMin);
           if (slot == null) {
             newNoSlot.add(todo.id);
@@ -818,6 +827,7 @@ class _WeekScreenState extends State<WeekScreen> {
             continue;
           }
           final (slotDay, slotMin) = slot;
+          _noSlotTodos.remove(todo.id);
           final newStart = slotMin + todo.travelMinutesBefore;
           final newHour = (newStart ~/ 60).clamp(0, 23);
           final newMin = newStart % 60;
@@ -886,6 +896,7 @@ class _WeekScreenState extends State<WeekScreen> {
     for (final todo in todayTodos) {
       if (todo.contextMode != TodoContextMode.opportunistic) continue;
       if (todo.status != TodoStatus.pending) continue;
+      if (_noSlotTodos.contains(todo.id)) continue;
       final scheduledEnd = todo.scheduledEndTime;
       if (scheduledEnd == null || !scheduledEnd.isBefore(now)) continue;
       // Todo ist überfällig — suche nächstes passendes Event
@@ -895,6 +906,7 @@ class _WeekScreenState extends State<WeekScreen> {
         continue;
       }
       final (slotDay, slotMin) = slot;
+      _noSlotTodos.remove(todo.id);
       final newStart = slotMin + todo.travelMinutesBefore;
       await SupabaseService.saveTodo(todo.copyWith(
         scheduledDate: slotDay,

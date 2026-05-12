@@ -78,6 +78,7 @@ class _TodoEditScreenState extends State<TodoEditScreen> {
       requiredCategory: _requiredCategory,
       allowedWeekdays: _allowedWeekdays.isEmpty ? null : _allowedWeekdays,
       daylightMode: _daylightMode,
+      repeatConfig: widget.todo?.repeatConfig,
     );
     await SupabaseService.saveTodo(todo);
     if (mounted) Navigator.pop(context);
