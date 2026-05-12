@@ -165,6 +165,8 @@ class _MainScreenState extends State<MainScreen> {
       isCompleted: todo.status != TodoStatus.done,
     );
     await SupabaseService.saveTodo(updated);
+    final todayTodos = await SupabaseService.getTodosForDate(DateTime.now());
+    await WidgetService.update(todayTodos: todayTodos);
   }
 
   void _onTabTap(int i) {

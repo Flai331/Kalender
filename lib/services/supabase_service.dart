@@ -95,6 +95,19 @@ class SupabaseService {
     await _db.from('todos').delete().eq('id', id).eq('user_id', _uid);
   }
 
+  static Future<List<Todo>> getTodosForDate(DateTime date) async {
+    final start = DateTime(date.year, date.month, date.day);
+    final end = start.add(const Duration(days: 1));
+    final rows = await _db.from('todos').select().eq('user_id', _uid);
+    return (rows as List)
+        .map((r) => Todo.fromJson(r['data'] as Map<String, dynamic>))
+        .where((t) =>
+            t.scheduledDate != null &&
+            !t.scheduledDate!.isBefore(start) &&
+            t.scheduledDate!.isBefore(end))
+        .toList();
+  }
+
   static Future<Todo?> getTodoById(String id) async {
     final rows = await _db
         .from('todos')
