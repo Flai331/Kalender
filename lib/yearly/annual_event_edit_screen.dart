@@ -139,6 +139,28 @@ class _AnnualEventEditScreenState extends State<AnnualEventEditScreen> {
               labelStyle: TextStyle(color: AppColors.textSecondary),
             ),
           ),
+          const SizedBox(height: 16),
+          const Text('Kategorie',
+              style: TextStyle(color: AppColors.textSecondary, fontSize: 12)),
+          const SizedBox(height: 8),
+          Wrap(
+            spacing: 8,
+            children: ['personal', 'work', 'sport', 'vacation'].map((cat) {
+              final selected = _category == cat;
+              final color = AppColors.forCategory(cat);
+              return ChoiceChip(
+                label: Text(cat,
+                    style: TextStyle(
+                        color: selected ? Colors.white : AppColors.textSecondary,
+                        fontSize: 13)),
+                selected: selected,
+                selectedColor: color,
+                backgroundColor: AppColors.surface,
+                side: BorderSide(color: selected ? color : AppColors.divider),
+                onSelected: (_) => setState(() => _category = cat),
+              );
+            }).toList(),
+          ),
           const SizedBox(height: 24),
           const Text('Jahres-Einträge',
               style: TextStyle(color: AppColors.textSecondary, fontSize: 12)),

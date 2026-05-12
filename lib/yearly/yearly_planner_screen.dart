@@ -111,6 +111,7 @@ class YearlyPlannerScreen extends StatelessWidget {
   }
 
   String _formatDates(AnnualOccurrence occ) {
+    if (occ.startDate == null) return '';
     String fmt(DateTime d) =>
         '${d.day.toString().padLeft(2, '0')}.${d.month.toString().padLeft(2, '0')}.${d.year}';
     if (occ.endDate != null) {
