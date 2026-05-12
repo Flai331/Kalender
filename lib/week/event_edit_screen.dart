@@ -27,6 +27,7 @@ class _EventEditScreenState extends State<EventEditScreen> {
   late RepeatType _repeatType;
   late int _travelBefore;
   late int _travelAfter;
+  bool _saving = false;
 
   bool get _isNew => widget.event == null;
 
@@ -86,21 +87,41 @@ class _EventEditScreenState extends State<EventEditScreen> {
   }
 
   Future<void> _save() async {
-    if (_titleCtrl.text.trim().isEmpty) return;
-    final event = CalendarEvent(
-      id: widget.event?.id ?? _uuid.v4(),
-      title: _titleCtrl.text.trim(),
-      description: _descCtrl.text.trim(),
-      startTime: _startTime,
-      endTime: _endTime,
-      category: _category,
-      isFixed: _isFixed,
-      repeatType: _repeatType,
-      source: 'app',
-      address: _addressCtrl.text.trim().isEmpty ? null : _addressCtrl.text.trim(),
-      travelMinutesBefore: _travelBefore,
-      travelMinutesAfter: _travelAfter,
-    );
+    if (_titleCtrl.text.trim().isEmpty || _saving) return;
+    _saving = true;
+    final address = _addressCtrl.text.trim().isEmpty ? null : _addressCtrl.text.trim();
+    final base = widget.event;
+    final CalendarEvent event;
+    if (base != null) {
+      event = base.copyWith(
+        title: _titleCtrl.text.trim(),
+        description: _descCtrl.text.trim(),
+        startTime: _startTime,
+        endTime: _endTime,
+        category: _category,
+        isFixed: _isFixed,
+        repeatType: _repeatType,
+        source: 'app',
+        address: address,
+        travelMinutesBefore: _travelBefore,
+        travelMinutesAfter: _travelAfter,
+      );
+    } else {
+      event = CalendarEvent(
+        id: _uuid.v4(),
+        title: _titleCtrl.text.trim(),
+        description: _descCtrl.text.trim(),
+        startTime: _startTime,
+        endTime: _endTime,
+        category: _category,
+        isFixed: _isFixed,
+        repeatType: _repeatType,
+        source: 'app',
+        address: address,
+        travelMinutesBefore: _travelBefore,
+        travelMinutesAfter: _travelAfter,
+      );
+    }
     await SupabaseService.saveEvent(event);
     if (mounted) Navigator.pop(context);
   }
