@@ -155,10 +155,8 @@ class LocalService {
   }
 
   static String get _uid {
-    try {
-      return AuthService.userId ?? '';
-    } catch (_) {
-      return '';
-    }
+    final uid = AuthService.userId;
+    assert(uid != null, 'LocalService called before user is authenticated');
+    return uid ?? '';
   }
 }

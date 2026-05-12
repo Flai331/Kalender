@@ -47,7 +47,11 @@ class SyncService {
   static Future<void> _processEntry(SyncQueueData entry) async {
     final table = entry.targetTable; // NOTE: targetTable, not tableName
     final op = entry.operation;
-    final payload = jsonDecode(entry.payload) as Map<String, dynamic>;
+
+    // Guard against malformed payload — drop entry rather than infinite retry
+    final dynamic decoded = jsonDecode(entry.payload);
+    if (decoded is! Map<String, dynamic>) return;
+    final payload = decoded;
 
     if (op == 'delete') {
       if (table == 'calendar_events') {
@@ -58,15 +62,21 @@ class SyncService {
       return;
     }
 
-    // upsert — check for conflict
+    // upsert — detect conflict by comparing JSON payloads
     if (table == 'calendar_events') {
       final serverRow = await SupabaseService.getEventById(entry.entityId);
       if (serverRow != null) {
         final local = CalendarEvent.fromJson(payload);
-        if (serverRow.startTime.isAfter(local.startTime)) {
+        final serverJson = serverRow.toJson();
+        final localJson = local.toJson();
+        // Conflict: server has different data than what we're about to write
+        if (serverJson.toString() != localJson.toString()) {
           final choice = await _askConflict(
-              local.title, local.title, serverRow.title);
-          if (choice == ConflictChoice.keepServer) return;
+            local.title,
+            _eventSummary(local),
+            _eventSummary(serverRow),
+          );
+          if (choice != ConflictChoice.keepLocal) return;
         }
       }
       await SupabaseService.saveEvent(CalendarEvent.fromJson(payload));
@@ -74,21 +84,37 @@ class SyncService {
       final serverRow = await SupabaseService.getTodoById(entry.entityId);
       if (serverRow != null) {
         final local = Todo.fromJson(payload);
-        if (serverRow.createdAt.isAfter(local.createdAt)) {
+        final serverJson = serverRow.toJson();
+        final localJson = local.toJson();
+        if (serverJson.toString() != localJson.toString()) {
           final choice = await _askConflict(
-              local.title, local.title, serverRow.title);
-          if (choice == ConflictChoice.keepServer) return;
+            local.title,
+            _todoSummary(local),
+            _todoSummary(serverRow),
+          );
+          if (choice != ConflictChoice.keepLocal) return;
         }
       }
       await SupabaseService.saveTodo(Todo.fromJson(payload));
     }
   }
 
-  static Future<ConflictChoice?> _askConflict(
+  static String _eventSummary(CalendarEvent e) {
+    final start = '${e.startTime.hour.toString().padLeft(2, '0')}:${e.startTime.minute.toString().padLeft(2, '0')}';
+    return '${e.title} – $start';
+  }
+
+  static String _todoSummary(Todo t) {
+    final status = t.status.name;
+    return '${t.title} ($status, ${t.estimatedMinutes} Min)';
+  }
+
+  static Future<ConflictChoice> _askConflict(
       String title, String local, String server) async {
     final ctx = navigatorKey?.currentContext;
     if (ctx == null) return ConflictChoice.keepLocal;
-    return ConflictDialog.show(ctx,
-        entityTitle: title, localSummary: local, serverSummary: server);
+    return await ConflictDialog.show(ctx,
+        entityTitle: title, localSummary: local, serverSummary: server) ??
+        ConflictChoice.keepLocal;
   }
 }
