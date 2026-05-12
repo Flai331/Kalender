@@ -880,24 +880,10 @@ class WeekScreenState extends State<WeekScreen> {
                     ...List.generate(7, (i) {
                       final day = _weekStart.add(Duration(days: i));
                       final isToday = _isSameDay(day, DateTime.now());
-                      final dayEvents = _eventsForDay(day);
-                      final allDayEvs = dayEvents.where((e) => e.isAllDay).toList();
-                      final timedEvs  = dayEvents.where((e) => !e.isAllDay).toList();
                       return Expanded(
                         child: _DayHeaderWidget(
                           day: day,
-                          events: timedEvs,
-                          allDayEvents: allDayEvs,
-                          todos: _todosForDay(day),
                           isToday: isToday,
-                          hourHeight: _hourHeight,
-                          startHour: _startHour,
-                          endHour: _endHour,
-                          onTodoDrop: _onTodoDrop,
-                          onEventDrop: _onEventDrop,
-                          onEventTap: _onEventTap,
-                          onTodoTap: _onTodoTap,
-                          onTodoDroppedOnEvent: _onTodoDroppedOnEvent,
                         ),
                       );
                     }),
@@ -956,6 +942,7 @@ class WeekScreenState extends State<WeekScreen> {
                                           onEventDrop: _onEventDrop,
                                           onEventTap: _onEventTap,
                                           onTodoTap: _onTodoTap,
+                                          onTodoDroppedOnEvent: _onTodoDroppedOnEvent,
                                         ),
                                       );
                                     }),
@@ -1057,6 +1044,7 @@ class WeekScreenState extends State<WeekScreen> {
                                         onEventDrop: _onEventDrop,
                                         onEventTap: _onEventTap,
                                         onTodoTap: _onTodoTap,
+                                        onTodoDroppedOnEvent: _onTodoDroppedOnEvent,
                                       ),
                                     ),
                                   ],
@@ -1105,114 +1093,6 @@ class WeekScreenState extends State<WeekScreen> {
       return src?.allowTodoDrop ?? false;
     }
     return false;
-  }
-
-  Future<void> _autoShiftOverdueTodos() async {
-    final now = DateTime.now();
-    final today = DateTime(now.year, now.month, now.day);
-    final nowMinutes = now.hour * 60 + now.minute;
-
-    // Include pending + started + paused (not fixed) – sorted by blockStart (incl. travelBefore)
-    final todayTodos = _todos
-        .where((t) =>
-            t.scheduledDate != null &&
-            t.scheduledDate!.year == today.year &&
-            t.scheduledDate!.month == today.month &&
-            t.scheduledDate!.day == today.day &&
-            t.scheduledStartHour != null &&
-            !t.isFixed &&
-            (t.status == TodoStatus.pending ||
-             t.status == TodoStatus.started ||
-             t.status == TodoStatus.paused))
-        .toList()
-      ..sort((a, b) {
-        final aBlock = a.scheduledStartHour! * 60 + (a.scheduledStartMinute ?? 0) - a.travelMinutesBefore;
-        final bBlock = b.scheduledStartHour! * 60 + (b.scheduledStartMinute ?? 0) - b.travelMinutesBefore;
-        return aBlock.compareTo(bBlock);
-      });
-
-    final todayEvents = [..._events, ..._icsEvents].where((e) =>
-        !e.isAllDay &&
-        e.startTime.year == today.year &&
-        e.startTime.month == today.month &&
-        e.startTime.day == today.day).map((e) => (
-          e.startTime.hour * 60 + e.startTime.minute,
-          e.endTime.hour * 60 + e.endTime.minute,
-        )).toList();
-
-    int _skipEvents(int pos, int totalDuration) {
-      bool changed = true;
-      while (changed) {
-        changed = false;
-        for (final ev in todayEvents) {
-          if (pos < ev.$2 && pos + totalDuration > ev.$1) {
-            pos = ev.$2;
-            changed = true;
-          }
-        }
-      }
-      return pos;
-    }
-
-    int runningMin = nowMinutes;
-    DateTime runningDate = today;
-    bool shifted = false;
-    int? prevOriginalBlockEnd;
-
-    for (final todo in todayTodos) {
-      final todoMin = todo.scheduledStartHour! * 60 + (todo.scheduledStartMinute ?? 0);
-      final blockStart = todoMin - todo.travelMinutesBefore;
-      final blockEnd = todoMin + todo.estimatedMinutes + todo.travelMinutesAfter;
-
-      // Started/paused: anchor – reset cascade, don't move
-      if (todo.status == TodoStatus.started || todo.status == TodoStatus.paused) {
-        runningMin = blockEnd > runningMin ? blockEnd : runningMin;
-        shifted = false;
-        prevOriginalBlockEnd = blockEnd;
-        continue;
-      }
-
-      // Pending: shift if overdue or displaced
-      if (blockStart < nowMinutes || (shifted && blockStart < runningMin)) {
-        if (prevOriginalBlockEnd != null && blockStart > prevOriginalBlockEnd!) {
-          runningMin += blockStart - prevOriginalBlockEnd!;
-        }
-        final totalBlock = todo.travelMinutesBefore + todo.estimatedMinutes + todo.travelMinutesAfter;
-        final winStart = todo.dueWindowStartHour;
-        final winEnd = todo.dueWindowEndHour;
-        if (winStart != null && runningMin < winStart * 60) {
-          runningMin = winStart * 60;
-        }
-        if (winEnd != null && runningMin + totalBlock > winEnd * 60) {
-          runningDate = runningDate.add(const Duration(days: 1));
-          runningMin = (winStart ?? 0) * 60;
-          shifted = true;
-        }
-        runningMin = _skipEvents(runningMin, totalBlock);
-        final newScheduledStart = runningMin + todo.travelMinutesBefore;
-        final newHour = (newScheduledStart ~/ 60).clamp(0, 23);
-        final newMin = newScheduledStart % 60;
-        final dateChanged =
-            runningDate.year != (todo.scheduledDate?.year ?? 0) ||
-            runningDate.month != (todo.scheduledDate?.month ?? 0) ||
-            runningDate.day != (todo.scheduledDate?.day ?? 0);
-        if (newHour != todo.scheduledStartHour ||
-            newMin != (todo.scheduledStartMinute ?? 0) ||
-            dateChanged) {
-          await SupabaseService.saveTodo(todo.copyWith(
-            scheduledDate: runningDate,
-            scheduledStartHour: newHour,
-            scheduledStartMinute: newMin,
-          ));
-          shifted = true;
-        }
-        runningMin = newScheduledStart + todo.estimatedMinutes + todo.travelMinutesAfter;
-      } else {
-        runningMin = blockEnd;
-      }
-      prevOriginalBlockEnd = blockEnd;
-    }
-    if (shifted && mounted) setState(() => _initStreams());
   }
 
   @override

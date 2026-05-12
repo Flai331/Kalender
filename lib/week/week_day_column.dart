@@ -5,6 +5,14 @@ import '../models/todo.dart';
 import '../models/calendar_event.dart';
 import 'event_block.dart';
 
+// ── Overlap-Layout ────────────────────────────────────────────────────────────
+
+class _ColInfo {
+  final int col;
+  final int numCols;
+  const _ColInfo(this.col, this.numCols);
+}
+
 // ── Globaler Snap-State (spaltenübergreifend) ─────────────────────────────────
 
 class SnapState {
@@ -140,6 +148,75 @@ class _WeekDayColumnState extends State<WeekDayColumn> {
     super.dispose();
   }
 
+  // ── Overlap layout ────────────────────────────────────────────────────────
+
+  Map<Object, _ColInfo> _computeOverlapLayout() {
+    final dayStart = DateTime(widget.day.year, widget.day.month, widget.day.day);
+    final dayEnd = dayStart.add(const Duration(days: 1));
+
+    final items = <({int start, int end, Object item})>[];
+
+    for (final event in widget.events) {
+      final cs = event.startTime.isBefore(dayStart) ? dayStart : event.startTime;
+      final ce = event.endTime.isAfter(dayEnd) ? dayEnd : event.endTime;
+      final s = (cs.hour - widget.startHour) * 60 + cs.minute;
+      final e = (ce.hour - widget.startHour) * 60 + ce.minute;
+      if (e > s) items.add((start: s, end: e, item: event));
+    }
+
+    for (final todo in widget.todos.where((t) => t.scheduledStartHour != null)) {
+      final ts = DateTime(
+        todo.scheduledDate?.year ?? widget.day.year,
+        todo.scheduledDate?.month ?? widget.day.month,
+        todo.scheduledDate?.day ?? widget.day.day,
+        todo.scheduledStartHour!,
+        todo.scheduledStartMinute ?? 0,
+      );
+      final te = ts.add(Duration(minutes: todo.estimatedMinutes));
+      final cs = ts.isBefore(dayStart) ? dayStart : ts;
+      final ce = te.isAfter(dayEnd) ? dayEnd : te;
+      final s = (cs.hour - widget.startHour) * 60 + cs.minute;
+      final e = (ce.hour - widget.startHour) * 60 + ce.minute;
+      if (e > s) items.add((start: s, end: e, item: todo));
+    }
+
+    if (items.isEmpty) return {};
+    items.sort((a, b) => a.start.compareTo(b.start));
+
+    final assignedCols = List<int>.filled(items.length, 0);
+    final colEnds = <int>[];
+
+    for (int i = 0; i < items.length; i++) {
+      int assigned = -1;
+      for (int c = 0; c < colEnds.length; c++) {
+        if (colEnds[c] <= items[i].start) {
+          assigned = c;
+          colEnds[c] = items[i].end;
+          break;
+        }
+      }
+      if (assigned == -1) {
+        assigned = colEnds.length;
+        colEnds.add(items[i].end);
+      }
+      assignedCols[i] = assigned;
+    }
+
+    final result = <Object, _ColInfo>{};
+    for (int i = 0; i < items.length; i++) {
+      int maxCol = assignedCols[i];
+      for (int j = 0; j < items.length; j++) {
+        if (i == j) continue;
+        if (items[j].start < items[i].end && items[j].end > items[i].start) {
+          if (assignedCols[j] > maxCol) maxCol = assignedCols[j];
+        }
+      }
+      result[items[i].item] = _ColInfo(assignedCols[i], maxCol + 1);
+    }
+
+    return result;
+  }
+
   void _handleDrop(Object data, Offset globalOffset) {
     final box = _gridKey.currentContext?.findRenderObject() as RenderBox?;
     if (box == null) return;
@@ -171,6 +248,16 @@ class _WeekDayColumnState extends State<WeekDayColumn> {
   }
 
   Widget _buildGrid() {
+    return LayoutBuilder(
+      builder: (_, constraints) {
+        final totalWidth = constraints.maxWidth;
+        final layout = _computeOverlapLayout();
+        return _buildGridInner(totalWidth, layout);
+      },
+    );
+  }
+
+  Widget _buildGridInner(double totalWidth, Map<Object, _ColInfo> layout) {
     return SizedBox(
       height: _totalHours * widget.hourHeight,
       child: DragTarget<Object>(
@@ -252,8 +339,8 @@ class _WeekDayColumnState extends State<WeekDayColumn> {
                   // Snap-Hilfslinien
                   if (dragging && snapMinutes < 60) ..._buildSnapLines(snapMinutes),
 
-                  ..._buildEventBlocks(),
-                  ..._buildTodoBlocks(),
+                  ..._buildEventBlocks(layout, totalWidth),
+                  ..._buildTodoBlocks(layout, totalWidth),
                 ],
               );
             },
@@ -293,7 +380,7 @@ class _WeekDayColumnState extends State<WeekDayColumn> {
     return lines;
   }
 
-  List<Widget> _buildEventBlocks() {
+  List<Widget> _buildEventBlocks(Map<Object, _ColInfo> layout, double totalWidth) {
     final widgets = <Widget>[];
     final dayStart = DateTime(widget.day.year, widget.day.month, widget.day.day);
     final dayEnd = dayStart.add(const Duration(days: 1));
@@ -307,12 +394,17 @@ class _WeekDayColumnState extends State<WeekDayColumn> {
       final durationMinutes = event.scheduledDuration.inMinutes;
       final height = (visibleMinutes * _minuteHeight).clamp(20.0, double.infinity);
 
+      final info = layout[event] ?? const _ColInfo(0, 1);
+      final slotW = totalWidth / info.numCols;
+      final colLeft = info.col * slotW + 1;
+      final colWidth = slotW - 2;
+
       if (!isContinuation && event.travelMinutesBefore > 0) {
         final travelHeight = (event.travelMinutesBefore * _minuteHeight).clamp(8.0, double.infinity);
         widgets.add(Positioned(
           top: top - travelHeight,
-          left: 2,
-          right: 2,
+          left: colLeft,
+          width: colWidth,
           height: travelHeight,
           child: _TravelBlock(minutes: event.travelMinutesBefore, isAfter: false),
         ));
@@ -320,8 +412,8 @@ class _WeekDayColumnState extends State<WeekDayColumn> {
 
       widgets.add(Positioned(
         top: top,
-        left: 2,
-        right: 2,
+        left: colLeft,
+        width: colWidth,
         height: height,
         child: DragTarget<Todo>(
           onWillAcceptWithDetails: (_) => widget.onTodoDroppedOnEvent != null,
@@ -393,8 +485,8 @@ class _WeekDayColumnState extends State<WeekDayColumn> {
         final travelHeight = (event.travelMinutesAfter * _minuteHeight).clamp(8.0, double.infinity);
         widgets.add(Positioned(
           top: top + height,
-          left: 2,
-          right: 2,
+          left: colLeft,
+          width: colWidth,
           height: travelHeight,
           child: _TravelBlock(minutes: event.travelMinutesAfter, isAfter: true),
         ));
@@ -403,7 +495,7 @@ class _WeekDayColumnState extends State<WeekDayColumn> {
     return widgets;
   }
 
-  List<Widget> _buildTodoBlocks() {
+  List<Widget> _buildTodoBlocks(Map<Object, _ColInfo> layout, double totalWidth) {
     final widgets = <Widget>[];
     final dayStart = DateTime(widget.day.year, widget.day.month, widget.day.day);
     final dayEnd = dayStart.add(const Duration(days: 1));
@@ -424,12 +516,17 @@ class _WeekDayColumnState extends State<WeekDayColumn> {
       final visibleMinutes = clippedEnd.difference(clippedStart).inMinutes;
       final height = (visibleMinutes * _minuteHeight).clamp(20.0, double.infinity);
 
+      final info = layout[todo] ?? const _ColInfo(0, 1);
+      final slotW = totalWidth / info.numCols;
+      final colLeft = info.col * slotW + 1;
+      final colWidth = slotW - 2;
+
       if (!isContinuation && todo.travelMinutesBefore > 0) {
         final travelHeight = (todo.travelMinutesBefore * _minuteHeight).clamp(8.0, double.infinity);
         widgets.add(Positioned(
           top: top - travelHeight,
-          left: 2,
-          right: 2,
+          left: colLeft,
+          width: colWidth,
           height: travelHeight,
           child: _TravelBlock(minutes: todo.travelMinutesBefore, isAfter: false),
         ));
@@ -437,8 +534,8 @@ class _WeekDayColumnState extends State<WeekDayColumn> {
 
       widgets.add(Positioned(
         top: top,
-        left: 2,
-        right: 2,
+        left: colLeft,
+        width: colWidth,
         height: height,
         child: LongPressDraggable<Todo>(
           data: todo,
@@ -500,8 +597,8 @@ class _WeekDayColumnState extends State<WeekDayColumn> {
         final travelHeight = (todo.travelMinutesAfter * _minuteHeight).clamp(8.0, double.infinity);
         widgets.add(Positioned(
           top: top + height,
-          left: 2,
-          right: 2,
+          left: colLeft,
+          width: colWidth,
           height: travelHeight,
           child: _TravelBlock(minutes: todo.travelMinutesAfter, isAfter: true),
         ));
