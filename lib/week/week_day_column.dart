@@ -18,6 +18,7 @@ class WeekDayColumn extends StatelessWidget {
   final Function(CalendarEvent event, DateTime day, int hour, int minute) onEventDrop;
   final Function(CalendarEvent event) onEventTap;
   final Function(Todo todo) onTodoTap;
+  final Function(Todo todo, CalendarEvent event)? onTodoDroppedOnEvent;
   final List<CalendarEvent> allDayEvents;
 
   const WeekDayColumn({
@@ -33,6 +34,7 @@ class WeekDayColumn extends StatelessWidget {
     required this.onEventDrop,
     required this.onEventTap,
     required this.onTodoTap,
+    this.onTodoDroppedOnEvent,
     this.allDayEvents = const [],
   });
 
@@ -120,36 +122,46 @@ class WeekDayColumn extends StatelessWidget {
         left: 2,
         right: 2,
         height: height,
-        child: LongPressDraggable<CalendarEvent>(
-          data: event,
-          feedback: Material(
-            color: Colors.transparent,
-            child: Opacity(
-              opacity: 0.8,
-              child: SizedBox(
-                width: 80,
-                height: height,
+        child: DragTarget<Todo>(
+          onWillAcceptWithDetails: (_) => onTodoDroppedOnEvent != null,
+          onAcceptWithDetails: (details) {
+            onTodoDroppedOnEvent?.call(details.data, event);
+          },
+          builder: (ctx, candidateTodos, _) {
+            final isTarget = candidateTodos.isNotEmpty;
+            return LongPressDraggable<CalendarEvent>(
+              data: event,
+              feedback: Material(
+                color: Colors.transparent,
+                child: Opacity(
+                  opacity: 0.8,
+                  child: SizedBox(
+                    width: 80,
+                    height: height,
+                    child: EventBlock(
+                      event: event,
+                      onTap: () {},
+                      heightPerMinute: _minuteHeight,
+                    ),
+                  ),
+                ),
+              ),
+              childWhenDragging: Opacity(
+                opacity: 0.3,
                 child: EventBlock(
                   event: event,
                   onTap: () {},
                   heightPerMinute: _minuteHeight,
                 ),
               ),
-            ),
-          ),
-          childWhenDragging: Opacity(
-            opacity: 0.3,
-            child: EventBlock(
-              event: event,
-              onTap: () {},
-              heightPerMinute: _minuteHeight,
-            ),
-          ),
-          child: EventBlock(
-            event: event,
-            onTap: () => onEventTap(event),
-            heightPerMinute: _minuteHeight,
-          ),
+              child: EventBlock(
+                event: event,
+                onTap: () => onEventTap(event),
+                heightPerMinute: _minuteHeight,
+                isDropTarget: isTarget,
+              ),
+            );
+          },
         ),
       );
     }).toList();
