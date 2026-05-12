@@ -23,6 +23,10 @@ class _TodoEditScreenState extends State<TodoEditScreen> {
   late RepeatType _repeatType;
   late bool _isFixed;
   late String _category;
+  late TodoContextMode _contextMode;
+  EventCategory? _requiredCategory;
+  late List<int> _allowedWeekdays;
+  late DaylightMode _daylightMode;
 
   bool get _isNew => widget.todo == null;
 
@@ -36,6 +40,10 @@ class _TodoEditScreenState extends State<TodoEditScreen> {
     _repeatType = t?.repeatType ?? RepeatType.none;
     _isFixed = t?.isFixed ?? false;
     _category = t?.category ?? 'personal';
+    _contextMode = t?.contextMode ?? TodoContextMode.anyTime;
+    _requiredCategory = t?.requiredCategory;
+    _allowedWeekdays = List.from(t?.allowedWeekdays ?? []);
+    _daylightMode = t?.daylightMode ?? DaylightMode.none;
   }
 
   Future<void> _save() async {
@@ -53,6 +61,18 @@ class _TodoEditScreenState extends State<TodoEditScreen> {
       scheduledStartHour: widget.todo?.scheduledStartHour,
       scheduledStartMinute: widget.todo?.scheduledStartMinute,
       status: widget.todo?.status ?? TodoStatus.pending,
+      // Constraint-Felder erhalten/setzen
+      isCompleted: widget.todo?.isCompleted ?? false,
+      actualStart: widget.todo?.actualStart,
+      actualEnd: widget.todo?.actualEnd,
+      pausedMinutes: widget.todo?.pausedMinutes ?? 0,
+      pauseStart: widget.todo?.pauseStart,
+      outlookTaskId: widget.todo?.outlookTaskId,
+      outlookListId: widget.todo?.outlookListId,
+      contextMode: _contextMode,
+      requiredCategory: _requiredCategory,
+      allowedWeekdays: _allowedWeekdays.isEmpty ? null : _allowedWeekdays,
+      daylightMode: _daylightMode,
     );
     await SupabaseService.saveTodo(todo);
     if (mounted) Navigator.pop(context);
@@ -162,6 +182,88 @@ class _TodoEditScreenState extends State<TodoEditScreen> {
             shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(10)),
           ),
+          const SizedBox(height: 16),
+
+          // Planungskontext
+          _SectionLabel('Planungskontext'),
+          _ContextModePicker(
+            selected: _contextMode,
+            onChanged: (m) => setState(() {
+              _contextMode = m;
+              if (m != TodoContextMode.categoryEvent &&
+                  m != TodoContextMode.opportunistic) {
+                _requiredCategory = null;
+              }
+            }),
+          ),
+          if (_contextMode == TodoContextMode.categoryEvent ||
+              _contextMode == TodoContextMode.opportunistic) ...[
+            const SizedBox(height: 8),
+            _CategoryEventPicker(
+              selected: _requiredCategory,
+              onChanged: (c) => setState(() => _requiredCategory = c),
+            ),
+          ],
+          const SizedBox(height: 12),
+          _SectionLabel('Erlaubte Wochentage'),
+          _WeekdayPicker(
+            selected: _allowedWeekdays,
+            onChanged: (days) => setState(() => _allowedWeekdays = days),
+          ),
+          const SizedBox(height: 12),
+          SwitchListTile(
+            value: _daylightMode != DaylightMode.none,
+            onChanged: (on) => setState(() =>
+                _daylightMode = on ? DaylightMode.gps : DaylightMode.none),
+            title: const Text('Nur bei Tageslicht',
+                style: TextStyle(color: AppColors.textPrimary, fontSize: 14)),
+            subtitle: Text(
+              _daylightMode == DaylightMode.gps
+                  ? 'GPS-basiert (Sonnenauf-/untergang)'
+                  : _daylightMode == DaylightMode.manual
+                      ? 'Manuelles Fenster (aus Einstellungen)'
+                      : 'Aus',
+              style: const TextStyle(
+                  color: AppColors.textSecondary, fontSize: 12),
+            ),
+            activeColor: AppColors.primary,
+            tileColor: AppColors.card,
+            shape:
+                RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+          ),
+          if (_daylightMode != DaylightMode.none) ...[
+            const SizedBox(height: 4),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.end,
+              children: [
+                TextButton(
+                  onPressed: () => setState(() => _daylightMode = DaylightMode.gps),
+                  child: Text(
+                    'GPS',
+                    style: TextStyle(
+                      color: AppColors.primary,
+                      fontWeight: _daylightMode == DaylightMode.gps
+                          ? FontWeight.bold
+                          : FontWeight.normal,
+                    ),
+                  ),
+                ),
+                TextButton(
+                  onPressed: () =>
+                      setState(() => _daylightMode = DaylightMode.manual),
+                  child: Text(
+                    'Manuell',
+                    style: TextStyle(
+                      color: AppColors.primary,
+                      fontWeight: _daylightMode == DaylightMode.manual
+                          ? FontWeight.bold
+                          : FontWeight.normal,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ],
         ],
       ),
     );
@@ -330,6 +432,125 @@ class _RepeatSelector extends StatelessWidget {
               color: isSelected ? AppColors.primary : AppColors.divider),
         );
       }).toList(),
+    );
+  }
+}
+
+// ── Constraint-Widgets ────────────────────────────────────────────────────────
+
+class _ContextModePicker extends StatelessWidget {
+  final TodoContextMode selected;
+  final ValueChanged<TodoContextMode> onChanged;
+
+  const _ContextModePicker({required this.selected, required this.onChanged});
+
+  static const _labels = {
+    TodoContextMode.anyTime: 'Überall',
+    TodoContextMode.freeTime: 'Nur frei',
+    TodoContextMode.categoryEvent: 'Im Termin',
+    TodoContextMode.opportunistic: 'Gelegenheit',
+  };
+
+  @override
+  Widget build(BuildContext context) {
+    return Wrap(
+      spacing: 8,
+      children: TodoContextMode.values.map((m) {
+        final isSelected = selected == m;
+        return ChoiceChip(
+          label: Text(_labels[m] ?? m.name),
+          selected: isSelected,
+          onSelected: (_) => onChanged(m),
+          selectedColor: AppColors.primary.withOpacity(0.3),
+          backgroundColor: AppColors.card,
+          labelStyle: TextStyle(
+            color: isSelected ? AppColors.primary : AppColors.textSecondary,
+            fontSize: 13,
+          ),
+          side: BorderSide(
+              color: isSelected ? AppColors.primary : AppColors.divider),
+        );
+      }).toList(),
+    );
+  }
+}
+
+class _CategoryEventPicker extends StatelessWidget {
+  final EventCategory? selected;
+  final ValueChanged<EventCategory?> onChanged;
+
+  const _CategoryEventPicker({required this.selected, required this.onChanged});
+
+  static const _labels = {
+    EventCategory.work: 'Arbeit',
+    EventCategory.sport: 'Sport',
+    EventCategory.vacation: 'Urlaub',
+    EventCategory.personal: 'Persönlich',
+  };
+
+  @override
+  Widget build(BuildContext context) {
+    return Wrap(
+      spacing: 8,
+      children: EventCategory.values.map((c) {
+        final isSelected = selected == c;
+        return ChoiceChip(
+          label: Text(_labels[c] ?? c.name),
+          selected: isSelected,
+          onSelected: (_) => onChanged(isSelected ? null : c),
+          selectedColor: AppColors.primary.withOpacity(0.3),
+          backgroundColor: AppColors.card,
+          labelStyle: TextStyle(
+            color: isSelected ? AppColors.primary : AppColors.textSecondary,
+            fontSize: 13,
+          ),
+          side: BorderSide(
+              color: isSelected ? AppColors.primary : AppColors.divider),
+        );
+      }).toList(),
+    );
+  }
+}
+
+class _WeekdayPicker extends StatelessWidget {
+  final List<int> selected;
+  final ValueChanged<List<int>> onChanged;
+
+  const _WeekdayPicker({required this.selected, required this.onChanged});
+
+  static const _labels = ['Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So'];
+
+  @override
+  Widget build(BuildContext context) {
+    return Wrap(
+      spacing: 6,
+      children: List.generate(7, (i) {
+        final day = i + 1;
+        final isOn = selected.isEmpty || selected.contains(day);
+        return FilterChip(
+          label: Text(_labels[i]),
+          selected: isOn,
+          onSelected: (on) {
+            final next = selected.isEmpty
+                ? List.generate(7, (j) => j + 1)
+                : List<int>.from(selected);
+            if (on) {
+              next.add(day);
+            } else {
+              next.remove(day);
+            }
+            onChanged(next.length == 7 ? [] : next);
+          },
+          selectedColor: AppColors.primary.withOpacity(0.3),
+          backgroundColor: AppColors.card,
+          labelStyle: TextStyle(
+            color: isOn ? AppColors.primary : AppColors.textSecondary,
+            fontSize: 13,
+          ),
+          side:
+              BorderSide(color: isOn ? AppColors.primary : AppColors.divider),
+        );
+      }),
     );
   }
 }
