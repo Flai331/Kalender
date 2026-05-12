@@ -54,6 +54,11 @@ class Todo {
   final DateTime createdAt;
   final String? outlookTaskId;  // Microsoft To Do Task ID
   final String? outlookListId;  // Microsoft To Do List ID
+  final String? address;
+  final int travelMinutesBefore;
+  final int travelMinutesAfter;
+  final int? dueWindowStartHour;
+  final int? dueWindowEndHour;
   final TodoContextMode contextMode;
   final EventCategory? requiredCategory;   // für categoryEvent + opportunistic
   final List<int>? allowedWeekdays;        // null=alle; [1..5]=Mo-Fr (1=Mo,7=So)
@@ -80,6 +85,11 @@ class Todo {
     required this.createdAt,
     this.outlookTaskId,
     this.outlookListId,
+    this.address,
+    this.travelMinutesBefore = 0,
+    this.travelMinutesAfter = 0,
+    this.dueWindowStartHour,
+    this.dueWindowEndHour,
     this.contextMode = TodoContextMode.anyTime,
     this.requiredCategory,
     this.allowedWeekdays,
@@ -136,6 +146,11 @@ class Todo {
     DateTime? createdAt,
     String? outlookTaskId,
     String? outlookListId,
+    Object? address = _unset,
+    int? travelMinutesBefore,
+    int? travelMinutesAfter,
+    Object? dueWindowStartHour = _unset,
+    Object? dueWindowEndHour = _unset,
     TodoContextMode? contextMode,
     Object? requiredCategory = _unset,
     Object? allowedWeekdays = _unset,
@@ -162,6 +177,11 @@ class Todo {
       createdAt: createdAt ?? this.createdAt,
       outlookTaskId: outlookTaskId ?? this.outlookTaskId,
       outlookListId: outlookListId ?? this.outlookListId,
+      address: address == _unset ? this.address : address as String?,
+      travelMinutesBefore: travelMinutesBefore ?? this.travelMinutesBefore,
+      travelMinutesAfter: travelMinutesAfter ?? this.travelMinutesAfter,
+      dueWindowStartHour: dueWindowStartHour == _unset ? this.dueWindowStartHour : dueWindowStartHour as int?,
+      dueWindowEndHour: dueWindowEndHour == _unset ? this.dueWindowEndHour : dueWindowEndHour as int?,
       contextMode: contextMode ?? this.contextMode,
       requiredCategory: requiredCategory == _unset ? this.requiredCategory : requiredCategory as EventCategory?,
       allowedWeekdays: allowedWeekdays == _unset ? this.allowedWeekdays : allowedWeekdays as List<int>?,
@@ -190,6 +210,11 @@ class Todo {
         'createdAt': createdAt.toUtc().toIso8601String(),
         'outlookTaskId': outlookTaskId,
         'outlookListId': outlookListId,
+        'address': address,
+        'travelMinutesBefore': travelMinutesBefore,
+        'travelMinutesAfter': travelMinutesAfter,
+        'dueWindowStartHour': dueWindowStartHour,
+        'dueWindowEndHour': dueWindowEndHour,
         'contextMode': contextMode.name,
         'requiredCategory': requiredCategory?.name,
         'allowedWeekdays': allowedWeekdays,
@@ -235,6 +260,11 @@ class Todo {
             : DateTime.now(),
         outlookTaskId: json['outlookTaskId'] as String?,
         outlookListId: json['outlookListId'] as String?,
+        address: json['address'] as String?,
+        travelMinutesBefore: json['travelMinutesBefore'] as int? ?? 0,
+        travelMinutesAfter: json['travelMinutesAfter'] as int? ?? 0,
+        dueWindowStartHour: json['dueWindowStartHour'] as int?,
+        dueWindowEndHour: json['dueWindowEndHour'] as int?,
         contextMode: TodoContextMode.values.firstWhere(
           (e) => e.name == json['contextMode'],
           orElse: () => TodoContextMode.anyTime,
