@@ -27,6 +27,10 @@ class DaylightService {
   static Future<(int, int)> getDaylightWindow(DateTime day) async {
     final pos = await _getPosition();
     if (pos == null) {
+      // Kein frischer GPS — Cache verwenden falls vorhanden
+      if (_cachedLat != null) {
+        return _calculate(_cachedLat!, _cachedLng!, day);
+      }
       return (fallbackSunriseHour * 60, fallbackSunsetHour * 60);
     }
     _cachedLat = pos.latitude;
@@ -104,7 +108,7 @@ class DaylightService {
     final cosH = (math.cos(90.833 * math.pi / 180) - math.sin(latRad) * sinDec) /
         (math.cos(latRad) * math.cos(dec));
     if (cosH < -1) return (0, 24 * 60);      // Mitternachtssonne
-    if (cosH > 1) return (12 * 60, 12 * 60); // Polarnacht
+    if (cosH > 1) return (0, 0); // Polarnacht: kein Tageslicht
     final H = math.acos(cosH) * 180 / math.pi;
     final eqTime = (L - lambda * 180 / math.pi) / 15.0;
     final utcOffsetMin = date.timeZoneOffset.inMinutes;
