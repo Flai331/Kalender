@@ -15,6 +15,7 @@ class TodoStatusDialog extends StatefulWidget {
     return showModalBottomSheet<String>(
       context: context,
       backgroundColor: AppColors.surface,
+      isScrollControlled: true,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
@@ -36,17 +37,23 @@ class _TodoStatusDialogState extends State<TodoStatusDialog> {
   }
 
   void _toggleSubTask(String id, bool isDone) {
+    final prev = List<SubTask>.from(_subTasks);
     final newSubTasks = _subTasks
         .map((s) => s.id == id ? s.copyWith(isDone: isDone) : s)
         .toList();
     setState(() => _subTasks = newSubTasks);
-    SupabaseService.saveTodo(widget.todo.copyWith(subTasks: newSubTasks));
+    SupabaseService.saveTodo(widget.todo.copyWith(subTasks: newSubTasks))
+        .catchError((_) {
+      // rollback on save failure
+      if (mounted) setState(() => _subTasks = prev);
+    });
   }
 
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.all(20),
+      padding: EdgeInsets.fromLTRB(
+          20, 20, 20, 20 + MediaQuery.of(context).viewInsets.bottom),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
