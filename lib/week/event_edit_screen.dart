@@ -268,7 +268,7 @@ class _Field extends StatelessWidget {
   }
 }
 
-class _TravelTimePicker extends StatelessWidget {
+class _TravelTimePicker extends StatefulWidget {
   final String label;
   final int minutes;
   final ValueChanged<int> onChanged;
@@ -279,56 +279,148 @@ class _TravelTimePicker extends StatelessWidget {
     required this.onChanged,
   });
 
+  @override
+  State<_TravelTimePicker> createState() => _TravelTimePickerState();
+}
+
+class _TravelTimePickerState extends State<_TravelTimePicker> {
   static const _options = [0, 5, 10, 15, 20, 30, 45, 60];
+  late final TextEditingController _ctrl;
+
+  @override
+  void initState() {
+    super.initState();
+    _ctrl = TextEditingController(
+      text: widget.minutes == 0 ? '' : '${widget.minutes}',
+    );
+  }
+
+  @override
+  void didUpdateWidget(_TravelTimePicker old) {
+    super.didUpdateWidget(old);
+    if (old.minutes != widget.minutes) {
+      final txt = widget.minutes == 0 ? '' : '${widget.minutes}';
+      if (_ctrl.text != txt) {
+        _ctrl.text = txt;
+        _ctrl.selection = TextSelection.collapsed(offset: txt.length);
+      }
+    }
+  }
+
+  @override
+  void dispose() {
+    _ctrl.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
     return Row(
       children: [
         Icon(
-          label == 'Anfahrt' ? Icons.directions_car_outlined : Icons.directions_car,
+          widget.label == 'Anfahrt'
+              ? Icons.directions_car_outlined
+              : Icons.directions_car,
           size: 16,
           color: AppColors.textSecondary,
         ),
         const SizedBox(width: 8),
-        Text(label,
+        Text(widget.label,
             style: const TextStyle(color: AppColors.textSecondary, fontSize: 13)),
         const SizedBox(width: 12),
         Expanded(
           child: SingleChildScrollView(
             scrollDirection: Axis.horizontal,
             child: Row(
-              children: _options.map((m) {
-                final isSelected = minutes == m;
-                final lbl = m == 0 ? 'Keine' : '${m}min';
-                return Padding(
-                  padding: const EdgeInsets.only(right: 6),
-                  child: GestureDetector(
-                    onTap: () => onChanged(m),
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                      decoration: BoxDecoration(
-                        color: isSelected
-                            ? AppColors.primary.withValues(alpha: 0.2)
-                            : AppColors.card,
-                        borderRadius: BorderRadius.circular(8),
-                        border: Border.all(
-                          color: isSelected ? AppColors.primary : AppColors.divider,
-                          width: 1,
+              children: [
+                ..._options.map((m) {
+                  final isSelected = widget.minutes == m;
+                  final lbl = m == 0 ? 'Keine' : '${m}min';
+                  return Padding(
+                    padding: const EdgeInsets.only(right: 6),
+                    child: GestureDetector(
+                      onTap: () => widget.onChanged(m),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                        decoration: BoxDecoration(
+                          color: isSelected
+                              ? AppColors.primary.withValues(alpha: 0.2)
+                              : AppColors.card,
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(
+                            color: isSelected ? AppColors.primary : AppColors.divider,
+                            width: 1,
+                          ),
                         ),
-                      ),
-                      child: Text(
-                        lbl,
-                        style: TextStyle(
-                          fontSize: 12,
-                          color: isSelected ? AppColors.primary : AppColors.textSecondary,
-                          fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
+                        child: Text(
+                          lbl,
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: isSelected ? AppColors.primary : AppColors.textSecondary,
+                            fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
+                          ),
                         ),
                       ),
                     ),
+                  );
+                }),
+                // Custom freetext input
+                SizedBox(
+                  width: 64,
+                  height: 30,
+                  child: TextField(
+                    controller: _ctrl,
+                    keyboardType: TextInputType.number,
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: !_options.contains(widget.minutes) && widget.minutes > 0
+                          ? AppColors.primary
+                          : AppColors.textSecondary,
+                    ),
+                    decoration: InputDecoration(
+                      hintText: 'min',
+                      hintStyle: const TextStyle(
+                          fontSize: 12, color: AppColors.textDisabled),
+                      contentPadding:
+                          const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                      filled: true,
+                      fillColor: !_options.contains(widget.minutes) && widget.minutes > 0
+                          ? AppColors.primary.withValues(alpha: 0.2)
+                          : AppColors.card,
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(8),
+                        borderSide: BorderSide(
+                          color: !_options.contains(widget.minutes) && widget.minutes > 0
+                              ? AppColors.primary
+                              : AppColors.divider,
+                        ),
+                      ),
+                      enabledBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(8),
+                        borderSide: BorderSide(
+                          color: !_options.contains(widget.minutes) && widget.minutes > 0
+                              ? AppColors.primary
+                              : AppColors.divider,
+                        ),
+                      ),
+                      focusedBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(8),
+                        borderSide:
+                            const BorderSide(color: AppColors.primary, width: 1.5),
+                      ),
+                    ),
+                    onChanged: (val) {
+                      final parsed = int.tryParse(val);
+                      if (parsed != null && parsed >= 0) {
+                        widget.onChanged(parsed);
+                      } else if (val.isEmpty) {
+                        widget.onChanged(0);
+                      }
+                    },
                   ),
-                );
-              }).toList(),
+                ),
+              ],
             ),
           ),
         ),
