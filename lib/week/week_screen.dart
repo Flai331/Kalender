@@ -1,9 +1,13 @@
+import 'dart:async';
+import 'dart:math' as math;
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uuid/uuid.dart';
 import '../app_colors.dart';
 import '../models/calendar_event.dart';
 import '../models/todo.dart';
 import '../models/yearly_checklist.dart';
+import '../services/daylight_service.dart';
 import '../services/supabase_service.dart';
 import '../services/shift_service.dart';
 import '../services/ics_service.dart';
@@ -36,6 +40,10 @@ class _WeekScreenState extends State<WeekScreen> {
   List<Todo> _unscheduled = [];
   List<YearlyChecklist> _pendingChecklists = [];
 
+  Timer? _nowTimer;
+  List<String> _blockingAllDayCats = ['vacation'];
+  final Set<String> _noSlotTodos = {};
+
   static const double _hourHeight = 60.0;
   static const int _startHour = 6;
   static const int _endHour = 23;
@@ -47,8 +55,16 @@ class _WeekScreenState extends State<WeekScreen> {
     _initStreams();
     _loadIcsEvents();
     _checkYearlyChecklists();
-    // Scrolle zur aktuellen Uhrzeit
-    WidgetsBinding.instance.addPostFrameCallback((_) => _scrollToNow());
+    DaylightService.loadSettings();
+    DaylightService.prefetchLocation();
+    _loadBlockingCats();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _scrollToNow();
+      _autoShiftOverdueTodos();
+    });
+    _nowTimer = Timer.periodic(const Duration(minutes: 1), (_) {
+      if (mounted) _autoShiftOverdueTodos();
+    });
   }
 
   DateTime _getWeekStart(DateTime date) {
@@ -434,7 +450,7 @@ class _WeekScreenState extends State<WeekScreen> {
                   scrollDirection: Axis.horizontal,
                   padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                   itemCount: _unscheduled.length,
-                  separatorBuilder: (_, __) => const SizedBox(width: 6),
+                  separatorBuilder: (context, index) => const SizedBox(width: 6),
                   itemBuilder: (ctx, i) {
                     final todo = _unscheduled[i];
                     return LongPressDraggable<Todo>(
@@ -541,8 +557,313 @@ class _WeekScreenState extends State<WeekScreen> {
 
   @override
   void dispose() {
+    _nowTimer?.cancel();
     _scrollController.dispose();
     super.dispose();
+  }
+
+  // ── Constraint-Helpers ─────────────────────────────────────────────────────
+
+  Future<void> _loadBlockingCats() async {
+    final prefs = await SharedPreferences.getInstance();
+    if (!mounted) return;
+    setState(() {
+      _blockingAllDayCats =
+          prefs.getStringList('blocking_allday_cats') ?? ['vacation'];
+    });
+  }
+
+  bool _dayBlockedByAllDay(DateTime day) {
+    final allEventsOnDay = [..._events, ..._icsEvents].where((e) =>
+        e.isAllDay &&
+        e.startTime.year == day.year &&
+        e.startTime.month == day.month &&
+        e.startTime.day == day.day);
+    return allEventsOnDay
+        .any((e) => _blockingAllDayCats.contains(e.category.name));
+  }
+
+  List<CalendarEvent> _timedEventsOnDay(DateTime day) {
+    return [..._events, ..._icsEvents]
+        .where((e) =>
+            !e.isAllDay &&
+            e.startTime.year == day.year &&
+            e.startTime.month == day.month &&
+            e.startTime.day == day.day)
+        .toList()
+      ..sort((a, b) => a.startTime.compareTo(b.startTime));
+  }
+
+  /// Gibt (day, minuteOfDay) des nächsten gültigen Slots zurück.
+  /// Gibt null zurück wenn kein Slot in 30 Tagen gefunden.
+  Future<(DateTime, int)?> _findNextValidSlot(
+      Todo todo, DateTime fromDay, int fromMinute) async {
+    DateTime day = fromDay;
+    int startMinute = fromMinute;
+    final total =
+        todo.travelMinutesBefore + todo.estimatedMinutes + todo.travelMinutesAfter;
+
+    for (int attempt = 0; attempt < 30; attempt++) {
+      // Wochentag-Filter
+      if (todo.allowedWeekdays != null &&
+          todo.allowedWeekdays!.isNotEmpty &&
+          !todo.allowedWeekdays!.contains(day.weekday)) {
+        day = day.add(const Duration(days: 1));
+        startMinute = 0;
+        continue;
+      }
+
+      // Ganztags-Block
+      if (_dayBlockedByAllDay(day)) {
+        day = day.add(const Duration(days: 1));
+        startMinute = 0;
+        continue;
+      }
+
+      // Zeitfenster bestimmen
+      int winStart =
+          todo.dueWindowStartHour != null ? todo.dueWindowStartHour! * 60 : 0;
+      int winEnd = todo.dueWindowEndHour != null
+          ? todo.dueWindowEndHour! * 60
+          : 24 * 60;
+
+      if (todo.daylightMode == DaylightMode.gps ||
+          todo.daylightMode == DaylightMode.manual) {
+        final (rise, set) = DaylightService.getDaylightWindowSync(day);
+        winStart = math.max(winStart, rise);
+        winEnd = math.min(winEnd, set);
+      }
+
+      if (startMinute < winStart) startMinute = winStart;
+
+      // Kontext-Modus
+      if (todo.contextMode == TodoContextMode.categoryEvent ||
+          todo.contextMode == TodoContextMode.opportunistic) {
+        final matchEvents = _timedEventsOnDay(day)
+            .where((e) => e.category == todo.requiredCategory)
+            .toList();
+
+        for (final ev in matchEvents) {
+          final evStart = ev.startTime.hour * 60 + ev.startTime.minute;
+          final evEnd = ev.endTime.hour * 60 + ev.endTime.minute;
+          final pos =
+              math.max(startMinute, math.max(winStart, evStart));
+          if (pos + total <= math.min(winEnd, evEnd)) {
+            return (day, pos);
+          }
+        }
+        day = day.add(const Duration(days: 1));
+        startMinute = 0;
+        continue;
+      }
+
+      if (todo.contextMode == TodoContextMode.freeTime) {
+        final dayEvents = _timedEventsOnDay(day);
+        int pos = startMinute;
+        bool found = false;
+        for (int tries = 0; tries < 200; tries++) {
+          if (pos + total > winEnd) break;
+          final blocker = dayEvents.cast<CalendarEvent?>().firstWhere(
+            (e) {
+              final es = e!.startTime.hour * 60 + e.startTime.minute;
+              final ee = e.endTime.hour * 60 + e.endTime.minute;
+              return pos < ee && pos + total > es;
+            },
+            orElse: () => null,
+          );
+          if (blocker == null) {
+            found = true;
+            break;
+          }
+          pos = blocker.endTime.hour * 60 + blocker.endTime.minute;
+        }
+        if (found) return (day, pos);
+        day = day.add(const Duration(days: 1));
+        startMinute = winStart;
+        continue;
+      }
+
+      // anyTime: direkt platzieren wenn Fenster passt
+      if (startMinute + total <= winEnd) {
+        return (day, startMinute);
+      }
+      day = day.add(const Duration(days: 1));
+      startMinute = winStart;
+    }
+    return null;
+  }
+
+  // ── Auto-Shift ─────────────────────────────────────────────────────────────
+
+  Future<void> _autoShiftOverdueTodos() async {
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final nowMinutes = now.hour * 60 + now.minute;
+
+    final todayTodos = _todos
+        .where((t) =>
+            t.scheduledDate != null &&
+            t.scheduledDate!.year == today.year &&
+            t.scheduledDate!.month == today.month &&
+            t.scheduledDate!.day == today.day &&
+            t.scheduledStartHour != null &&
+            !t.isFixed &&
+            (t.status == TodoStatus.pending ||
+                t.status == TodoStatus.started ||
+                t.status == TodoStatus.paused))
+        .toList()
+      ..sort((a, b) {
+        final aBlock =
+            a.scheduledStartHour! * 60 + (a.scheduledStartMinute ?? 0) - a.travelMinutesBefore;
+        final bBlock =
+            b.scheduledStartHour! * 60 + (b.scheduledStartMinute ?? 0) - b.travelMinutesBefore;
+        return aBlock.compareTo(bBlock);
+      });
+
+    final todayEventTuples = _timedEventsOnDay(today)
+        .map((e) => (
+              e.startTime.hour * 60 + e.startTime.minute,
+              e.endTime.hour * 60 + e.endTime.minute,
+            ))
+        .toList();
+
+    int skipEvents(int pos, int totalDuration) {
+      bool changed = true;
+      while (changed) {
+        changed = false;
+        for (final ev in todayEventTuples) {
+          if (pos < ev.$2 && pos + totalDuration > ev.$1) {
+            pos = ev.$2;
+            changed = true;
+          }
+        }
+      }
+      return pos;
+    }
+
+    int runningMin = nowMinutes;
+    DateTime runningDate = today;
+    bool shifted = false;
+    int? prevOriginalBlockEnd;
+    final newNoSlot = <String>{};
+
+    for (final todo in todayTodos) {
+      final todoMin =
+          todo.scheduledStartHour! * 60 + (todo.scheduledStartMinute ?? 0);
+      final blockStart = todoMin - todo.travelMinutesBefore;
+      final blockEnd =
+          todoMin + todo.estimatedMinutes + todo.travelMinutesAfter;
+
+      // Started/paused: Anker, kein Shift
+      if (todo.status == TodoStatus.started ||
+          todo.status == TodoStatus.paused) {
+        runningMin = blockEnd > runningMin ? blockEnd : runningMin;
+        shifted = false;
+        prevOriginalBlockEnd = blockEnd;
+        continue;
+      }
+
+      // Pending: shift wenn überfällig oder cascaded
+      if (blockStart < nowMinutes ||
+          (shifted && blockStart < runningMin)) {
+        if (prevOriginalBlockEnd != null && blockStart > prevOriginalBlockEnd) {
+          runningMin += blockStart - prevOriginalBlockEnd;
+        }
+
+        final hasConstraints = todo.contextMode != TodoContextMode.anyTime ||
+            (todo.allowedWeekdays != null && todo.allowedWeekdays!.isNotEmpty) ||
+            todo.daylightMode != DaylightMode.none;
+
+        if (hasConstraints) {
+          final slot = await _findNextValidSlot(todo, runningDate, runningMin);
+          if (slot == null) {
+            newNoSlot.add(todo.id);
+            prevOriginalBlockEnd = blockEnd;
+            continue;
+          }
+          final (slotDay, slotMin) = slot;
+          final newStart = slotMin + todo.travelMinutesBefore;
+          final newHour = (newStart ~/ 60).clamp(0, 23);
+          final newMin = newStart % 60;
+          final dateChanged = slotDay.year != (todo.scheduledDate?.year ?? 0) ||
+              slotDay.month != (todo.scheduledDate?.month ?? 0) ||
+              slotDay.day != (todo.scheduledDate?.day ?? 0);
+          if (newHour != todo.scheduledStartHour ||
+              newMin != (todo.scheduledStartMinute ?? 0) ||
+              dateChanged) {
+            await SupabaseService.saveTodo(todo.copyWith(
+              scheduledDate: slotDay,
+              scheduledStartHour: newHour,
+              scheduledStartMinute: newMin,
+            ));
+            shifted = true;
+          }
+          runningMin = slotMin +
+              todo.travelMinutesBefore +
+              todo.estimatedMinutes +
+              todo.travelMinutesAfter;
+          runningDate = slotDay;
+        } else {
+          // Standard anyTime-Logik (wie zuvor)
+          final totalBlock = todo.travelMinutesBefore +
+              todo.estimatedMinutes +
+              todo.travelMinutesAfter;
+          final winStart = todo.dueWindowStartHour;
+          final winEnd = todo.dueWindowEndHour;
+          if (winStart != null && runningMin < winStart * 60) {
+            runningMin = winStart * 60;
+          }
+          if (winEnd != null && runningMin + totalBlock > winEnd * 60) {
+            runningDate = runningDate.add(const Duration(days: 1));
+            runningMin = (winStart ?? 0) * 60;
+            shifted = true;
+          }
+          runningMin = skipEvents(runningMin, totalBlock);
+          final newScheduledStart = runningMin + todo.travelMinutesBefore;
+          final newHour = (newScheduledStart ~/ 60).clamp(0, 23);
+          final newMin = newScheduledStart % 60;
+          final dateChanged =
+              runningDate.year != (todo.scheduledDate?.year ?? 0) ||
+                  runningDate.month != (todo.scheduledDate?.month ?? 0) ||
+                  runningDate.day != (todo.scheduledDate?.day ?? 0);
+          if (newHour != todo.scheduledStartHour ||
+              newMin != (todo.scheduledStartMinute ?? 0) ||
+              dateChanged) {
+            await SupabaseService.saveTodo(todo.copyWith(
+              scheduledDate: runningDate,
+              scheduledStartHour: newHour,
+              scheduledStartMinute: newMin,
+            ));
+            shifted = true;
+          }
+          runningMin = newScheduledStart +
+              todo.estimatedMinutes +
+              todo.travelMinutesAfter;
+        }
+      } else {
+        runningMin = blockEnd;
+      }
+      prevOriginalBlockEnd = blockEnd;
+    }
+
+    if (!mounted) return;
+    if (shifted) setState(() => _initStreams());
+
+    // Warnung für Todos ohne Slot
+    if (newNoSlot.isNotEmpty) {
+      _noSlotTodos.addAll(newNoSlot);
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text(
+              '${newNoSlot.length} Todo(s) konnten nicht eingeplant werden – kein passender Slot in 30 Tagen.'),
+          action: SnackBarAction(
+            label: 'OK',
+            onPressed: () => _noSlotTodos.clear(),
+          ),
+        ));
+      });
+    }
   }
 }
 
