@@ -373,7 +373,7 @@ class WeekScreenState extends State<WeekScreen> {
     // ICS-Event: in App-Event konvertieren und bearbeiten
     if (event.source == 'ics') {
       if (!mounted) return;
-      final confirm = await showDialog<bool>(
+      final action = await showDialog<String>(
         context: context,
         builder: (ctx) => AlertDialog(
           backgroundColor: AppColors.surface,
@@ -392,34 +392,44 @@ class WeekScreenState extends State<WeekScreen> {
                 Text(event.description,
                     style: const TextStyle(color: AppColors.textSecondary, fontSize: 12)),
               ],
-              const SizedBox(height: 12),
-              const Text(
-                'In App-Termin umwandeln um ihn zu bearbeiten?',
-                style: TextStyle(color: AppColors.textSecondary, fontSize: 12),
-              ),
             ],
           ),
           actions: [
             TextButton(
-              onPressed: () => Navigator.pop(ctx, false),
+              onPressed: () => Navigator.pop(ctx),
               child: const Text('Abbrechen',
                   style: TextStyle(color: AppColors.textSecondary)),
             ),
             TextButton(
-              onPressed: () => Navigator.pop(ctx, true),
+              onPressed: () => Navigator.pop(ctx, 'delete'),
+              child: const Text('Ausblenden',
+                  style: TextStyle(color: Colors.redAccent)),
+            ),
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, 'edit'),
               child: const Text('Bearbeiten',
                   style: TextStyle(color: AppColors.primary)),
             ),
           ],
         ),
       );
-      if (confirm != true || !mounted) return;
-      final appEvent = await _adoptIcsEvent(event, (e) => e);
-      if (!mounted) return;
-      await Navigator.push(
-        context,
-        MaterialPageRoute(builder: (_) => EventEditScreen(event: appEvent)),
-      );
+      if (action == null || !mounted) return;
+      if (action == 'delete') {
+        _overriddenIcsIds.add(event.id);
+        _saveOverrides();
+        if (mounted) setState(() {
+          _icsEvents = _icsEvents.where((e) => e.id != event.id).toList();
+        });
+        return;
+      }
+      if (action == 'edit') {
+        final appEvent = await _adoptIcsEvent(event, (e) => e);
+        if (!mounted) return;
+        await Navigator.push(
+          context,
+          MaterialPageRoute(builder: (_) => EventEditScreen(event: appEvent)),
+        );
+      }
       return;
     }
 
