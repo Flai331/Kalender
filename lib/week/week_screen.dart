@@ -133,8 +133,7 @@ class WeekScreenState extends State<WeekScreen> {
     _selectedDay = DateTime.now();
     _weekStart = _getWeekStart(DateTime.now());
     _initStreams();
-    _loadIcsEvents();
-    _loadOverrides();
+    _loadOverrides().then((_) => _loadIcsEvents());
     _checkYearlyChecklists();
     DaylightService.loadSettings();
     DaylightService.prefetchLocation();
@@ -216,13 +215,17 @@ class WeekScreenState extends State<WeekScreen> {
 
   Future<CalendarEvent> _adoptIcsEvent(
       CalendarEvent icsEvent, CalendarEvent Function(CalendarEvent) transform) async {
+    // Guard: already adopted → skip to prevent duplicate Supabase entries
+    if (_overriddenIcsIds.contains(icsEvent.id)) {
+      return _convertIcsToApp(icsEvent);
+    }
     final appEvent = transform(_convertIcsToApp(icsEvent));
     _overriddenIcsIds.add(icsEvent.id);
     // Remove from local list BEFORE any async — prevents race with Realtime
     if (mounted) setState(() {
       _icsEvents = _icsEvents.where((e) => e.id != icsEvent.id).toList();
     });
-    _saveOverrides(); // fire-and-forget, no need to await
+    _saveOverrides(); // fire-and-forget
     await SupabaseService.saveEvent(appEvent);
     return appEvent;
   }
@@ -276,7 +279,11 @@ class WeekScreenState extends State<WeekScreen> {
   List<CalendarEvent> _eventsForDay(DateTime day) {
     final dayStart = DateTime(day.year, day.month, day.day);
     final dayEnd = dayStart.add(const Duration(days: 1));
-    final all = [..._events, ..._icsEvents];
+    final icsFiltered = _icsEvents.where((e) => !_overriddenIcsIds.contains(e.id));
+    final seen = <String>{};
+    final all = [..._events, ...icsFiltered]
+        .where((e) => seen.add(e.id))
+        .toList();
     return all.where((e) {
       return !e.isAllDay &&
           e.startTime.isBefore(dayEnd) &&
@@ -287,7 +294,9 @@ class WeekScreenState extends State<WeekScreen> {
 
   List<CalendarEvent> _allDayEventsForDay(DateTime day) {
     final dayStart = DateTime(day.year, day.month, day.day);
-    final all = [..._events, ..._icsEvents];
+    final icsFiltered = _icsEvents.where((e) => !_overriddenIcsIds.contains(e.id));
+    final seen = <String>{};
+    final all = [..._events, ...icsFiltered].where((e) => seen.add(e.id)).toList();
     return all.where((e) {
       if (!e.isAllDay) return false;
       final eStart = DateTime(e.startTime.year, e.startTime.month, e.startTime.day);
@@ -316,10 +325,7 @@ class WeekScreenState extends State<WeekScreen> {
       Todo todo, DateTime day, int hour, int minute) async {
     final dropStart = hour * 60 + minute;
     final dropEnd = dropStart + todo.estimatedMinutes;
-    final dayEvents = [..._eventsForDay(day), ..._icsEvents.where((e) =>
-        e.startTime.year == day.year &&
-        e.startTime.month == day.month &&
-        e.startTime.day == day.day)];
+    final dayEvents = _eventsForDay(day);
 
     for (final event in dayEvents) {
       final evStart = event.startTime.hour * 60 + event.startTime.minute;
@@ -1203,7 +1209,8 @@ class WeekScreenState extends State<WeekScreen> {
   bool _dayBlockedByAllDay(DateTime day) {
     // ICS-Events werden nur für die aktuelle Woche geladen.
     // Ganztags-ICS-Events außerhalb der Woche blockieren daher nicht.
-    final allEventsOnDay = [..._events, ..._icsEvents].where((e) =>
+    final icsFiltered = _icsEvents.where((e) => !_overriddenIcsIds.contains(e.id));
+    final allEventsOnDay = [..._events, ...icsFiltered].where((e) =>
         e.isAllDay &&
         e.startTime.year == day.year &&
         e.startTime.month == day.month &&
@@ -1213,7 +1220,10 @@ class WeekScreenState extends State<WeekScreen> {
   }
 
   List<CalendarEvent> _timedEventsOnDay(DateTime day) {
-    return [..._events, ..._icsEvents]
+    final icsFiltered = _icsEvents.where((e) => !_overriddenIcsIds.contains(e.id));
+    final seen = <String>{};
+    return [..._events, ...icsFiltered]
+        .where((e) => seen.add(e.id))
         .where((e) =>
             !e.isAllDay &&
             e.startTime.year == day.year &&
