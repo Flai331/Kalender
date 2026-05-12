@@ -36,13 +36,11 @@ class _TodoStatusDialogState extends State<TodoStatusDialog> {
   }
 
   void _toggleSubTask(String id, bool isDone) {
-    setState(() {
-      _subTasks = _subTasks
-          .map((s) => s.id == id ? s.copyWith(isDone: isDone) : s)
-          .toList();
-    });
-    final updated = widget.todo.copyWith(subTasks: _subTasks);
-    SupabaseService.saveTodo(updated);
+    final newSubTasks = _subTasks
+        .map((s) => s.id == id ? s.copyWith(isDone: isDone) : s)
+        .toList();
+    setState(() => _subTasks = newSubTasks);
+    SupabaseService.saveTodo(widget.todo.copyWith(subTasks: newSubTasks));
   }
 
   @override
