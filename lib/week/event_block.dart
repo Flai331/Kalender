@@ -25,19 +25,25 @@ class EventBlock extends StatelessWidget {
     final title = event?.title ?? todo?.title ?? '';
     final isFixed = event?.isFixed ?? todo?.isFixed ?? false;
     final category = event?.category.name ?? todo?.category ?? 'personal';
+    final hasAddress = (event?.address ?? todo?.address) != null;
     final status = event?.status ?? _todoStatus;
     final durationMinutes = event != null
         ? event!.scheduledDuration.inMinutes
         : (todo?.estimatedMinutes ?? 30);
 
-    final color = _colorForStatus(status, category);
+    final color = event?.calendarColor != null
+        ? Color(event!.calendarColor!)
+        : _colorForStatus(status, category);
     final height = (durationMinutes * heightPerMinute).clamp(24.0, 200.0);
+    final showTime = height >= 36;
+    final timeStr = _timeString();
 
     return GestureDetector(
       onTap: onTap,
       child: Container(
         height: height,
         margin: const EdgeInsets.symmetric(horizontal: 1, vertical: 1),
+        clipBehavior: Clip.hardEdge,
         decoration: BoxDecoration(
           color: color.withValues(alpha: 0.2),
           borderRadius: BorderRadius.circular(6),
@@ -46,33 +52,76 @@ class EventBlock extends StatelessWidget {
               : Border.all(color: color, width: 1.5),
         ),
         padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
-        child: Row(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
           children: [
-            if (isFixed)
-              const Padding(
-                padding: EdgeInsets.only(right: 3),
-                child: Icon(Icons.lock, size: 10, color: AppColors.fixedTag),
-              ),
-            Expanded(
-              child: Text(
-                title,
-                style: TextStyle(
-                  fontSize: 11,
-                  color: color,
-                  fontWeight: FontWeight.w600,
-                  decoration: status == EventStatus.done
-                      ? TextDecoration.lineThrough
-                      : null,
+            Row(
+              children: [
+                if (isFixed)
+                  const Padding(
+                    padding: EdgeInsets.only(right: 3),
+                    child: Icon(Icons.lock, size: 10, color: AppColors.fixedTag),
+                  ),
+                if (hasAddress)
+                  Padding(
+                    padding: const EdgeInsets.only(right: 3),
+                    child: Icon(Icons.location_on, size: 10, color: color.withOpacity(0.8)),
+                  ),
+                Expanded(
+                  child: Text(
+                    title,
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: color,
+                      fontWeight: FontWeight.w600,
+                      decoration: status == EventStatus.done
+                          ? TextDecoration.lineThrough
+                          : null,
+                    ),
+                    maxLines: (showTime || durationMinutes >= 45) ? 2 : 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
                 ),
-                maxLines: durationMinutes >= 45 ? 2 : 1,
+                _statusIcon(status),
+              ],
+            ),
+            if (showTime && timeStr != null)
+              Text(
+                timeStr,
+                style: TextStyle(
+                  fontSize: 9,
+                  color: color.withOpacity(0.85),
+                  fontWeight: FontWeight.w500,
+                ),
+                maxLines: 1,
                 overflow: TextOverflow.ellipsis,
               ),
-            ),
-            _statusIcon(status),
           ],
         ),
       ),
     );
+  }
+
+  String? _timeString() {
+    if (event != null) {
+      final s = event!.startTime;
+      final e = event!.endTime;
+      final start = '${s.hour.toString().padLeft(2, '0')}:${s.minute.toString().padLeft(2, '0')}';
+      final end   = '${e.hour.toString().padLeft(2, '0')}:${e.minute.toString().padLeft(2, '0')}';
+      return '$start – $end';
+    }
+    if (todo != null && todo!.scheduledStartHour != null) {
+      final sh = todo!.scheduledStartHour!;
+      final sm = todo!.scheduledStartMinute ?? 0;
+      final total = sh * 60 + sm + todo!.estimatedMinutes;
+      final eh = total ~/ 60;
+      final em = total % 60;
+      final start = '${sh.toString().padLeft(2, '0')}:${sm.toString().padLeft(2, '0')}';
+      final end   = '${(eh % 24).toString().padLeft(2, '0')}:${em.toString().padLeft(2, '0')}';
+      return '$start – $end';
+    }
+    return null;
   }
 
   EventStatus? get _todoStatus {

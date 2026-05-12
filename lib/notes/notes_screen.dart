@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../app_colors.dart';
 import '../models/week_note.dart';
 import '../services/supabase_service.dart';
+import '../widgets/feedback_button.dart';
 
 class NotesScreen extends StatefulWidget {
   const NotesScreen({super.key});
@@ -90,6 +91,7 @@ class _NotesScreenState extends State<NotesScreen> {
           ],
         ),
         actions: [
+          const FeedbackIconButton(),
           TextButton(
             onPressed: _save,
             child: const Text('Speichern',

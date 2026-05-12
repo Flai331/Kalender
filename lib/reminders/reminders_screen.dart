@@ -4,6 +4,7 @@ import '../models/series_reminder.dart';
 import '../models/yearly_checklist.dart';
 import '../services/supabase_service.dart';
 import 'reminder_edit_screen.dart';
+import '../widgets/feedback_button.dart';
 
 class RemindersScreen extends StatelessWidget {
   const RemindersScreen({super.key});
@@ -19,6 +20,7 @@ class RemindersScreen extends StatelessWidget {
           title: const Text('Erinnerungen',
               style: TextStyle(
                   color: AppColors.textPrimary, fontWeight: FontWeight.bold)),
+          actions: const [FeedbackIconButton()],
           bottom: const TabBar(
             labelColor: AppColors.primary,
             unselectedLabelColor: AppColors.textSecondary,

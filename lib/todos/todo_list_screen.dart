@@ -5,9 +5,29 @@ import '../services/supabase_service.dart';
 import 'todo_card.dart';
 import 'todo_edit_screen.dart';
 import 'todo_status_dialog.dart';
+import '../widgets/feedback_button.dart';
 
-class TodoListScreen extends StatelessWidget {
+class TodoListScreen extends StatefulWidget {
   const TodoListScreen({super.key});
+
+  @override
+  State<TodoListScreen> createState() => _TodoListScreenState();
+}
+
+class _TodoListScreenState extends State<TodoListScreen> {
+  late Stream<List<Todo>> _stream;
+
+  @override
+  void initState() {
+    super.initState();
+    _stream = SupabaseService.unscheduledTodos();
+  }
+
+  void _refreshStream() {
+    setState(() {
+      _stream = SupabaseService.unscheduledTodos();
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -30,10 +50,11 @@ class TodoListScreen extends StatelessWidget {
                       color: AppColors.textSecondary, fontSize: 12)),
             ),
           ),
+          const FeedbackIconButton(),
         ],
       ),
       body: StreamBuilder<List<Todo>>(
-        stream: SupabaseService.unscheduledTodos(),
+        stream: _stream,
         builder: (ctx, snap) {
           if (snap.connectionState == ConnectionState.waiting) {
             return const Center(
@@ -85,9 +106,25 @@ class TodoListScreen extends StatelessWidget {
                     final todo = todos[i];
                     return TodoCard(
                       todo: todo,
-                      onTap: () => TodoStatusDialog.show(
-                          context: context, todo: todo),
-                      onDelete: () => SupabaseService.deleteTodo(todo.id),
+                      onTap: () async {
+                        final result = await TodoStatusDialog.show(
+                            context: context, todo: todo);
+                        if (result == 'delete') {
+                          await SupabaseService.deleteTodo(todo.id);
+                          _refreshStream();
+                        } else if (result == 'edit') {
+                          await Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                                builder: (_) => TodoEditScreen(todo: todo)),
+                          );
+                          _refreshStream();
+                        }
+                      },
+                      onDelete: () async {
+                        await SupabaseService.deleteTodo(todo.id);
+                        _refreshStream();
+                      },
                     );
                   },
                 ),
@@ -105,11 +142,12 @@ class TodoListScreen extends StatelessWidget {
     );
   }
 
-  void _openEdit(BuildContext context) {
-    Navigator.push(
+  Future<void> _openEdit(BuildContext context) async {
+    await Navigator.push(
       context,
       MaterialPageRoute(builder: (_) => const TodoEditScreen()),
     );
+    _refreshStream();
   }
 }
 

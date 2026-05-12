@@ -6,33 +6,36 @@ import 'app_colors.dart';
 import 'services/auth_service.dart';
 import 'services/feedback_service.dart';
 import 'services/reminder_service.dart';
-import 'week/week_screen.dart';
+import 'week/week_screen.dart' show WeekScreen, WeekScreenState;
 import 'todos/todo_list_screen.dart';
 import 'notes/notes_screen.dart';
 import 'reminders/reminders_screen.dart';
 import 'settings/settings_screen.dart';
 
 final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
-final GlobalKey repaintKey = GlobalKey();
+final GlobalKey _repaintKey = GlobalKey();
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
   // Feedback-Service einrichten
   FeedbackService.setNavigatorKey(navigatorKey);
-  FeedbackService.setRepaintKey(repaintKey);
+  FeedbackService.setRepaintKey(_repaintKey);
 
-  // Flutter-Fehler abfangen
+  // Flutter-Fehler abfangen – nur loggen, kein Auto-Dialog (verhindert Loop)
   FlutterError.onError = (FlutterErrorDetails details) {
     FlutterError.presentError(details);
     FeedbackService.log('FlutterError: ${details.exceptionAsString()}');
-    FeedbackService.showAutoErrorDialog();
   };
 
-  // Dart-Fehler abfangen
+  // Dart-Fehler abfangen (Netzwerkfehler ignorieren)
   PlatformDispatcher.instance.onError = (error, stack) {
-    FeedbackService.log('PlatformError: $error');
-    FeedbackService.showAutoErrorDialog();
+    final msg = error.toString();
+    final isNetworkError = msg.contains('SocketException') ||
+        msg.contains('ClientException') ||
+        msg.contains('HandshakeException') ||
+        msg.contains('host lookup');
+    FeedbackService.log('PlatformError: $msg');
     return true;
   };
 
@@ -63,16 +66,13 @@ class KalenderApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return RepaintBoundary(
-      key: repaintKey,
-      child: MaterialApp(
-        title: 'Kalender',
-        debugShowCheckedModeBanner: false,
-        theme: _buildDarkTheme(),
-        navigatorKey: navigatorKey,
-        navigatorObservers: [FeedbackService.screenObserver],
-        home: supabaseReady ? const MainScreen() : const _SetupScreen(),
-      ),
+    return MaterialApp(
+      title: 'Kalender',
+      debugShowCheckedModeBanner: false,
+      theme: _buildDarkTheme(),
+      navigatorKey: navigatorKey,
+      navigatorObservers: [FeedbackService.screenObserver],
+      home: supabaseReady ? const MainScreen() : const _SetupScreen(),
     );
   }
 
@@ -118,14 +118,20 @@ class MainScreen extends StatefulWidget {
 
 class _MainScreenState extends State<MainScreen> {
   int _currentIndex = 0;
+  final _weekKey = GlobalKey<WeekScreenState>();
 
-  static const _screens = [
-    WeekScreen(),
-    TodoListScreen(),
-    NotesScreen(),
-    RemindersScreen(),
-    SettingsScreen(),
+  late final List<Widget> _screens = [
+    WeekScreen(key: _weekKey),
+    const TodoListScreen(),
+    const NotesScreen(),
+    const RemindersScreen(),
+    const SettingsScreen(),
   ];
+
+  void _onTabTap(int i) {
+    if (i == 0) _weekKey.currentState?.reload();
+    setState(() => _currentIndex = i);
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -142,7 +148,7 @@ class _MainScreenState extends State<MainScreen> {
         ),
         child: BottomNavigationBar(
           currentIndex: _currentIndex,
-          onTap: (i) => setState(() => _currentIndex = i),
+          onTap: _onTabTap,
           items: const [
             BottomNavigationBarItem(
               icon: Icon(Icons.calendar_view_week_outlined),

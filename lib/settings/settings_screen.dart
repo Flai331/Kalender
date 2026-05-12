@@ -1,12 +1,15 @@
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../app_colors.dart';
 import '../models/calendar_event.dart';
+import '../models/ics_source.dart';
 import '../services/auth_service.dart';
 import '../services/daylight_service.dart';
 import '../services/feedback_service.dart';
 import '../services/ics_service.dart';
 import '../services/reminder_service.dart';
+import '../widgets/feedback_button.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -16,10 +19,9 @@ class SettingsScreen extends StatefulWidget {
 }
 
 class _SettingsScreenState extends State<SettingsScreen> {
-  final _icsController = TextEditingController();
-  bool _icsSaved = false;
-  bool _icsTesting = false;
-  String? _icsError;
+  List<IcsSource> _sources = [];
+  bool _sourcesLoading = true;
+  bool _outlookAllowTodoDrop = false;
 
   List<String> _blockingAllDayCats = ['vacation'];
   int _daylightSunrise = 6;
@@ -28,14 +30,18 @@ class _SettingsScreenState extends State<SettingsScreen> {
   @override
   void initState() {
     super.initState();
-    _loadIcsUrl();
+    _loadSources();
     _loadConstraintSettings();
   }
 
-  @override
-  void dispose() {
-    _icsController.dispose();
-    super.dispose();
+  Future<void> _loadSources() async {
+    final sources = await IcsService.getSources();
+    final outlook = await IcsService.getOutlookAllowTodoDrop();
+    if (mounted) setState(() {
+      _sources = sources;
+      _sourcesLoading = false;
+      _outlookAllowTodoDrop = outlook;
+    });
   }
 
   Future<void> _loadConstraintSettings() async {
@@ -54,89 +60,203 @@ class _SettingsScreenState extends State<SettingsScreen> {
     await prefs.setStringList('blocking_allday_cats', _blockingAllDayCats);
   }
 
-  Future<void> _loadIcsUrl() async {
-    final url = await IcsService.getSavedUrl();
-    if (mounted && url != null) {
-      setState(() {
-        _icsController.text = url;
-        _icsSaved = url.isNotEmpty;
-      });
-    }
+  Future<void> _toggleIcsAllowTodoDrop(IcsSource src, bool value) async {
+    final sources = await IcsService.getSources();
+    final updated = sources.map((s) =>
+        s.id == src.id ? s.copyWith(allowTodoDrop: value) : s).toList();
+    await IcsService.saveSources(updated);
+    await _loadSources();
   }
 
-  Future<void> _saveIcsUrl() async {
-    final url = _icsController.text.trim();
-    if (url.isEmpty) return;
-    setState(() { _icsTesting = true; _icsError = null; });
+  Future<void> _toggleOutlookAllowTodoDrop(bool value) async {
+    await IcsService.setOutlookAllowTodoDrop(value);
+    setState(() => _outlookAllowTodoDrop = value);
+  }
 
-    // URL speichern, dann testen
-    await IcsService.saveUrl(url);
-    final testEvents = await IcsService.fetchEvents();
-
-    if (mounted) {
-      setState(() {
-        _icsTesting = false;
-        if (testEvents.isEmpty && url.isNotEmpty) {
-          _icsError = 'Keine Events gefunden – URL prüfen';
-          _icsSaved = false;
-        } else {
-          _icsSaved = true;
-          _icsError = null;
-        }
-      });
-      if (_icsSaved) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('${testEvents.length} Termine geladen'),
-            backgroundColor: AppColors.started,
+  Future<void> _addUrl() async {
+    final nameCtrl = TextEditingController();
+    final urlCtrl = TextEditingController();
+    final result = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppColors.surface,
+        title: const Text('URL hinzufügen',
+            style: TextStyle(color: AppColors.textPrimary)),
+        content: SizedBox(
+          width: double.maxFinite,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(
+                controller: nameCtrl,
+                style: const TextStyle(color: AppColors.textPrimary, fontSize: 13),
+                decoration: _inputDeco('Name (z.B. Outlook)'),
+              ),
+              const SizedBox(height: 10),
+              TextField(
+                controller: urlCtrl,
+                style: const TextStyle(color: AppColors.textPrimary, fontSize: 12),
+                decoration: _inputDeco('webcal://outlook.live.com/...'),
+              ),
+            ],
           ),
-        );
-      }
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Abbrechen',
+                style: TextStyle(color: AppColors.textSecondary)),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: ElevatedButton.styleFrom(
+                backgroundColor: AppColors.primary,
+                foregroundColor: Colors.white),
+            child: const Text('Hinzufügen'),
+          ),
+        ],
+      ),
+    );
+    if (result != true) return;
+    final url = urlCtrl.text.trim();
+    if (url.isEmpty) return;
+    setState(() => _sourcesLoading = true);
+    await IcsService.addUrl(url, nameCtrl.text.trim());
+    await _loadSources();
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Kalender hinzugefügt'),
+            backgroundColor: AppColors.started),
+      );
     }
   }
 
-  Future<void> _clearIcsUrl() async {
-    await IcsService.clearUrl();
+  Future<void> _addFile() async {
+    final result = await FilePicker.platform.pickFiles(
+      type: FileType.custom,
+      allowedExtensions: ['ics'],
+    );
+    if (result == null || result.files.isEmpty) return;
+    final path = result.files.single.path;
+    if (path == null) return;
+    if (!mounted) return;
+
+    final nameCtrl = TextEditingController(
+        text: result.files.single.name.replaceAll('.ics', ''));
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppColors.surface,
+        title: const Text('Datei hinzufügen',
+            style: TextStyle(color: AppColors.textPrimary)),
+        content: SizedBox(
+          width: double.maxFinite,
+          child: TextField(
+            controller: nameCtrl,
+            style: const TextStyle(color: AppColors.textPrimary, fontSize: 13),
+            decoration: _inputDeco('Name'),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Abbrechen',
+                style: TextStyle(color: AppColors.textSecondary)),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: ElevatedButton.styleFrom(
+                backgroundColor: AppColors.primary,
+                foregroundColor: Colors.white),
+            child: const Text('Hinzufügen'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    setState(() => _sourcesLoading = true);
+    await IcsService.addFile(path, nameCtrl.text.trim());
+    await _loadSources();
     if (mounted) {
-      setState(() {
-        _icsController.clear();
-        _icsSaved = false;
-        _icsError = null;
-      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('ICS-Datei hinzugefügt'),
+            backgroundColor: AppColors.started),
+      );
     }
   }
+
+  static const List<int> _presetColors = [
+    0xFF6C63FF, 0xFF448AFF, 0xFF00BCD4, 0xFF4CAF50,
+    0xFF8BC34A, 0xFFFFD740, 0xFFFF9800, 0xFFFF5252,
+    0xFFE040FB, 0xFFFF4081, 0xFF795548, 0xFF607D8B,
+  ];
+
+  Future<void> _pickColor(IcsSource src) async {
+    final picked = await showDialog<int>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppColors.surface,
+        title: Text('Farbe für ${src.name}',
+            style: const TextStyle(color: AppColors.textPrimary, fontSize: 15)),
+        content: Wrap(
+          spacing: 10,
+          runSpacing: 10,
+          children: _presetColors.map((c) {
+            final isSelected = src.color == c;
+            return GestureDetector(
+              onTap: () => Navigator.pop(ctx, c),
+              child: Container(
+                width: 36,
+                height: 36,
+                decoration: BoxDecoration(
+                  color: Color(c),
+                  shape: BoxShape.circle,
+                  border: isSelected
+                      ? Border.all(color: Colors.white, width: 2.5)
+                      : null,
+                ),
+              ),
+            );
+          }).toList(),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Abbrechen',
+                style: TextStyle(color: AppColors.textSecondary)),
+          ),
+        ],
+      ),
+    );
+    if (picked == null) return;
+    final sources = await IcsService.getSources();
+    final updated = sources.map((s) =>
+        s.id == src.id ? s.copyWith(color: picked) : s).toList();
+    await IcsService.saveSources(updated);
+    await _loadSources();
+  }
+
+  Future<void> _removeSource(String id) async {
+    await IcsService.removeSource(id);
+    await _loadSources();
+  }
+
+  InputDecoration _inputDeco(String hint) => InputDecoration(
+        hintText: hint,
+        hintStyle:
+            const TextStyle(color: AppColors.textDisabled, fontSize: 12),
+        filled: true,
+        fillColor: AppColors.background,
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(8),
+          borderSide: BorderSide.none,
+        ),
+      );
 
   Future<void> _testNotification() async {
     await ReminderService.showTestNotification(
       'Test-Erinnerung',
       'Die Benachrichtigungen funktionieren korrekt!',
-    );
-  }
-
-  void _showIcsHelp() {
-    showDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: AppColors.surface,
-        title: const Text('Outlook ICS-Link',
-            style: TextStyle(color: AppColors.textPrimary)),
-        content: const Text(
-          'So findest du deinen Outlook ICS-Link:\n\n'
-          '1. Outlook im Browser öffnen\n'
-          '2. Kalender-Symbol klicken\n'
-          '3. Einstellungen → Kalender freigeben\n'
-          '4. Kalender auswählen → "Freigeben"\n'
-          '5. "ICS-Link" kopieren\n\n'
-          'Der Link beginnt mit webcal:// oder https://',
-          style: TextStyle(color: AppColors.textSecondary, fontSize: 13),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text('OK', style: TextStyle(color: AppColors.primary)),
-          ),
-        ],
-      ),
     );
   }
 
@@ -149,6 +269,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
         title: const Text('Einstellungen',
             style: TextStyle(
                 color: AppColors.textPrimary, fontWeight: FontWeight.bold)),
+        actions: const [FeedbackIconButton()],
       ),
       body: ListView(
         padding: const EdgeInsets.all(16),
@@ -175,91 +296,140 @@ class _SettingsScreenState extends State<SettingsScreen> {
           ),
           const SizedBox(height: 16),
 
-          // Outlook ICS
+          // ICS Kalender
           _Section(
-            title: 'Outlook Kalender (ICS)',
+            title: 'Kalender (ICS)',
             children: [
+              if (_sourcesLoading)
+                const Padding(
+                  padding: EdgeInsets.all(16),
+                  child: Center(
+                      child: CircularProgressIndicator(
+                          color: AppColors.primary, strokeWidth: 2)),
+                )
+              else if (_sources.isEmpty)
+                const Padding(
+                  padding: EdgeInsets.fromLTRB(16, 12, 16, 4),
+                  child: Text('Noch kein Kalender hinzugefügt',
+                      style: TextStyle(
+                          color: AppColors.textDisabled, fontSize: 13)),
+                )
+              else
+                ..._sources.map((src) {
+                  final srcColor = src.color != null
+                      ? Color(src.color!)
+                      : AppColors.primary;
+                  return ListTile(
+                    leading: GestureDetector(
+                      onTap: () => _pickColor(src),
+                      child: Container(
+                        width: 28,
+                        height: 28,
+                        decoration: BoxDecoration(
+                          color: srcColor,
+                          shape: BoxShape.circle,
+                          border: Border.all(
+                              color: Colors.white24, width: 1),
+                        ),
+                        child: Icon(
+                          src.isFile
+                              ? Icons.insert_drive_file_outlined
+                              : Icons.calendar_month_outlined,
+                          color: Colors.white,
+                          size: 14,
+                        ),
+                      ),
+                    ),
+                    title: Text(src.name,
+                        style: const TextStyle(
+                            color: AppColors.textPrimary, fontSize: 14)),
+                    subtitle: Text(
+                      src.url,
+                      style: const TextStyle(
+                          color: AppColors.textSecondary, fontSize: 10),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    trailing: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Tooltip(
+                          message: 'Todo-Drop erlauben',
+                          child: Switch(
+                            value: src.allowTodoDrop,
+                            onChanged: (v) => _toggleIcsAllowTodoDrop(src, v),
+                            activeColor: AppColors.primary,
+                            materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                          ),
+                        ),
+                        IconButton(
+                          icon: const Icon(Icons.delete_outline,
+                              color: Colors.redAccent, size: 20),
+                          onPressed: () => _removeSource(src.id),
+                          tooltip: 'Entfernen',
+                        ),
+                      ],
+                    ),
+                  );
+                }),
+              const Divider(height: 1, color: AppColors.background),
               Padding(
-                padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+                padding: const EdgeInsets.fromLTRB(12, 8, 12, 12),
                 child: Row(
                   children: [
-                    const Icon(Icons.calendar_month_outlined,
-                        color: AppColors.primary, size: 20),
+                    Expanded(
+                      child: OutlinedButton.icon(
+                        onPressed: _addUrl,
+                        icon: const Icon(Icons.link, size: 16),
+                        label: const Text('URL', style: TextStyle(fontSize: 13)),
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: AppColors.primary,
+                          side: const BorderSide(color: AppColors.primary),
+                          padding: const EdgeInsets.symmetric(vertical: 8),
+                          shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(8)),
+                        ),
+                      ),
+                    ),
                     const SizedBox(width: 8),
-                    const Expanded(
-                      child: Text(
-                        'ICS-Kalender-Link',
-                        style: TextStyle(
-                            color: AppColors.textPrimary, fontSize: 14),
+                    Expanded(
+                      child: OutlinedButton.icon(
+                        onPressed: _addFile,
+                        icon: const Icon(Icons.upload_file, size: 16),
+                        label: const Text('Datei', style: TextStyle(fontSize: 13)),
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: AppColors.primary,
+                          side: const BorderSide(color: AppColors.primary),
+                          padding: const EdgeInsets.symmetric(vertical: 8),
+                          shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(8)),
+                        ),
                       ),
-                    ),
-                    IconButton(
-                      icon: const Icon(Icons.help_outline,
-                          color: AppColors.textSecondary, size: 18),
-                      onPressed: _showIcsHelp,
-                      padding: EdgeInsets.zero,
-                      constraints: const BoxConstraints(),
                     ),
                   ],
                 ),
               ),
-              Padding(
-                padding: const EdgeInsets.fromLTRB(16, 0, 16, 4),
-                child: TextField(
-                  controller: _icsController,
-                  style: const TextStyle(
-                      color: AppColors.textPrimary, fontSize: 12),
-                  decoration: InputDecoration(
-                    hintText: 'webcal://outlook.live.com/owa/calendar/...',
-                    hintStyle: const TextStyle(
-                        color: AppColors.textDisabled, fontSize: 12),
-                    filled: true,
-                    fillColor: AppColors.background,
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(8),
-                      borderSide: BorderSide.none,
-                    ),
-                    errorText: _icsError,
-                    suffixIcon: _icsSaved
-                        ? const Icon(Icons.check_circle,
-                            color: AppColors.started, size: 18)
-                        : null,
-                  ),
-                ),
-              ),
-              Padding(
-                padding: const EdgeInsets.fromLTRB(16, 4, 16, 12),
-                child: Row(
-                  children: [
-                    if (_icsSaved)
-                      TextButton(
-                        onPressed: _clearIcsUrl,
-                        child: const Text('Entfernen',
-                            style: TextStyle(
-                                color: Colors.redAccent, fontSize: 13)),
-                      ),
-                    const Spacer(),
-                    ElevatedButton(
-                      onPressed: _icsTesting ? null : _saveIcsUrl,
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: AppColors.primary,
-                        foregroundColor: Colors.white,
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 20, vertical: 8),
-                        shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(8)),
-                      ),
-                      child: _icsTesting
-                          ? const SizedBox(
-                              width: 16,
-                              height: 16,
-                              child: CircularProgressIndicator(
-                                  strokeWidth: 2, color: Colors.white))
-                          : const Text('Speichern & Testen',
-                              style: TextStyle(fontSize: 13)),
-                    ),
-                  ],
-                ),
+            ],
+          ),
+          const SizedBox(height: 16),
+
+          // Outlook
+          _Section(
+            title: 'Outlook',
+            children: [
+              SwitchListTile(
+                secondary: const Icon(Icons.mail_outline,
+                    color: AppColors.primary, size: 22),
+                title: const Text('Todo-Drop erlauben',
+                    style: TextStyle(
+                        color: AppColors.textPrimary, fontSize: 14)),
+                subtitle: const Text(
+                    'Todos in Outlook-Termine ziehen erlauben',
+                    style: TextStyle(
+                        color: AppColors.textSecondary, fontSize: 12)),
+                value: _outlookAllowTodoDrop,
+                onChanged: _toggleOutlookAllowTodoDrop,
+                activeColor: AppColors.primary,
               ),
             ],
           ),

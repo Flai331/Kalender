@@ -24,6 +24,11 @@ class CalendarEvent {
   final DateTime? actualEnd;
   final int pausedMinutes;
   final DateTime? pauseStart;
+  final int? calendarColor; // ARGB int für ICS-Events, null = Kategorie-Farbe
+  final String? address;
+  final int travelMinutesBefore;
+  final int travelMinutesAfter;
+  final String? icsSourceId;
 
   CalendarEvent({
     required this.id,
@@ -43,6 +48,11 @@ class CalendarEvent {
     this.actualEnd,
     this.pausedMinutes = 0,
     this.pauseStart,
+    this.calendarColor,
+    this.address,
+    this.travelMinutesBefore = 0,
+    this.travelMinutesAfter = 0,
+    this.icsSourceId,
   });
 
   Duration get scheduledDuration => endTime.difference(startTime);
@@ -54,6 +64,8 @@ class CalendarEvent {
     final diff = scheduled.difference(actual).inMinutes;
     return diff > 0 ? diff : 0;
   }
+
+  static const _unset = Object();
 
   CalendarEvent copyWith({
     String? id,
@@ -73,6 +85,11 @@ class CalendarEvent {
     DateTime? actualEnd,
     int? pausedMinutes,
     DateTime? pauseStart,
+    int? calendarColor,
+    Object? address = _unset,
+    int? travelMinutesBefore,
+    int? travelMinutesAfter,
+    Object? icsSourceId = _unset,
   }) {
     return CalendarEvent(
       id: id ?? this.id,
@@ -92,6 +109,11 @@ class CalendarEvent {
       actualEnd: actualEnd ?? this.actualEnd,
       pausedMinutes: pausedMinutes ?? this.pausedMinutes,
       pauseStart: pauseStart ?? this.pauseStart,
+      calendarColor: calendarColor ?? this.calendarColor,
+      address: address == _unset ? this.address : address as String?,
+      travelMinutesBefore: travelMinutesBefore ?? this.travelMinutesBefore,
+      travelMinutesAfter: travelMinutesAfter ?? this.travelMinutesAfter,
+      icsSourceId: icsSourceId == _unset ? this.icsSourceId : icsSourceId as String?,
     );
   }
 
@@ -113,6 +135,10 @@ class CalendarEvent {
         'actualEnd': actualEnd?.toUtc().toIso8601String(),
         'pausedMinutes': pausedMinutes,
         'pauseStart': pauseStart?.toUtc().toIso8601String(),
+        'address': address,
+        'travelMinutesBefore': travelMinutesBefore,
+        'travelMinutesAfter': travelMinutesAfter,
+        'icsSourceId': icsSourceId,
       };
 
   factory CalendarEvent.fromJson(Map<String, dynamic> json) => CalendarEvent(
@@ -148,6 +174,10 @@ class CalendarEvent {
         pauseStart: json['pauseStart'] != null
             ? DateTime.parse(json['pauseStart'] as String).toLocal()
             : null,
+        address: json['address'] as String?,
+        travelMinutesBefore: json['travelMinutesBefore'] as int? ?? 0,
+        travelMinutesAfter: json['travelMinutesAfter'] as int? ?? 0,
+        icsSourceId: json['icsSourceId'] as String?,
       );
 
   // Hilfsmethode: TimeOfDay aus startTime

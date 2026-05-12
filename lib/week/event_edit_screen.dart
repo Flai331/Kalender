@@ -3,6 +3,7 @@ import 'package:uuid/uuid.dart';
 import '../app_colors.dart';
 import '../models/calendar_event.dart';
 import '../services/supabase_service.dart';
+import '../widgets/feedback_button.dart';
 
 const _uuid = Uuid();
 
@@ -18,11 +19,14 @@ class EventEditScreen extends StatefulWidget {
 class _EventEditScreenState extends State<EventEditScreen> {
   late TextEditingController _titleCtrl;
   late TextEditingController _descCtrl;
+  late TextEditingController _addressCtrl;
   late DateTime _startTime;
   late DateTime _endTime;
   late EventCategory _category;
   late bool _isFixed;
   late RepeatType _repeatType;
+  late int _travelBefore;
+  late int _travelAfter;
 
   bool get _isNew => widget.event == null;
 
@@ -32,11 +36,14 @@ class _EventEditScreenState extends State<EventEditScreen> {
     final e = widget.event;
     _titleCtrl = TextEditingController(text: e?.title ?? '');
     _descCtrl = TextEditingController(text: e?.description ?? '');
+    _addressCtrl = TextEditingController(text: e?.address ?? '');
     _startTime = e?.startTime ?? _roundToNext30();
     _endTime = e?.endTime ?? _startTime.add(const Duration(hours: 1));
     _category = e?.category ?? EventCategory.personal;
     _isFixed = e?.isFixed ?? false;
     _repeatType = e?.repeatType ?? RepeatType.none;
+    _travelBefore = e?.travelMinutesBefore ?? 0;
+    _travelAfter = e?.travelMinutesAfter ?? 0;
   }
 
   DateTime _roundToNext30() {
@@ -90,6 +97,9 @@ class _EventEditScreenState extends State<EventEditScreen> {
       isFixed: _isFixed,
       repeatType: _repeatType,
       source: 'app',
+      address: _addressCtrl.text.trim().isEmpty ? null : _addressCtrl.text.trim(),
+      travelMinutesBefore: _travelBefore,
+      travelMinutesAfter: _travelAfter,
     );
     await SupabaseService.saveEvent(event);
     if (mounted) Navigator.pop(context);
@@ -108,6 +118,7 @@ class _EventEditScreenState extends State<EventEditScreen> {
           onPressed: () => Navigator.pop(context),
         ),
         actions: [
+          const FeedbackIconButton(),
           TextButton(
             onPressed: _save,
             child: const Text('Speichern',
@@ -130,6 +141,25 @@ class _EventEditScreenState extends State<EventEditScreen> {
             label: 'Beschreibung',
             hint: 'Optional...',
             maxLines: 3,
+          ),
+          const SizedBox(height: 12),
+          _Field(
+            controller: _addressCtrl,
+            label: 'Adresse',
+            hint: 'Ort / Adresse (optional)...',
+            prefixIcon: Icons.location_on_outlined,
+          ),
+          const SizedBox(height: 12),
+          _TravelTimePicker(
+            label: 'Anfahrt',
+            minutes: _travelBefore,
+            onChanged: (v) => setState(() => _travelBefore = v),
+          ),
+          const SizedBox(height: 8),
+          _TravelTimePicker(
+            label: 'Abfahrt',
+            minutes: _travelAfter,
+            onChanged: (v) => setState(() => _travelAfter = v),
           ),
           const SizedBox(height: 16),
           _SectionLabel('Zeitraum'),
@@ -193,6 +223,7 @@ class _EventEditScreenState extends State<EventEditScreen> {
   void dispose() {
     _titleCtrl.dispose();
     _descCtrl.dispose();
+    _addressCtrl.dispose();
     super.dispose();
   }
 }
@@ -202,12 +233,14 @@ class _Field extends StatelessWidget {
   final String label;
   final String hint;
   final int maxLines;
+  final IconData? prefixIcon;
 
   const _Field({
     required this.controller,
     required this.label,
     required this.hint,
     this.maxLines = 1,
+    this.prefixIcon,
   });
 
   @override
@@ -221,6 +254,9 @@ class _Field extends StatelessWidget {
         hintText: hint,
         labelStyle: const TextStyle(color: AppColors.textSecondary),
         hintStyle: const TextStyle(color: AppColors.textDisabled),
+        prefixIcon: prefixIcon != null
+            ? Icon(prefixIcon, color: AppColors.textSecondary, size: 18)
+            : null,
         filled: true,
         fillColor: AppColors.card,
         border: OutlineInputBorder(
@@ -228,6 +264,75 @@ class _Field extends StatelessWidget {
           borderSide: BorderSide.none,
         ),
       ),
+    );
+  }
+}
+
+class _TravelTimePicker extends StatelessWidget {
+  final String label;
+  final int minutes;
+  final ValueChanged<int> onChanged;
+
+  const _TravelTimePicker({
+    required this.label,
+    required this.minutes,
+    required this.onChanged,
+  });
+
+  static const _options = [0, 5, 10, 15, 20, 30, 45, 60];
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        Icon(
+          label == 'Anfahrt' ? Icons.directions_car_outlined : Icons.directions_car,
+          size: 16,
+          color: AppColors.textSecondary,
+        ),
+        const SizedBox(width: 8),
+        Text(label,
+            style: const TextStyle(color: AppColors.textSecondary, fontSize: 13)),
+        const SizedBox(width: 12),
+        Expanded(
+          child: SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: Row(
+              children: _options.map((m) {
+                final isSelected = minutes == m;
+                final lbl = m == 0 ? 'Keine' : '${m}min';
+                return Padding(
+                  padding: const EdgeInsets.only(right: 6),
+                  child: GestureDetector(
+                    onTap: () => onChanged(m),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                      decoration: BoxDecoration(
+                        color: isSelected
+                            ? AppColors.primary.withOpacity(0.2)
+                            : AppColors.card,
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(
+                          color: isSelected ? AppColors.primary : AppColors.divider,
+                          width: 1,
+                        ),
+                      ),
+                      child: Text(
+                        lbl,
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: isSelected ? AppColors.primary : AppColors.textSecondary,
+                          fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
+                        ),
+                      ),
+                    ),
+                  ),
+                );
+              }).toList(),
+            ),
+          ),
+        ),
+      ],
     );
   }
 }

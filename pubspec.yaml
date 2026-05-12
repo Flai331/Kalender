@@ -35,6 +35,9 @@ dependencies:
   # Location (for daylight calculation)
   geolocator: ^13.0.0
 
+  # File picking
+  file_picker: ^8.1.2
+
   # Utils
   intl: ^0.20.0
   uuid: ^4.5.1

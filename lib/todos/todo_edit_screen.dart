@@ -4,6 +4,7 @@ import '../app_colors.dart';
 import '../models/todo.dart';
 import '../models/calendar_event.dart';
 import '../services/supabase_service.dart';
+import '../widgets/feedback_button.dart';
 
 const _uuid = Uuid();
 
@@ -19,10 +20,15 @@ class TodoEditScreen extends StatefulWidget {
 class _TodoEditScreenState extends State<TodoEditScreen> {
   late TextEditingController _titleCtrl;
   late TextEditingController _descCtrl;
+  late TextEditingController _addressCtrl;
   late int _estimatedMinutes;
   late RepeatType _repeatType;
   late bool _isFixed;
   late String _category;
+  late int _travelBefore;
+  late int _travelAfter;
+  int? _windowStartHour;
+  int? _windowEndHour;
   late TodoContextMode _contextMode;
   EventCategory? _requiredCategory;
   late List<int> _allowedWeekdays;
@@ -36,10 +42,15 @@ class _TodoEditScreenState extends State<TodoEditScreen> {
     final t = widget.todo;
     _titleCtrl = TextEditingController(text: t?.title ?? '');
     _descCtrl = TextEditingController(text: t?.description ?? '');
+    _addressCtrl = TextEditingController(text: t?.address ?? '');
     _estimatedMinutes = t?.estimatedMinutes ?? 30;
     _repeatType = t?.repeatType ?? RepeatType.none;
     _isFixed = t?.isFixed ?? false;
     _category = t?.category ?? 'personal';
+    _travelBefore = t?.travelMinutesBefore ?? 0;
+    _travelAfter = t?.travelMinutesAfter ?? 0;
+    _windowStartHour = t?.dueWindowStartHour;
+    _windowEndHour = t?.dueWindowEndHour;
     _contextMode = t?.contextMode ?? TodoContextMode.anyTime;
     _requiredCategory = t?.requiredCategory;
     _allowedWeekdays = List.from(t?.allowedWeekdays ?? []);
@@ -61,7 +72,6 @@ class _TodoEditScreenState extends State<TodoEditScreen> {
       scheduledStartHour: widget.todo?.scheduledStartHour,
       scheduledStartMinute: widget.todo?.scheduledStartMinute,
       status: widget.todo?.status ?? TodoStatus.pending,
-      // Constraint-Felder erhalten/setzen
       isCompleted: widget.todo?.isCompleted ?? false,
       actualStart: widget.todo?.actualStart,
       actualEnd: widget.todo?.actualEnd,
@@ -69,11 +79,11 @@ class _TodoEditScreenState extends State<TodoEditScreen> {
       pauseStart: widget.todo?.pauseStart,
       outlookTaskId: widget.todo?.outlookTaskId,
       outlookListId: widget.todo?.outlookListId,
-      address: widget.todo?.address,
-      travelMinutesBefore: widget.todo?.travelMinutesBefore ?? 0,
-      travelMinutesAfter: widget.todo?.travelMinutesAfter ?? 0,
-      dueWindowStartHour: widget.todo?.dueWindowStartHour,
-      dueWindowEndHour: widget.todo?.dueWindowEndHour,
+      address: _addressCtrl.text.trim().isEmpty ? null : _addressCtrl.text.trim(),
+      travelMinutesBefore: _travelBefore,
+      travelMinutesAfter: _travelAfter,
+      dueWindowStartHour: _windowStartHour,
+      dueWindowEndHour: _windowEndHour,
       contextMode: _contextMode,
       requiredCategory: _requiredCategory,
       allowedWeekdays: _allowedWeekdays.isEmpty ? null : _allowedWeekdays,
@@ -128,6 +138,7 @@ class _TodoEditScreenState extends State<TodoEditScreen> {
               icon: const Icon(Icons.delete_outline, color: Colors.redAccent),
               onPressed: _delete,
             ),
+          const FeedbackIconButton(),
           TextButton(
             onPressed: _save,
             child: const Text('Speichern',
@@ -147,6 +158,37 @@ class _TodoEditScreenState extends State<TodoEditScreen> {
               label: 'Beschreibung',
               hint: 'Optional...',
               maxLines: 3),
+          const SizedBox(height: 12),
+          _Field(
+            controller: _addressCtrl,
+            label: 'Adresse',
+            hint: 'Ort / Adresse (optional)...',
+            prefixIcon: Icons.location_on_outlined,
+          ),
+          const SizedBox(height: 12),
+          _TravelTimePicker(
+            label: 'Anfahrt',
+            minutes: _travelBefore,
+            onChanged: (v) => setState(() => _travelBefore = v),
+          ),
+          const SizedBox(height: 8),
+          _TravelTimePicker(
+            label: 'Abfahrt',
+            minutes: _travelAfter,
+            onChanged: (v) => setState(() => _travelAfter = v),
+          ),
+          const SizedBox(height: 16),
+
+          // Erledigungszeitraum
+          _SectionLabel('Erledigungszeitraum (optional)'),
+          _WindowPicker(
+            startHour: _windowStartHour,
+            endHour: _windowEndHour,
+            onChanged: (s, e) => setState(() {
+              _windowStartHour = s;
+              _windowEndHour = e;
+            }),
+          ),
           const SizedBox(height: 16),
 
           // Zeitansatz
@@ -279,6 +321,7 @@ class _TodoEditScreenState extends State<TodoEditScreen> {
   void dispose() {
     _titleCtrl.dispose();
     _descCtrl.dispose();
+    _addressCtrl.dispose();
     super.dispose();
   }
 }
@@ -290,12 +333,14 @@ class _Field extends StatelessWidget {
   final String label;
   final String hint;
   final int maxLines;
+  final IconData? prefixIcon;
 
   const _Field({
     required this.controller,
     required this.label,
     required this.hint,
     this.maxLines = 1,
+    this.prefixIcon,
   });
 
   @override
@@ -308,6 +353,9 @@ class _Field extends StatelessWidget {
           hintText: hint,
           labelStyle: const TextStyle(color: AppColors.textSecondary),
           hintStyle: const TextStyle(color: AppColors.textDisabled),
+          prefixIcon: prefixIcon != null
+              ? Icon(prefixIcon, color: AppColors.textSecondary, size: 18)
+              : null,
           filled: true,
           fillColor: AppColors.card,
           border: OutlineInputBorder(
@@ -316,6 +364,75 @@ class _Field extends StatelessWidget {
           ),
         ),
       );
+}
+
+class _TravelTimePicker extends StatelessWidget {
+  final String label;
+  final int minutes;
+  final ValueChanged<int> onChanged;
+
+  const _TravelTimePicker({
+    required this.label,
+    required this.minutes,
+    required this.onChanged,
+  });
+
+  static const _options = [0, 5, 10, 15, 20, 30, 45, 60];
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        Icon(
+          label == 'Anfahrt' ? Icons.directions_car_outlined : Icons.directions_car,
+          size: 16,
+          color: AppColors.textSecondary,
+        ),
+        const SizedBox(width: 8),
+        Text(label,
+            style: const TextStyle(color: AppColors.textSecondary, fontSize: 13)),
+        const SizedBox(width: 12),
+        Expanded(
+          child: SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: Row(
+              children: _options.map((m) {
+                final isSelected = minutes == m;
+                final lbl = m == 0 ? 'Keine' : '${m}min';
+                return Padding(
+                  padding: const EdgeInsets.only(right: 6),
+                  child: GestureDetector(
+                    onTap: () => onChanged(m),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                      decoration: BoxDecoration(
+                        color: isSelected
+                            ? AppColors.primary.withOpacity(0.2)
+                            : AppColors.card,
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(
+                          color: isSelected ? AppColors.primary : AppColors.divider,
+                          width: 1,
+                        ),
+                      ),
+                      child: Text(
+                        lbl,
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: isSelected ? AppColors.primary : AppColors.textSecondary,
+                          fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
+                        ),
+                      ),
+                    ),
+                  ),
+                );
+              }).toList(),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
 }
 
 class _SectionLabel extends StatelessWidget {
@@ -333,7 +450,7 @@ class _SectionLabel extends StatelessWidget {
       );
 }
 
-class _DurationPicker extends StatelessWidget {
+class _DurationPicker extends StatefulWidget {
   final int minutes;
   final ValueChanged<int> onChanged;
 
@@ -342,27 +459,103 @@ class _DurationPicker extends StatelessWidget {
   static const _options = [15, 30, 45, 60, 90, 120, 180, 240];
 
   @override
+  State<_DurationPicker> createState() => _DurationPickerState();
+}
+
+class _DurationPickerState extends State<_DurationPicker> {
+  late TextEditingController _ctrl;
+
+  bool get _isCustom => !_DurationPicker._options.contains(widget.minutes);
+
+  @override
+  void initState() {
+    super.initState();
+    _ctrl = TextEditingController(text: _isCustom ? '${widget.minutes}' : '');
+  }
+
+  @override
+  void dispose() {
+    _ctrl.dispose();
+    super.dispose();
+  }
+
+  void _onCustomSubmit(String val) {
+    final parsed = int.tryParse(val.trim());
+    if (parsed != null && parsed > 0) widget.onChanged(parsed);
+  }
+
+  @override
   Widget build(BuildContext context) {
-    return Wrap(
-      spacing: 8,
-      children: _options.map((m) {
-        final isSelected = minutes == m;
-        final label = m < 60
-            ? '${m}min'
-            : '${m ~/ 60}h${m % 60 > 0 ? '${m % 60}m' : ''}';
-        return ChoiceChip(
-          label: Text(label),
-          selected: isSelected,
-          onSelected: (_) => onChanged(m),
-          selectedColor: AppColors.primary.withOpacity(0.3),
-          backgroundColor: AppColors.card,
-          labelStyle: TextStyle(
-              color: isSelected ? AppColors.primary : AppColors.textSecondary,
-              fontSize: 13),
-          side: BorderSide(
-              color: isSelected ? AppColors.primary : AppColors.divider),
-        );
-      }).toList(),
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Wrap(
+          spacing: 8,
+          runSpacing: 4,
+          children: _DurationPicker._options.map((m) {
+            final isSelected = widget.minutes == m;
+            final label = m < 60
+                ? '${m}min'
+                : '${m ~/ 60}h${m % 60 > 0 ? '${m % 60}m' : ''}';
+            return ChoiceChip(
+              label: Text(label),
+              selected: isSelected,
+              onSelected: (_) {
+                _ctrl.clear();
+                widget.onChanged(m);
+              },
+              selectedColor: AppColors.primary.withOpacity(0.3),
+              backgroundColor: AppColors.card,
+              labelStyle: TextStyle(
+                  color: isSelected ? AppColors.primary : AppColors.textSecondary,
+                  fontSize: 13),
+              side: BorderSide(
+                  color: isSelected ? AppColors.primary : AppColors.divider),
+            );
+          }).toList(),
+        ),
+        const SizedBox(height: 10),
+        SizedBox(
+          width: 140,
+          child: TextField(
+            controller: _ctrl,
+            keyboardType: TextInputType.number,
+            style: const TextStyle(color: AppColors.textPrimary, fontSize: 13),
+            decoration: InputDecoration(
+              hintText: 'Eigene Minuten',
+              hintStyle: const TextStyle(color: AppColors.textDisabled, fontSize: 13),
+              suffixText: 'min',
+              suffixStyle: const TextStyle(color: AppColors.textSecondary, fontSize: 13),
+              filled: true,
+              fillColor: _isCustom
+                  ? AppColors.primary.withOpacity(0.12)
+                  : AppColors.card,
+              contentPadding:
+                  const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(10),
+                borderSide: BorderSide(
+                    color: _isCustom ? AppColors.primary : AppColors.divider),
+              ),
+              enabledBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(10),
+                borderSide: BorderSide(
+                    color: _isCustom ? AppColors.primary : AppColors.divider),
+              ),
+              focusedBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(10),
+                borderSide:
+                    const BorderSide(color: AppColors.primary, width: 1.5),
+              ),
+            ),
+            onSubmitted: _onCustomSubmit,
+            onChanged: (v) {
+              final parsed = int.tryParse(v.trim());
+              if (parsed != null && parsed > 0) widget.onChanged(parsed);
+            },
+          ),
+        ),
+      ],
     );
   }
 }
@@ -401,6 +594,111 @@ class _CategorySelector extends StatelessWidget {
               color: isSelected ? color : AppColors.divider, width: 1),
         );
       }).toList(),
+    );
+  }
+}
+
+class _WindowPicker extends StatelessWidget {
+  final int? startHour;
+  final int? endHour;
+  final void Function(int? start, int? end) onChanged;
+
+  const _WindowPicker({
+    required this.startHour,
+    required this.endHour,
+    required this.onChanged,
+  });
+
+  static const _hours = [6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23];
+
+  @override
+  Widget build(BuildContext context) {
+    final active = startHour != null && endHour != null;
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: AppColors.card,
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(Icons.schedule_outlined, size: 16, color: AppColors.textSecondary),
+              const SizedBox(width: 8),
+              const Expanded(
+                child: Text('Nur in bestimmtem Zeitfenster verschieben',
+                    style: TextStyle(color: AppColors.textSecondary, fontSize: 13)),
+              ),
+              Switch(
+                value: active,
+                onChanged: (v) => onChanged(v ? 8 : null, v ? 22 : null),
+                activeColor: AppColors.primary,
+                materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              ),
+            ],
+          ),
+          if (active) ...[
+            const SizedBox(height: 10),
+            Row(
+              children: [
+                const Text('Von', style: TextStyle(color: AppColors.textSecondary, fontSize: 12)),
+                const SizedBox(width: 8),
+                _HourDrop(
+                  value: startHour!,
+                  options: _hours.where((h) => h < (endHour ?? 24)).toList(),
+                  onChanged: (v) => onChanged(v, endHour),
+                ),
+                const SizedBox(width: 12),
+                const Text('Bis', style: TextStyle(color: AppColors.textSecondary, fontSize: 12)),
+                const SizedBox(width: 8),
+                _HourDrop(
+                  value: endHour!,
+                  options: _hours.where((h) => h > (startHour ?? 0)).toList(),
+                  onChanged: (v) => onChanged(startHour, v),
+                ),
+                const Text(' Uhr', style: TextStyle(color: AppColors.textSecondary, fontSize: 12)),
+              ],
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _HourDrop extends StatelessWidget {
+  final int value;
+  final List<int> options;
+  final ValueChanged<int> onChanged;
+
+  const _HourDrop({required this.value, required this.options, required this.onChanged});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: AppColors.background,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: AppColors.primary.withOpacity(0.5)),
+      ),
+      child: DropdownButtonHideUnderline(
+        child: DropdownButton<int>(
+          value: options.contains(value) ? value : options.first,
+          items: options.map((h) => DropdownMenuItem(
+            value: h,
+            child: Text('$h:00',
+                style: const TextStyle(color: AppColors.textPrimary, fontSize: 13)),
+          )).toList(),
+          onChanged: (v) { if (v != null) onChanged(v); },
+          dropdownColor: AppColors.surface,
+          isDense: true,
+          style: const TextStyle(color: AppColors.textPrimary),
+          iconEnabledColor: AppColors.primary,
+        ),
+      ),
     );
   }
 }

@@ -1,6 +1,8 @@
 import 'dart:async';
 import 'dart:math' as math;
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uuid/uuid.dart';
 import '../app_colors.dart';
@@ -11,10 +13,13 @@ import '../services/daylight_service.dart';
 import '../services/supabase_service.dart';
 import '../services/shift_service.dart';
 import '../services/ics_service.dart';
+import '../models/ics_source.dart';
 import 'week_day_column.dart';
 import '../todos/todo_status_dialog.dart';
+import '../widgets/feedback_button.dart';
 import '../week/event_status_dialog.dart';
 import '../week/event_edit_screen.dart';
+import '../todos/todo_edit_screen.dart';
 
 const _uuid = Uuid();
 
@@ -22,11 +27,13 @@ class WeekScreen extends StatefulWidget {
   const WeekScreen({super.key});
 
   @override
-  State<WeekScreen> createState() => _WeekScreenState();
+  State<WeekScreen> createState() => WeekScreenState();
 }
 
-class _WeekScreenState extends State<WeekScreen> {
+class WeekScreenState extends State<WeekScreen> {
   late DateTime _weekStart;
+  late DateTime _selectedDay;
+  bool _isDayView = false;
   final ScrollController _scrollController = ScrollController();
 
   // Daten-Streams
@@ -39,18 +46,89 @@ class _WeekScreenState extends State<WeekScreen> {
   List<Todo> _todos = [];
   List<Todo> _unscheduled = [];
   List<YearlyChecklist> _pendingChecklists = [];
+  List<IcsSource> _icsSources = [];
+  bool _outlookAllowTodoDrop = false;
 
   Timer? _nowTimer;
   List<String> _blockingAllDayCats = ['vacation'];
   final Set<String> _noSlotTodos = {};
 
-  static const double _hourHeight = 60.0;
-  static const int _startHour = 6;
-  static const int _endHour = 23;
+  double _hourHeight = 60.0;
+  double _baseHourHeight = 60.0;
+  bool _isCtrlPressed = false;
+  static const int _startHour = 0;
+  static const int _endHour = 24;
+
+  double _hourHeightForSnap(int snap) {
+    switch (snap) {
+      case 15: return 150.0;
+      case 5:  return 360.0;
+      case 1:  return 720.0;
+      default: return _baseHourHeight;
+    }
+  }
+
+  void _onSnapChanged() {
+    final dragging = SnapState.isDraggingNotifier.value;
+    final snap    = SnapState.snapNotifier.value;
+    final newH    = dragging ? _hourHeightForSnap(snap) : _baseHourHeight;
+    if (newH == _hourHeight) return;
+
+    final ratio      = newH / _hourHeight;
+    final oldOffset  = _scrollController.hasClients ? _scrollController.offset : 0.0;
+    final viewportH  = _scrollController.hasClients
+        ? _scrollController.position.viewportDimension
+        : 0.0;
+
+    setState(() => _hourHeight = newH);
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!_scrollController.hasClients) return;
+      // Viewport-Mitte bleibt auf gleicher Uhrzeit
+      final center    = oldOffset + viewportH / 2;
+      final newOffset = (center * ratio - viewportH / 2)
+          .clamp(0.0, _scrollController.position.maxScrollExtent);
+      _scrollController.jumpTo(newOffset);
+    });
+  }
+
+  bool _onKey(KeyEvent event) {
+    final isCtrl = HardwareKeyboard.instance.logicalKeysPressed.any((k) =>
+        k == LogicalKeyboardKey.controlLeft ||
+        k == LogicalKeyboardKey.controlRight);
+    if (isCtrl != _isCtrlPressed) setState(() => _isCtrlPressed = isCtrl);
+    return false; // don't consume
+  }
+
+  void _onCtrlScroll(double dy) {
+    final factor = dy > 0 ? 0.88 : 1.12;
+    final newBase = (_baseHourHeight * factor).clamp(30.0, 300.0);
+    if (newBase == _baseHourHeight) return;
+
+    final oldOffset = _scrollController.hasClients ? _scrollController.offset : 0.0;
+    final viewportH = _scrollController.hasClients
+        ? _scrollController.position.viewportDimension
+        : 0.0;
+    final ratio = newBase / _baseHourHeight;
+
+    setState(() {
+      _baseHourHeight = newBase;
+      _hourHeight = newBase;
+    });
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!_scrollController.hasClients) return;
+      final center = oldOffset + viewportH / 2;
+      final newOffset = (center * ratio - viewportH / 2)
+          .clamp(0.0, _scrollController.position.maxScrollExtent);
+      _scrollController.jumpTo(newOffset);
+    });
+  }
 
   @override
   void initState() {
     super.initState();
+    _selectedDay = DateTime.now();
     _weekStart = _getWeekStart(DateTime.now());
     _initStreams();
     _loadIcsEvents();
@@ -58,12 +136,19 @@ class _WeekScreenState extends State<WeekScreen> {
     DaylightService.loadSettings();
     DaylightService.prefetchLocation();
     _loadBlockingCats();
+    SnapState.snapNotifier.addListener(_onSnapChanged);
+    SnapState.isDraggingNotifier.addListener(_onSnapChanged);
+    HardwareKeyboard.instance.addHandler(_onKey);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _scrollToNow();
       _autoShiftOverdueTodos();
     });
+    _loadTodoDropSettings();
     _nowTimer = Timer.periodic(const Duration(minutes: 1), (_) {
-      if (mounted) _autoShiftOverdueTodos();
+      if (mounted) {
+        setState(() {});
+        _autoShiftOverdueTodos();
+      }
     });
   }
 
@@ -76,6 +161,14 @@ class _WeekScreenState extends State<WeekScreen> {
     _eventsStream = SupabaseService.eventsForWeek(start);
     _todosStream = SupabaseService.todosForWeek(start);
     _unscheduledStream = SupabaseService.unscheduledTodos();
+  }
+
+  void reload() {
+    setState(() {
+      _weekStart = _getWeekStart(_selectedDay);
+      _initStreams();
+    });
+    _loadIcsEvents();
   }
 
   Future<void> _loadIcsEvents() async {
@@ -95,7 +188,7 @@ class _WeekScreenState extends State<WeekScreen> {
   void _scrollToNow() {
     final now = DateTime.now();
     final offset =
-        ((now.hour - _startHour) * _hourHeight + now.minute).clamp(0.0, 1000.0);
+        (16.0 + (now.hour - _startHour) * _hourHeight + now.minute).clamp(0.0, double.infinity);
     if (_scrollController.hasClients) {
       _scrollController.animateTo(
         offset,
@@ -118,38 +211,100 @@ class _WeekScreenState extends State<WeekScreen> {
   void _navigateWeek(int direction) {
     setState(() {
       _weekStart = _weekStart.add(Duration(days: 7 * direction));
+      _selectedDay = _weekStart;
       _initStreams();
     });
     _loadIcsEvents();
   }
 
+  void _navigateDay(int direction) {
+    final next = _selectedDay.add(Duration(days: direction));
+    final newWeekStart = _getWeekStart(next);
+    final weekChanged = !_isSameDay(newWeekStart, _weekStart);
+    setState(() {
+      _selectedDay = next;
+      if (weekChanged) {
+        _weekStart = newWeekStart;
+        _initStreams();
+      }
+    });
+    if (weekChanged) _loadIcsEvents();
+  }
+
   List<CalendarEvent> _eventsForDay(DateTime day) {
+    final dayStart = DateTime(day.year, day.month, day.day);
+    final dayEnd = dayStart.add(const Duration(days: 1));
     final all = [..._events, ..._icsEvents];
     return all.where((e) {
-      return e.startTime.year == day.year &&
-          e.startTime.month == day.month &&
-          e.startTime.day == day.day;
+      return !e.isAllDay &&
+          e.startTime.isBefore(dayEnd) &&
+          e.endTime.isAfter(dayStart);
     }).toList()
       ..sort((a, b) => a.startTime.compareTo(b.startTime));
   }
 
+  List<CalendarEvent> _allDayEventsForDay(DateTime day) {
+    final dayStart = DateTime(day.year, day.month, day.day);
+    final all = [..._events, ..._icsEvents];
+    return all.where((e) {
+      if (!e.isAllDay) return false;
+      final eStart = DateTime(e.startTime.year, e.startTime.month, e.startTime.day);
+      // ICS DTEND is exclusive; if end == start treat as 1-day
+      var eEnd = DateTime(e.endTime.year, e.endTime.month, e.endTime.day);
+      if (!eEnd.isAfter(eStart)) eEnd = eStart.add(const Duration(days: 1));
+      return !dayStart.isBefore(eStart) && dayStart.isBefore(eEnd);
+    }).toList();
+  }
+
   List<Todo> _todosForDay(DateTime day) {
+    final dayStart = DateTime(day.year, day.month, day.day);
+    final dayEnd = dayStart.add(const Duration(days: 1));
     return _todos.where((t) {
-      if (t.scheduledDate == null) return false;
-      return t.scheduledDate!.year == day.year &&
-          t.scheduledDate!.month == day.month &&
-          t.scheduledDate!.day == day.day;
+      if (t.scheduledDate == null || t.scheduledStartHour == null) return false;
+      final todoStart = DateTime(
+        t.scheduledDate!.year, t.scheduledDate!.month, t.scheduledDate!.day,
+        t.scheduledStartHour!, t.scheduledStartMinute ?? 0,
+      );
+      final todoEnd = todoStart.add(Duration(minutes: t.estimatedMinutes));
+      return todoStart.isBefore(dayEnd) && todoEnd.isAfter(dayStart);
     }).toList();
   }
 
   Future<void> _onTodoDrop(
       Todo todo, DateTime day, int hour, int minute) async {
+    final dropStart = hour * 60 + minute;
+    final dropEnd = dropStart + todo.estimatedMinutes;
+    final dayEvents = [..._eventsForDay(day), ..._icsEvents.where((e) =>
+        e.startTime.year == day.year &&
+        e.startTime.month == day.month &&
+        e.startTime.day == day.day)];
+
+    for (final event in dayEvents) {
+      final evStart = event.startTime.hour * 60 + event.startTime.minute;
+      final evEnd = event.endTime.hour * 60 + event.endTime.minute;
+      final overlaps = dropStart < evEnd && dropEnd > evStart;
+      if (overlaps && !_todoDropAllowed(event)) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+            content: Text(
+              'Nicht erlaubt: "${event.title}" blockiert diesen Zeitraum.',
+              style: const TextStyle(color: Colors.white),
+            ),
+            backgroundColor: Colors.redAccent,
+            duration: const Duration(seconds: 3),
+          ));
+        }
+        return;
+      }
+    }
+
     final updated = todo.copyWith(
       scheduledDate: DateTime(day.year, day.month, day.day),
       scheduledStartHour: hour,
       scheduledStartMinute: minute,
     );
     await SupabaseService.saveTodo(updated);
+    if (mounted) setState(() => _initStreams());
   }
 
   Future<void> _onEventDrop(
@@ -160,14 +315,12 @@ class _WeekScreenState extends State<WeekScreen> {
 
     final updated = event.copyWith(startTime: newStart, endTime: newEnd);
     await SupabaseService.saveEvent(updated);
-
-    // ICS-Events können nicht zurückgeschrieben werden
-    if (event.source == 'outlook') return;
+    if (mounted) setState(() => _initStreams());
   }
 
   Future<void> _onEventTap(CalendarEvent event) async {
     // ICS-Event: nur Info anzeigen
-    if (event.source == 'outlook') {
+    if (event.source == 'ics') {
       if (!mounted) return;
       showDialog(
         context: context,
@@ -249,6 +402,7 @@ class _WeekScreenState extends State<WeekScreen> {
       case 'delete':
         await SupabaseService.deleteEvent(event.id);
     }
+    if (mounted) setState(() => _initStreams());
   }
 
   Future<void> _onTodoTap(Todo todo) async {
@@ -294,11 +448,23 @@ class _WeekScreenState extends State<WeekScreen> {
                 SnackBar(content: Text(msg), duration: const Duration(seconds: 2)));
           }
         }
+      case 'reopen':
+        updated = todo.copyWith(
+            status: TodoStatus.pending, actualStart: null, actualEnd: null);
+        await SupabaseService.saveTodo(updated);
       case 'unschedule':
         updated = todo.copyWith(scheduledDate: null,
             scheduledStartHour: null, scheduledStartMinute: null);
         await SupabaseService.saveTodo(updated);
+      case 'edit':
+        await Navigator.push(
+          context,
+          MaterialPageRoute(builder: (_) => TodoEditScreen(todo: todo)),
+        );
+      case 'delete':
+        await SupabaseService.deleteTodo(todo.id);
     }
+    if (mounted) setState(() => _initStreams());
   }
 
   Future<void> _addEvent() async {
@@ -313,11 +479,70 @@ class _WeekScreenState extends State<WeekScreen> {
     return Scaffold(
       backgroundColor: AppColors.background,
       appBar: _buildAppBar(),
-      body: Column(
+      body: Stack(
         children: [
-          if (_pendingChecklists.isNotEmpty) _buildChecklistBanner(),
-          Expanded(child: _buildWeekView()),
-          _buildTodoPool(),
+          Column(
+            children: [
+              if (_pendingChecklists.isNotEmpty) _buildChecklistBanner(),
+              Expanded(child: _isDayView ? _buildDayView() : _buildWeekView()),
+              _buildTodoPool(),
+            ],
+          ),
+          // Snap-Level + Zeit Overlay
+          AnimatedBuilder(
+            animation: Listenable.merge([
+              SnapState.isDraggingNotifier,
+              SnapState.snapNotifier,
+              SnapState.currentTimeNotifier,
+            ]),
+            builder: (ctx, _) {
+              if (!SnapState.isDraggingNotifier.value) return const SizedBox.shrink();
+              final snap = SnapState.snapNotifier.value;
+              final time = SnapState.currentTimeNotifier.value;
+              return Positioned(
+                bottom: 80,
+                left: 0,
+                right: 0,
+                child: Center(
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                    decoration: BoxDecoration(
+                      color: AppColors.primary,
+                      borderRadius: BorderRadius.circular(24),
+                      boxShadow: [BoxShadow(color: Colors.black38, blurRadius: 10)],
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        if (time.isNotEmpty) ...[
+                          Text(
+                            time,
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 20,
+                              fontWeight: FontWeight.w800,
+                              letterSpacing: 1,
+                            ),
+                          ),
+                          const SizedBox(width: 10),
+                          Container(width: 1, height: 20, color: Colors.white38),
+                          const SizedBox(width: 10),
+                        ],
+                        Text(
+                          snap == 1 ? '1 min' : '$snap min',
+                          style: const TextStyle(
+                            color: Colors.white70,
+                            fontSize: 13,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              );
+            },
+          ),
         ],
       ),
       floatingActionButton: FloatingActionButton(
@@ -330,21 +555,30 @@ class _WeekScreenState extends State<WeekScreen> {
   }
 
   AppBar _buildAppBar() {
-    final weekEnd = _weekStart.add(const Duration(days: 6));
-    final label =
-        '${_weekStart.day}.${_weekStart.month} – ${weekEnd.day}.${weekEnd.month}.${weekEnd.year}';
+    final String label;
+    if (_isDayView) {
+      const weekdays = ['Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So'];
+      final wd = weekdays[_selectedDay.weekday - 1];
+      label = '$wd, ${_selectedDay.day}.${_selectedDay.month}.${_selectedDay.year}';
+    } else {
+      final weekEnd = _weekStart.add(const Duration(days: 6));
+      label =
+          '${_weekStart.day}.${_weekStart.month} – ${weekEnd.day}.${weekEnd.month}.${weekEnd.year}';
+    }
 
     return AppBar(
       backgroundColor: AppColors.surface,
       elevation: 0,
       leading: IconButton(
         icon: const Icon(Icons.chevron_left, color: AppColors.textPrimary),
-        onPressed: () => _navigateWeek(-1),
+        onPressed: () => _isDayView ? _navigateDay(-1) : _navigateWeek(-1),
       ),
       title: GestureDetector(
         onTap: () {
+          final today = DateTime.now();
           setState(() {
-            _weekStart = _getWeekStart(DateTime.now());
+            _selectedDay = today;
+            _weekStart = _getWeekStart(today);
             _initStreams();
           });
           _loadIcsEvents();
@@ -361,8 +595,24 @@ class _WeekScreenState extends State<WeekScreen> {
       actions: [
         IconButton(
           icon: const Icon(Icons.chevron_right, color: AppColors.textPrimary),
-          onPressed: () => _navigateWeek(1),
+          onPressed: () => _isDayView ? _navigateDay(1) : _navigateWeek(1),
         ),
+        IconButton(
+          icon: Icon(
+            _isDayView ? Icons.view_week_outlined : Icons.today_outlined,
+            color: AppColors.textPrimary,
+          ),
+          tooltip: _isDayView ? 'Wochenansicht' : 'Tagesansicht',
+          onPressed: () {
+            setState(() {
+              _isDayView = !_isDayView;
+              if (_isDayView) {
+                _selectedDay = DateTime.now();
+              }
+            });
+          },
+        ),
+        const FeedbackIconButton(),
       ],
     );
   }
@@ -401,7 +651,10 @@ class _WeekScreenState extends State<WeekScreen> {
               final updated = checklist.copyWith(
                   lastTriggeredYear: DateTime.now().year);
               await SupabaseService.saveYearlyChecklist(updated);
-              setState(() => _pendingChecklists.remove(checklist));
+              setState(() {
+                _pendingChecklists.remove(checklist);
+                _initStreams();
+              });
             },
             child: const Text('Todo erstellen',
                 style: TextStyle(color: AppColors.vacation, fontSize: 12)),
@@ -481,7 +734,10 @@ class _WeekScreenState extends State<WeekScreen> {
                         opacity: 0.3,
                         child: _TodoChip(todo: todo),
                       ),
-                      child: _TodoChip(todo: todo),
+                      child: GestureDetector(
+                        onTap: () => _onTodoTap(todo),
+                        child: _TodoChip(todo: todo),
+                      ),
                     );
                   },
                 ),
@@ -493,6 +749,119 @@ class _WeekScreenState extends State<WeekScreen> {
     );
   }
 
+  Widget _buildAllDayRow({required List<DateTime> days}) {
+    // Collect unique events and compute column spans
+    final seenIds = <String>{};
+    final spans = <_AllDaySpan>[];
+    for (int i = 0; i < days.length; i++) {
+      for (final e in _allDayEventsForDay(days[i])) {
+        if (!seenIds.add(e.id)) continue;
+        final eStart = DateTime(e.startTime.year, e.startTime.month, e.startTime.day);
+        var eEnd = DateTime(e.endTime.year, e.endTime.month, e.endTime.day);
+        if (!eEnd.isAfter(eStart)) eEnd = eStart.add(const Duration(days: 1));
+        int first = days.length, last = -1;
+        for (int j = 0; j < days.length; j++) {
+          final d = DateTime(days[j].year, days[j].month, days[j].day);
+          if (!d.isBefore(eStart) && d.isBefore(eEnd)) {
+            if (j < first) first = j;
+            if (j > last) last = j;
+          }
+        }
+        if (first <= last) spans.add(_AllDaySpan(event: e, startCol: first, endCol: last));
+      }
+    }
+    if (spans.isEmpty) return const SizedBox.shrink();
+
+    // Assign lanes (rows) to avoid horizontal overlap
+    final lanes = <List<_AllDaySpan>>[];
+    for (final span in spans) {
+      int lane = 0;
+      while (true) {
+        if (lane >= lanes.length) { lanes.add([span]); break; }
+        final clash = lanes[lane].any(
+            (s) => s.startCol <= span.endCol && span.startCol <= s.endCol);
+        if (!clash) { lanes[lane].add(span); break; }
+        lane++;
+      }
+    }
+
+    const double rowH = 20.0;
+    const double rowGap = 2.0;
+    final totalH = rowGap + lanes.length * (rowH + rowGap);
+
+    return Container(
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        border: Border(bottom: BorderSide(color: AppColors.divider, width: 0.5)),
+      ),
+      child: Row(
+        children: [
+          SizedBox(
+            width: 46,
+            child: Padding(
+              padding: const EdgeInsets.only(top: 4, right: 2),
+              child: Text('ganzt.',
+                  style: const TextStyle(fontSize: 9, color: AppColors.textSecondary),
+                  textAlign: TextAlign.right),
+            ),
+          ),
+          Expanded(
+            child: LayoutBuilder(builder: (ctx, constraints) {
+              final colW = constraints.maxWidth / days.length;
+              return SizedBox(
+                height: totalH,
+                child: Stack(
+                  children: [
+                    for (int laneIdx = 0; laneIdx < lanes.length; laneIdx++)
+                      for (final span in lanes[laneIdx])
+                        Positioned(
+                          left: span.startCol * colW + 1,
+                          top: rowGap + laneIdx * (rowH + rowGap),
+                          width: (span.endCol - span.startCol + 1) * colW - 2,
+                          height: rowH,
+                          child: GestureDetector(
+                            onTap: () => _onEventTap(span.event),
+                            child: Container(
+                              decoration: BoxDecoration(
+                                color: (span.event.calendarColor != null
+                                        ? Color(span.event.calendarColor!)
+                                        : _categoryColor(span.event.category))
+                                    .withValues(alpha: 0.85),
+                                borderRadius: BorderRadius.circular(3),
+                              ),
+                              padding: const EdgeInsets.symmetric(horizontal: 4),
+                              alignment: Alignment.centerLeft,
+                              child: Text(
+                                span.event.title,
+                                style: const TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 10,
+                                    fontWeight: FontWeight.w500),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                          ),
+                        ),
+                  ],
+                ),
+              );
+            }),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Color _categoryColor(EventCategory cat) {
+    switch (cat) {
+      case EventCategory.work: return AppColors.work;
+      case EventCategory.sport: return AppColors.sport;
+      case EventCategory.vacation: return AppColors.vacation;
+      case EventCategory.personal: return AppColors.primary;
+    }
+  }
+
   Widget _buildWeekView() {
     return StreamBuilder<List<CalendarEvent>>(
       stream: _eventsStream,
@@ -502,20 +871,12 @@ class _WeekScreenState extends State<WeekScreen> {
           stream: _todosStream,
           builder: (ctx, todoSnap) {
             _todos = todoSnap.data ?? [];
-            return SingleChildScrollView(
-              controller: _scrollController,
-              child: SizedBox(
-                height: (_endHour - _startHour) * _hourHeight,
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+            return Column(
+              children: [
+                // Fixer Header
+                Row(
                   children: [
-                    // Zeitachse links
-                    _TimeAxis(
-                      startHour: _startHour,
-                      endHour: _endHour,
-                      hourHeight: _hourHeight,
-                    ),
-                    // Tages-Spalten
+                    const SizedBox(width: 46),
                     ...List.generate(7, (i) {
                       final day = _weekStart.add(Duration(days: i));
                       final isToday = _isSameDay(day, DateTime.now());
@@ -523,7 +884,7 @@ class _WeekScreenState extends State<WeekScreen> {
                       final allDayEvs = dayEvents.where((e) => e.isAllDay).toList();
                       final timedEvs  = dayEvents.where((e) => !e.isAllDay).toList();
                       return Expanded(
-                        child: WeekDayColumn(
+                        child: _DayHeaderWidget(
                           day: day,
                           events: timedEvs,
                           allDayEvents: allDayEvs,
@@ -542,7 +903,181 @@ class _WeekScreenState extends State<WeekScreen> {
                     }),
                   ],
                 ),
-              ),
+                // Ganztägige Events
+                _buildAllDayRow(
+                  days: List.generate(7, (i) => _weekStart.add(Duration(days: i))),
+                ),
+                // Scrollbarer Zeitbereich
+                Expanded(
+                  child: SingleChildScrollView(
+                    controller: _scrollController,
+                    physics: _isCtrlPressed ? const NeverScrollableScrollPhysics() : const ClampingScrollPhysics(),
+                    child: Listener(
+                      onPointerSignal: (event) {
+                        if (event is PointerScrollEvent) {
+                          final isCtrl = HardwareKeyboard.instance.logicalKeysPressed.any((k) =>
+                              k == LogicalKeyboardKey.controlLeft ||
+                              k == LogicalKeyboardKey.controlRight);
+                          if (isCtrl) {
+                            GestureBinding.instance.pointerSignalResolver.register(event, (e) {
+                              if (e is PointerScrollEvent) _onCtrlScroll(e.scrollDelta.dy);
+                            });
+                          }
+                        }
+                      },
+                      child: Column(
+                        children: [
+                          const SizedBox(height: 16),
+                          SizedBox(
+                            height: (_endHour - _startHour) * _hourHeight,
+                            child: Stack(
+                              children: [
+                                Row(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    _TimeAxis(
+                                      startHour: _startHour,
+                                      endHour: _endHour,
+                                      hourHeight: _hourHeight,
+                                    ),
+                                    ...List.generate(7, (i) {
+                                      final day = _weekStart.add(Duration(days: i));
+                                      return Expanded(
+                                        child: WeekDayColumn(
+                                          day: day,
+                                          events: _eventsForDay(day),
+                                          todos: _todosForDay(day),
+                                          isToday: _isSameDay(day, DateTime.now()),
+                                          hourHeight: _hourHeight,
+                                          startHour: _startHour,
+                                          endHour: _endHour,
+                                          showHeader: false,
+                                          onTodoDrop: _onTodoDrop,
+                                          onEventDrop: _onEventDrop,
+                                          onEventTap: _onEventTap,
+                                          onTodoTap: _onTodoTap,
+                                        ),
+                                      );
+                                    }),
+                                  ],
+                                ),
+                                _NowLine(
+                                  startHour: _startHour,
+                                  hourHeight: _hourHeight,
+                                  timeAxisWidth: 46,
+                                  weekStart: _weekStart,
+                                  dayCount: 7,
+                                ),
+                              ],
+                            ),
+                          ),
+                          const SizedBox(height: 16),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+  }
+
+  Widget _buildDayView() {
+    return StreamBuilder<List<CalendarEvent>>(
+      stream: _eventsStream,
+      builder: (ctx, evSnap) {
+        _events = evSnap.data ?? [];
+        return StreamBuilder<List<Todo>>(
+          stream: _todosStream,
+          builder: (ctx, todoSnap) {
+            _todos = todoSnap.data ?? [];
+            return Column(
+              children: [
+                // Fixer Header
+                Row(
+                  children: [
+                    const SizedBox(width: 46),
+                    Expanded(
+                      child: _DayHeaderWidget(
+                        day: _selectedDay,
+                        isToday: _isSameDay(_selectedDay, DateTime.now()),
+                      ),
+                    ),
+                  ],
+                ),
+                // Ganztägige Events
+                _buildAllDayRow(days: [_selectedDay]),
+                // Scrollbarer Zeitbereich
+                Expanded(
+                  child: SingleChildScrollView(
+                    controller: _scrollController,
+                    physics: _isCtrlPressed ? const NeverScrollableScrollPhysics() : const ClampingScrollPhysics(),
+                    child: Listener(
+                      onPointerSignal: (event) {
+                        if (event is PointerScrollEvent) {
+                          final isCtrl = HardwareKeyboard.instance.logicalKeysPressed.any((k) =>
+                              k == LogicalKeyboardKey.controlLeft ||
+                              k == LogicalKeyboardKey.controlRight);
+                          if (isCtrl) {
+                            GestureBinding.instance.pointerSignalResolver.register(event, (e) {
+                              if (e is PointerScrollEvent) _onCtrlScroll(e.scrollDelta.dy);
+                            });
+                          }
+                        }
+                      },
+                      child: Column(
+                        children: [
+                          const SizedBox(height: 16),
+                          SizedBox(
+                            height: (_endHour - _startHour) * _hourHeight,
+                            child: Stack(
+                              children: [
+                                Row(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    _TimeAxis(
+                                      startHour: _startHour,
+                                      endHour: _endHour,
+                                      hourHeight: _hourHeight,
+                                    ),
+                                    Expanded(
+                                      child: WeekDayColumn(
+                                        day: _selectedDay,
+                                        events: _eventsForDay(_selectedDay),
+                                        todos: _todosForDay(_selectedDay),
+                                        isToday: _isSameDay(_selectedDay, DateTime.now()),
+                                        hourHeight: _hourHeight,
+                                        startHour: _startHour,
+                                        endHour: _endHour,
+                                        showHeader: false,
+                                        onTodoDrop: _onTodoDrop,
+                                        onEventDrop: _onEventDrop,
+                                        onEventTap: _onEventTap,
+                                        onTodoTap: _onTodoTap,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                                _NowLine(
+                                  startHour: _startHour,
+                                  hourHeight: _hourHeight,
+                                  timeAxisWidth: 46,
+                                  weekStart: _selectedDay,
+                                  dayCount: 1,
+                                ),
+                              ],
+                            ),
+                          ),
+                          const SizedBox(height: 16),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ],
             );
           },
         );
@@ -556,9 +1091,136 @@ class _WeekScreenState extends State<WeekScreen> {
   String _fmt(DateTime dt) =>
       '${dt.day.toString().padLeft(2, '0')}.${dt.month.toString().padLeft(2, '0')} ${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')}';
 
+  Future<void> _loadTodoDropSettings() async {
+    final sources = await IcsService.getSources();
+    final outlook = await IcsService.getOutlookAllowTodoDrop();
+    if (mounted) setState(() { _icsSources = sources; _outlookAllowTodoDrop = outlook; });
+  }
+
+  bool _todoDropAllowed(CalendarEvent event) {
+    if (event.source == 'app') return true;
+    if (event.source == 'outlook') return _outlookAllowTodoDrop;
+    if (event.source == 'ics' && event.icsSourceId != null) {
+      final src = _icsSources.where((s) => s.id == event.icsSourceId).firstOrNull;
+      return src?.allowTodoDrop ?? false;
+    }
+    return false;
+  }
+
+  Future<void> _autoShiftOverdueTodos() async {
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final nowMinutes = now.hour * 60 + now.minute;
+
+    // Include pending + started + paused (not fixed) – sorted by blockStart (incl. travelBefore)
+    final todayTodos = _todos
+        .where((t) =>
+            t.scheduledDate != null &&
+            t.scheduledDate!.year == today.year &&
+            t.scheduledDate!.month == today.month &&
+            t.scheduledDate!.day == today.day &&
+            t.scheduledStartHour != null &&
+            !t.isFixed &&
+            (t.status == TodoStatus.pending ||
+             t.status == TodoStatus.started ||
+             t.status == TodoStatus.paused))
+        .toList()
+      ..sort((a, b) {
+        final aBlock = a.scheduledStartHour! * 60 + (a.scheduledStartMinute ?? 0) - a.travelMinutesBefore;
+        final bBlock = b.scheduledStartHour! * 60 + (b.scheduledStartMinute ?? 0) - b.travelMinutesBefore;
+        return aBlock.compareTo(bBlock);
+      });
+
+    final todayEvents = [..._events, ..._icsEvents].where((e) =>
+        !e.isAllDay &&
+        e.startTime.year == today.year &&
+        e.startTime.month == today.month &&
+        e.startTime.day == today.day).map((e) => (
+          e.startTime.hour * 60 + e.startTime.minute,
+          e.endTime.hour * 60 + e.endTime.minute,
+        )).toList();
+
+    int _skipEvents(int pos, int totalDuration) {
+      bool changed = true;
+      while (changed) {
+        changed = false;
+        for (final ev in todayEvents) {
+          if (pos < ev.$2 && pos + totalDuration > ev.$1) {
+            pos = ev.$2;
+            changed = true;
+          }
+        }
+      }
+      return pos;
+    }
+
+    int runningMin = nowMinutes;
+    DateTime runningDate = today;
+    bool shifted = false;
+    int? prevOriginalBlockEnd;
+
+    for (final todo in todayTodos) {
+      final todoMin = todo.scheduledStartHour! * 60 + (todo.scheduledStartMinute ?? 0);
+      final blockStart = todoMin - todo.travelMinutesBefore;
+      final blockEnd = todoMin + todo.estimatedMinutes + todo.travelMinutesAfter;
+
+      // Started/paused: anchor – reset cascade, don't move
+      if (todo.status == TodoStatus.started || todo.status == TodoStatus.paused) {
+        runningMin = blockEnd > runningMin ? blockEnd : runningMin;
+        shifted = false;
+        prevOriginalBlockEnd = blockEnd;
+        continue;
+      }
+
+      // Pending: shift if overdue or displaced
+      if (blockStart < nowMinutes || (shifted && blockStart < runningMin)) {
+        if (prevOriginalBlockEnd != null && blockStart > prevOriginalBlockEnd!) {
+          runningMin += blockStart - prevOriginalBlockEnd!;
+        }
+        final totalBlock = todo.travelMinutesBefore + todo.estimatedMinutes + todo.travelMinutesAfter;
+        final winStart = todo.dueWindowStartHour;
+        final winEnd = todo.dueWindowEndHour;
+        if (winStart != null && runningMin < winStart * 60) {
+          runningMin = winStart * 60;
+        }
+        if (winEnd != null && runningMin + totalBlock > winEnd * 60) {
+          runningDate = runningDate.add(const Duration(days: 1));
+          runningMin = (winStart ?? 0) * 60;
+          shifted = true;
+        }
+        runningMin = _skipEvents(runningMin, totalBlock);
+        final newScheduledStart = runningMin + todo.travelMinutesBefore;
+        final newHour = (newScheduledStart ~/ 60).clamp(0, 23);
+        final newMin = newScheduledStart % 60;
+        final dateChanged =
+            runningDate.year != (todo.scheduledDate?.year ?? 0) ||
+            runningDate.month != (todo.scheduledDate?.month ?? 0) ||
+            runningDate.day != (todo.scheduledDate?.day ?? 0);
+        if (newHour != todo.scheduledStartHour ||
+            newMin != (todo.scheduledStartMinute ?? 0) ||
+            dateChanged) {
+          await SupabaseService.saveTodo(todo.copyWith(
+            scheduledDate: runningDate,
+            scheduledStartHour: newHour,
+            scheduledStartMinute: newMin,
+          ));
+          shifted = true;
+        }
+        runningMin = newScheduledStart + todo.estimatedMinutes + todo.travelMinutesAfter;
+      } else {
+        runningMin = blockEnd;
+      }
+      prevOriginalBlockEnd = blockEnd;
+    }
+    if (shifted && mounted) setState(() => _initStreams());
+  }
+
   @override
   void dispose() {
     _nowTimer?.cancel();
+    SnapState.snapNotifier.removeListener(_onSnapChanged);
+    SnapState.isDraggingNotifier.removeListener(_onSnapChanged);
+    HardwareKeyboard.instance.removeHandler(_onKey);
     _scrollController.dispose();
     super.dispose();
   }
@@ -937,6 +1599,78 @@ class _WeekScreenState extends State<WeekScreen> {
   }
 }
 
+// ── Now Line ─────────────────────────────────────────────────────────────────
+
+class _NowLine extends StatelessWidget {
+  final int startHour;
+  final double hourHeight;
+  final double timeAxisWidth;
+  final DateTime weekStart;
+  final int dayCount;
+
+  const _NowLine({
+    required this.startHour,
+    required this.hourHeight,
+    required this.timeAxisWidth,
+    required this.weekStart,
+    required this.dayCount,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final now = DateTime.now();
+    // Only show when today is visible
+    bool todayVisible = false;
+    int todayIndex = 0;
+    for (int i = 0; i < dayCount; i++) {
+      final d = weekStart.add(Duration(days: i));
+      if (d.year == now.year && d.month == now.month && d.day == now.day) {
+        todayVisible = true;
+        todayIndex = i;
+        break;
+      }
+    }
+    if (!todayVisible) return const SizedBox.shrink();
+
+    final top = (now.hour - startHour) * hourHeight + now.minute * (hourHeight / 60.0);
+
+    return LayoutBuilder(builder: (ctx, constraints) {
+      final totalWidth = constraints.maxWidth - timeAxisWidth;
+      final colWidth = dayCount > 0 ? totalWidth / dayCount : totalWidth;
+      final lineLeft = timeAxisWidth + todayIndex * colWidth;
+
+      return Stack(
+        clipBehavior: Clip.none,
+        children: [
+          Positioned(
+            top: top,
+            left: lineLeft,
+            width: colWidth,
+            child: Row(
+              children: [
+                Container(
+                  width: 8,
+                  height: 8,
+                  decoration: const BoxDecoration(
+                    color: Colors.redAccent,
+                    shape: BoxShape.circle,
+                  ),
+                ),
+                Expanded(
+                  child: Container(
+                    height: 1.5,
+                    color: Colors.redAccent,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      );
+    });
+  }
+}
+
 // ── Todo-Pool Chip ────────────────────────────────────────────────────────────
 
 class _TodoChip extends StatelessWidget {
@@ -989,28 +1723,136 @@ class _TimeAxis extends StatelessWidget {
     required this.hourHeight,
   });
 
+  double get _minuteHeight => hourHeight / 60.0;
+  int get _totalHours => endHour - startHour;
+
   @override
   Widget build(BuildContext context) {
-    return SizedBox(
-      width: 36,
-      height: (endHour - startHour) * hourHeight,
-      child: Stack(
-        children: List.generate(endHour - startHour, (i) {
-          return Positioned(
-            top: i * hourHeight - 6,
+    return AnimatedBuilder(
+      animation: Listenable.merge([SnapState.isDraggingNotifier, SnapState.snapNotifier]),
+      builder: (ctx, _) {
+        final dragging = SnapState.isDraggingNotifier.value;
+        final snapMinutes = SnapState.snapNotifier.value;
+        // Sub-Stunden-Intervall: beim Ziehen snap-basiert, sonst zoom-basiert
+        final int subInterval;
+        if (dragging && snapMinutes < 60) {
+          subInterval = snapMinutes;
+        } else if (hourHeight >= 360) {
+          subInterval = 5;
+        } else if (hourHeight >= 180) {
+          subInterval = 15;
+        } else if (hourHeight >= 90) {
+          subInterval = 30;
+        } else {
+          subInterval = 0;
+        }
+
+        final labels = <Widget>[];
+
+        // Stunden-Labels
+        for (int i = 0; i < _totalHours; i++) {
+          final hour = startHour + i;
+          labels.add(Positioned(
+            top: i * hourHeight - 7,
             left: 0,
-            right: 0,
+            right: 2,
             child: Text(
-              '${startHour + i}:00',
-              style: const TextStyle(
-                fontSize: 9,
-                color: AppColors.textDisabled,
-              ),
+              '${hour}:00',
+              style: const TextStyle(fontSize: 13, color: AppColors.textSecondary),
               textAlign: TextAlign.right,
             ),
-          );
-        }),
+          ));
+        }
+
+        // Sub-Stunden-Labels
+        if (subInterval > 0 && subInterval < 60) {
+          for (int i = 0; i < _totalHours; i++) {
+            final hour = startHour + i;
+            int min = subInterval;
+            while (min < 60) {
+              final top = i * hourHeight + min * _minuteHeight - 6;
+              final isQuarter = min % 15 == 0;
+              labels.add(Positioned(
+                top: top,
+                left: 0,
+                right: 2,
+                child: Text(
+                  '${hour}:${min.toString().padLeft(2, '0')}',
+                  style: TextStyle(
+                    fontSize: isQuarter ? 8 : 7,
+                    color: isQuarter
+                        ? AppColors.textDisabled
+                        : AppColors.textDisabled.withOpacity(0.6),
+                  ),
+                  textAlign: TextAlign.right,
+                ),
+              ));
+              min += subInterval;
+            }
+          }
+        }
+
+        return SizedBox(
+          width: 46,
+          height: _totalHours * hourHeight,
+          child: Stack(children: labels),
+        );
+      },
+    );
+  }
+}
+
+class _DayHeaderWidget extends StatelessWidget {
+  final DateTime day;
+  final bool isToday;
+  const _DayHeaderWidget({required this.day, required this.isToday});
+
+  static const _weekdays = ['Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So'];
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(vertical: 8),
+      decoration: BoxDecoration(
+        color: isToday ? AppColors.primary.withValues(alpha: 0.15) : Colors.transparent,
+        border: Border(bottom: BorderSide(color: AppColors.divider, width: 0.5)),
+      ),
+      child: Column(
+        children: [
+          Text(
+            _weekdays[day.weekday - 1],
+            style: TextStyle(
+              fontSize: 12,
+              color: isToday ? AppColors.primary : AppColors.textSecondary,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          const SizedBox(height: 2),
+          Container(
+            width: 30,
+            height: 30,
+            decoration: isToday
+                ? const BoxDecoration(shape: BoxShape.circle, color: AppColors.primary)
+                : null,
+            alignment: Alignment.center,
+            child: Text(
+              '${day.day}',
+              style: TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.bold,
+                color: isToday ? Colors.white : AppColors.textPrimary,
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
+}
+
+class _AllDaySpan {
+  final CalendarEvent event;
+  final int startCol;
+  final int endCol;
+  const _AllDaySpan({required this.event, required this.startCol, required this.endCol});
 }

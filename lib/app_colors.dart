@@ -14,9 +14,9 @@ class AppColors {
   static const Color divider = Color(0xFF3A3A3A);
 
   // Text
-  static const Color textPrimary = Color(0xFFE0E0E0);
-  static const Color textSecondary = Color(0xFF9E9E9E);
-  static const Color textDisabled = Color(0xFF616161);
+  static const Color textPrimary = Color(0xFFFFFFFF);
+  static const Color textSecondary = Color(0xFFCCCCCC);
+  static const Color textDisabled = Color(0xFF9E9E9E);
 
   // Event-Kategorien
   static const Color work = Color(0xFF448AFF);

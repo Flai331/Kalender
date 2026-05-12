@@ -5,6 +5,7 @@ import '../models/series_reminder.dart';
 import '../models/yearly_checklist.dart';
 import '../services/supabase_service.dart';
 import '../services/outlook_service.dart';
+import '../widgets/feedback_button.dart';
 
 const _uuid = Uuid();
 
@@ -100,6 +101,7 @@ class _ReminderEditScreenState extends State<ReminderEditScreen> {
           onPressed: () => Navigator.pop(context),
         ),
         actions: [
+          const FeedbackIconButton(),
           TextButton(
             onPressed: _save,
             child: const Text('Speichern',
@@ -446,6 +448,7 @@ class _YearlyChecklistEditScreenState
           onPressed: () => Navigator.pop(context),
         ),
         actions: [
+          const FeedbackIconButton(),
           TextButton(
             onPressed: _save,
             child: const Text('Speichern',

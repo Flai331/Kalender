@@ -48,10 +48,11 @@ class FeedbackService {
 
   // Verhindert dass mehrere Fehler gleichzeitig mehrere Dialoge öffnen
   static bool _dialogOpen = false;
+  static bool _capturingScreenshot = false;
 
   // ── Automatisch bei abgefangenem Fehler aufrufen ────────────
   static Future<void> showAutoErrorDialog() async {
-    if (_dialogOpen) return;
+    if (_dialogOpen || _capturingScreenshot) return;
     final ctx = _navigatorKey?.currentContext;
     if (ctx == null) return;
     _dialogOpen = true;
@@ -75,30 +76,9 @@ class FeedbackService {
   }
 
   // ── Automatischen Screenshot erfassen ──────────────────────
+  // Auto-Screenshot deaktiviert (verursacht Render-Fehler auf Windows Desktop).
+  // User kann manuell Screenshots über Kamera/Galerie hinzufügen.
   static Future<String?> _captureScreenshot() async {
-    if (kIsWeb) { log('Screenshot: Web nicht unterstützt'); return null; }
-    if (_repaintKey == null) { log('Screenshot: RepaintKey nicht gesetzt'); return null; }
-    for (var attempt = 1; attempt <= 3; attempt++) {
-      try {
-        final ctx = _repaintKey!.currentContext;
-        if (ctx == null) { log('Screenshot: context ist null'); return null; }
-        final boundary = ctx.findRenderObject() as RenderRepaintBoundary?;
-        if (boundary == null) { log('Screenshot: RenderRepaintBoundary nicht gefunden'); return null; }
-
-        final image = await boundary.toImage(pixelRatio: 2.0);
-        final byteData = await image.toByteData(format: ui.ImageByteFormat.png);
-        if (byteData == null) { log('Screenshot: byteData ist null'); continue; }
-
-        final dir = await getTemporaryDirectory();
-        final file = File('${dir.path}/feedback_${DateTime.now().millisecondsSinceEpoch}.png');
-        await file.writeAsBytes(byteData.buffer.asUint8List());
-        log('Screenshot gespeichert (${(byteData.lengthInBytes / 1024).round()} KB, Versuch $attempt)');
-        return file.path;
-      } catch (e) {
-        log('Screenshot Versuch $attempt fehlgeschlagen: $e');
-        await Future.delayed(const Duration(milliseconds: 100));
-      }
-    }
     return null;
   }
 
@@ -371,7 +351,9 @@ class _FeedbackDialogState extends State<_FeedbackDialog> {
           ),
         ],
       ),
-      content: SingleChildScrollView(
+      content: SizedBox(
+        width: double.maxFinite,
+        child: SingleChildScrollView(
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -551,6 +533,7 @@ class _FeedbackDialogState extends State<_FeedbackDialog> {
             ]),
           ],
         ),
+      ),
       ),
       actions: [
         TextButton(

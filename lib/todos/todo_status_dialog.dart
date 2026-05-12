@@ -56,7 +56,7 @@ class TodoStatusDialog extends StatelessWidget {
           ),
           const SizedBox(height: 4),
           Text(
-            '${todo.estimatedMinutes} Min geplant',
+            _timeInfo(),
             style: const TextStyle(
                 color: AppColors.textSecondary, fontSize: 13),
           ),
@@ -72,6 +72,20 @@ class TodoStatusDialog extends StatelessWidget {
         ],
       ),
     );
+  }
+
+  String _timeInfo() {
+    if (todo.scheduledStartHour != null) {
+      final sh = todo.scheduledStartHour!;
+      final sm = todo.scheduledStartMinute ?? 0;
+      final total = sh * 60 + sm + todo.estimatedMinutes;
+      final eh = (total ~/ 60) % 24;
+      final em = total % 60;
+      final start = '${sh.toString().padLeft(2, '0')}:${sm.toString().padLeft(2, '0')}';
+      final end   = '${eh.toString().padLeft(2, '0')}:${em.toString().padLeft(2, '0')}';
+      return '$start – $end  ·  ${todo.estimatedMinutes} Min';
+    }
+    return '${todo.estimatedMinutes} Min geplant';
   }
 
   List<Widget> _buildActions(BuildContext context) {
@@ -124,6 +138,20 @@ class TodoStatusDialog extends StatelessWidget {
         onTap: () => Navigator.pop(context, 'unschedule'),
       ));
     }
+
+    actions.add(_Chip(
+      label: 'Bearbeiten',
+      icon: Icons.edit_outlined,
+      color: AppColors.primary,
+      onTap: () => Navigator.pop(context, 'edit'),
+    ));
+
+    actions.add(_Chip(
+      label: 'Löschen',
+      icon: Icons.delete_outline,
+      color: Colors.redAccent,
+      onTap: () => Navigator.pop(context, 'delete'),
+    ));
 
     return actions;
   }
