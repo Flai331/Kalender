@@ -57,7 +57,7 @@ class EventStatusDialog extends StatelessWidget {
           const SizedBox(height: 4),
           Text(
             _timeLabel,
-            style: const TextStyle(color: AppColors.textSecondary, fontSize: 13),
+            style: const TextStyle(color: AppColors.textSecondary, fontSize: 13, height: 1.6),
           ),
           const SizedBox(height: 16),
           const Divider(color: AppColors.divider),
@@ -73,11 +73,29 @@ class EventStatusDialog extends StatelessWidget {
     );
   }
 
+  static String _hm(int totalMin) {
+    final h = (totalMin ~/ 60) % 24;
+    final m = totalMin.abs() % 60;
+    return '${h.toString().padLeft(2, '0')}:${m.toString().padLeft(2, '0')}';
+  }
+
   String get _timeLabel {
     final s = event.startTime;
     final e = event.endTime;
-    return '${s.hour.toString().padLeft(2, '0')}:${s.minute.toString().padLeft(2, '0')} – '
-        '${e.hour.toString().padLeft(2, '0')}:${e.minute.toString().padLeft(2, '0')}';
+    final startMin = s.hour * 60 + s.minute;
+    final endMin   = e.hour * 60 + e.minute;
+    final before   = event.travelMinutesBefore;
+    final after    = event.travelMinutesAfter;
+
+    final lines = <String>[];
+    if (before > 0) {
+      lines.add('🚗 Losfahren: ${_hm(startMin - before)}');
+    }
+    lines.add('${_hm(startMin)} – ${_hm(endMin)}');
+    if (after > 0) {
+      lines.add('🏠 Rückkunft: ${_hm(endMin + after)}');
+    }
+    return lines.join('\n');
   }
 
   List<Widget> _buildActions(BuildContext context) {

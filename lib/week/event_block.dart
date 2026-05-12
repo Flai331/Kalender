@@ -107,9 +107,22 @@ class EventBlock extends StatelessWidget {
     if (event != null) {
       final s = event!.startTime;
       final e = event!.endTime;
-      final start = '${s.hour.toString().padLeft(2, '0')}:${s.minute.toString().padLeft(2, '0')}';
-      final end   = '${e.hour.toString().padLeft(2, '0')}:${e.minute.toString().padLeft(2, '0')}';
-      return '$start – $end';
+      final start = _hm(s.hour, s.minute);
+      final end   = _hm(e.hour, e.minute);
+      final before = event!.travelMinutesBefore;
+      final after  = event!.travelMinutesAfter;
+      final depart = before > 0
+          ? _addMin(s.hour * 60 + s.minute - before)
+          : null;
+      final returnArrival = after > 0
+          ? _addMin(e.hour * 60 + e.minute + after)
+          : null;
+      final parts = [
+        if (depart != null) '🚗$depart',
+        '$start – $end',
+        if (returnArrival != null) '🏠$returnArrival',
+      ];
+      return parts.join('  ');
     }
     if (todo != null && todo!.scheduledStartHour != null) {
       final sh = todo!.scheduledStartHour!;
@@ -117,11 +130,38 @@ class EventBlock extends StatelessWidget {
       final total = sh * 60 + sm + todo!.estimatedMinutes;
       final eh = total ~/ 60;
       final em = total % 60;
-      final start = '${sh.toString().padLeft(2, '0')}:${sm.toString().padLeft(2, '0')}';
-      final end   = '${(eh % 24).toString().padLeft(2, '0')}:${em.toString().padLeft(2, '0')}';
-      return '$start – $end';
+      final start = _hm(sh, sm);
+      final end   = _hm(eh % 24, em);
+      final before = todo!.travelMinutesBefore;
+      final after  = todo!.travelMinutesAfter;
+      final depart = before > 0
+          ? _addMin(sh * 60 + sm - before)
+          : null;
+      final returnArrival = after > 0
+          ? _addMin(total + after)
+          : null;
+      final parts = [
+        if (depart != null) '🚗$depart',
+        '$start – $end',
+        if (returnArrival != null) '🏠$returnArrival',
+      ];
+      return parts.join('  ');
     }
     return null;
+  }
+
+  static String _hm(int h, int m) =>
+      '${(h % 24).toString().padLeft(2, '0')}:${m.toString().padLeft(2, '0')}';
+
+  static String _addMin(int totalMin) {
+    final h = (totalMin ~/ 60) % 24;
+    final m = totalMin % 60;
+    if (h < 0 || m < 0) {
+      // negative = before midnight
+      final abs = totalMin.abs();
+      return _hm(24 - abs ~/ 60 - (abs % 60 > 0 ? 1 : 0), (60 - abs % 60) % 60);
+    }
+    return _hm(h, m);
   }
 
   EventStatus? get _todoStatus {
