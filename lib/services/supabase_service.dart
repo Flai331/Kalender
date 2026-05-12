@@ -119,6 +119,20 @@ class SupabaseService {
     return Todo.fromJson(rows.first['data'] as Map<String, dynamic>);
   }
 
+  static Future<List<CalendarEvent>> getAllEvents() async {
+    final rows = await _db.from('calendar_events').select().eq('user_id', _uid);
+    return (rows as List)
+        .map((r) => CalendarEvent.fromJson(r['data'] as Map<String, dynamic>))
+        .toList();
+  }
+
+  static Future<List<Todo>> getAllTodos() async {
+    final rows = await _db.from('todos').select().eq('user_id', _uid);
+    return (rows as List)
+        .map((r) => Todo.fromJson(r['data'] as Map<String, dynamic>))
+        .toList();
+  }
+
   static Future<CalendarEvent?> getEventById(String id) async {
     final rows = await _db
         .from('calendar_events')

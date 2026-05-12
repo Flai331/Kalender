@@ -2,14 +2,18 @@ import 'dart:io';
 import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:home_widget/home_widget.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'supabase_config.dart';
 import 'app_colors.dart';
+import 'db/app_database.dart';
 import 'models/todo.dart';
 import 'services/auth_service.dart';
 import 'services/feedback_service.dart';
+import 'services/local_service.dart';
 import 'services/reminder_service.dart';
 import 'services/supabase_service.dart';
+import 'services/sync_service.dart';
 import 'services/widget_service.dart';
 import 'week/week_screen.dart' show WeekScreen, WeekScreenState;
 import 'todos/todo_edit_screen.dart';
@@ -55,6 +59,27 @@ void main() async {
 
   await ReminderService.initialize();
   await ReminderService.requestPermissions();
+
+  final db = AppDatabase();
+  LocalService.init(db);
+  SyncService.init(navigatorKey);
+
+  // Seed local DB on first launch
+  if (SupabaseConfig.isConfigured) {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      if (prefs.getBool('local_seeded') != true) {
+        final events = await SupabaseService.getAllEvents();
+        final todos = await SupabaseService.getAllTodos();
+        await LocalService.seedEvents(events);
+        await LocalService.seedTodos(todos);
+        await prefs.setBool('local_seeded', true);
+      }
+    } catch (e) {
+      debugPrint('Local seed failed: $e');
+    }
+  }
+
   await WidgetService.init();
 
   runApp(KalenderApp(supabaseReady: supabaseReady));

@@ -10,6 +10,7 @@ import '../models/calendar_event.dart';
 import '../models/todo.dart';
 import '../models/yearly_checklist.dart';
 import '../services/daylight_service.dart';
+import '../services/local_service.dart';
 import '../services/supabase_service.dart';
 import '../services/shift_service.dart';
 import '../services/widget_service.dart';
@@ -161,9 +162,9 @@ class WeekScreenState extends State<WeekScreen> {
 
   void _initStreams() {
     final start = DateTime(_weekStart.year, _weekStart.month, _weekStart.day);
-    _eventsStream = SupabaseService.eventsForWeek(start);
-    _todosStream = SupabaseService.todosForWeek(start);
-    _unscheduledStream = SupabaseService.unscheduledTodos();
+    _eventsStream = LocalService.eventsForWeek(start);
+    _todosStream = LocalService.todosForWeek(start);
+    _unscheduledStream = LocalService.unscheduledTodos();
   }
 
   void reload() {
@@ -227,7 +228,7 @@ class WeekScreenState extends State<WeekScreen> {
       _icsEvents = _icsEvents.where((e) => e.id != icsEvent.id).toList();
     });
     _saveOverrides(); // fire-and-forget
-    await SupabaseService.saveEvent(appEvent);
+    await LocalService.saveEvent(appEvent);
     return appEvent;
   }
 
@@ -361,7 +362,7 @@ class WeekScreenState extends State<WeekScreen> {
       scheduledStartHour: hour,
       scheduledStartMinute: minute,
     );
-    await SupabaseService.saveTodo(updated);
+    await LocalService.saveTodo(updated);
   }
 
   Future<void> _onEventDrop(
@@ -376,7 +377,7 @@ class WeekScreenState extends State<WeekScreen> {
     }
 
     final updated = event.copyWith(startTime: newStart, endTime: newEnd);
-    await SupabaseService.saveEvent(updated);
+    await LocalService.saveEvent(updated);
   }
 
   Future<void> _onEventTap(CalendarEvent event) async {
@@ -455,7 +456,7 @@ class WeekScreenState extends State<WeekScreen> {
           status: EventStatus.started,
           actualStart: now,
         );
-        await SupabaseService.saveEvent(updated);
+        await LocalService.saveEvent(updated);
       case 'pause':
         final pausedExtra = event.pauseStart != null
             ? now.difference(event.pauseStart!).inMinutes
@@ -465,19 +466,19 @@ class WeekScreenState extends State<WeekScreen> {
           pausedMinutes: event.pausedMinutes + pausedExtra,
           pauseStart: now,
         );
-        await SupabaseService.saveEvent(updated);
+        await LocalService.saveEvent(updated);
       case 'resume':
         updated = event.copyWith(
           status: EventStatus.started,
           pauseStart: null,
         );
-        await SupabaseService.saveEvent(updated);
+        await LocalService.saveEvent(updated);
       case 'done':
         updated = event.copyWith(
           status: EventStatus.done,
           actualEnd: now,
         );
-        await SupabaseService.saveEvent(updated);
+        await LocalService.saveEvent(updated);
       case 'edit':
         if (!mounted) return;
         await Navigator.push(
@@ -486,7 +487,7 @@ class WeekScreenState extends State<WeekScreen> {
               builder: (_) => EventEditScreen(event: event)),
         );
       case 'delete':
-        await SupabaseService.deleteEvent(event.id);
+        await LocalService.deleteEvent(event.id);
     }
   }
 
@@ -502,7 +503,7 @@ class WeekScreenState extends State<WeekScreen> {
       case 'start':
         updated =
             todo.copyWith(status: TodoStatus.started, actualStart: now);
-        await SupabaseService.saveTodo(updated);
+        await LocalService.saveTodo(updated);
       case 'pause':
         final pausedExtra = todo.pauseStart != null
             ? now.difference(todo.pauseStart!).inMinutes
@@ -512,14 +513,14 @@ class WeekScreenState extends State<WeekScreen> {
           pausedMinutes: todo.pausedMinutes + pausedExtra,
           pauseStart: now,
         );
-        await SupabaseService.saveTodo(updated);
+        await LocalService.saveTodo(updated);
       case 'resume':
         updated = todo.copyWith(status: TodoStatus.started, pauseStart: null);
-        await SupabaseService.saveTodo(updated);
+        await LocalService.saveTodo(updated);
       case 'done':
         updated = todo.copyWith(
             status: TodoStatus.done, actualEnd: now, isCompleted: true);
-        await SupabaseService.saveTodo(updated);
+        await LocalService.saveTodo(updated);
         // Zeitplan automatisch anpassen (positiv = zu spät, negativ = früher)
         final delta = ShiftService.computeDelta(todo: todo, actualEnd: now);
         if (delta.abs() >= 2) {
@@ -536,18 +537,18 @@ class WeekScreenState extends State<WeekScreen> {
       case 'reopen':
         updated = todo.copyWith(
             status: TodoStatus.pending, actualStart: null, actualEnd: null);
-        await SupabaseService.saveTodo(updated);
+        await LocalService.saveTodo(updated);
       case 'unschedule':
         updated = todo.copyWith(scheduledDate: null,
             scheduledStartHour: null, scheduledStartMinute: null);
-        await SupabaseService.saveTodo(updated);
+        await LocalService.saveTodo(updated);
       case 'edit':
         await Navigator.push(
           context,
           MaterialPageRoute(builder: (_) => TodoEditScreen(todo: todo)),
         );
       case 'delete':
-        await SupabaseService.deleteTodo(todo.id);
+        await LocalService.deleteTodo(todo.id);
     }
   }
 
@@ -730,7 +731,7 @@ class WeekScreenState extends State<WeekScreen> {
                 estimatedMinutes: 30,
                 createdAt: DateTime.now(),
               );
-              await SupabaseService.saveTodo(todo);
+              await LocalService.saveTodo(todo);
               // lastTriggeredYear aktualisieren
               final updated = checklist.copyWith(
                   lastTriggeredYear: DateTime.now().year);
@@ -1239,7 +1240,7 @@ class WeekScreenState extends State<WeekScreen> {
       contextMode: TodoContextMode.opportunistic,
       requiredCategory: event.category,
     );
-    await SupabaseService.saveTodo(updated);
+    await LocalService.saveTodo(updated);
   }
 
   bool _dayBlockedByAllDay(DateTime day) {
@@ -1478,7 +1479,7 @@ class WeekScreenState extends State<WeekScreen> {
           if (newHour != todo.scheduledStartHour ||
               newMin != (todo.scheduledStartMinute ?? 0) ||
               dateChanged) {
-            await SupabaseService.saveTodo(todo.copyWith(
+            await LocalService.saveTodo(todo.copyWith(
               scheduledDate: slotDay,
               scheduledStartHour: newHour,
               scheduledStartMinute: newMin,
@@ -1516,7 +1517,7 @@ class WeekScreenState extends State<WeekScreen> {
           if (newHour != todo.scheduledStartHour ||
               newMin != (todo.scheduledStartMinute ?? 0) ||
               dateChanged) {
-            await SupabaseService.saveTodo(todo.copyWith(
+            await LocalService.saveTodo(todo.copyWith(
               scheduledDate: runningDate,
               scheduledStartHour: newHour,
               scheduledStartMinute: newMin,
@@ -1549,7 +1550,7 @@ class WeekScreenState extends State<WeekScreen> {
       final (slotDay, slotMin) = slot;
       _noSlotTodos.remove(todo.id);
       final newStart = slotMin + todo.travelMinutesBefore;
-      await SupabaseService.saveTodo(todo.copyWith(
+      await LocalService.saveTodo(todo.copyWith(
         scheduledDate: slotDay,
         scheduledStartHour: newStart ~/ 60,
         scheduledStartMinute: newStart % 60,

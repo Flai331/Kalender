@@ -1,7 +1,7 @@
 ﻿import 'package:flutter/material.dart';
 import '../app_colors.dart';
 import '../models/todo.dart';
-import '../services/supabase_service.dart';
+import '../services/local_service.dart';
 import 'todo_card.dart';
 import 'todo_edit_screen.dart';
 import 'todo_status_dialog.dart';
@@ -20,12 +20,12 @@ class _TodoListScreenState extends State<TodoListScreen> {
   @override
   void initState() {
     super.initState();
-    _stream = SupabaseService.unscheduledTodos();
+    _stream = LocalService.unscheduledTodos();
   }
 
   void _refreshStream() {
     setState(() {
-      _stream = SupabaseService.unscheduledTodos();
+      _stream = LocalService.unscheduledTodos();
     });
   }
 
@@ -110,7 +110,7 @@ class _TodoListScreenState extends State<TodoListScreen> {
                         final result = await TodoStatusDialog.show(
                             context: context, todo: todo);
                         if (result == 'delete') {
-                          await SupabaseService.deleteTodo(todo.id);
+                          await LocalService.deleteTodo(todo.id);
                           _refreshStream();
                         } else if (result == 'edit') {
                           if (!context.mounted) return;
@@ -123,7 +123,7 @@ class _TodoListScreenState extends State<TodoListScreen> {
                         }
                       },
                       onDelete: () async {
-                        await SupabaseService.deleteTodo(todo.id);
+                        await LocalService.deleteTodo(todo.id);
                         _refreshStream();
                       },
                     );
