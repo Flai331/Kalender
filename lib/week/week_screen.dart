@@ -52,6 +52,8 @@ class WeekScreenState extends State<WeekScreen> {
   Timer? _nowTimer;
   List<String> _blockingAllDayCats = ['vacation'];
   final Set<String> _noSlotTodos = {};
+  final Set<String> _overriddenIcsIds = {};
+  static const String _overriddenIcsKey = 'overridden_ics_ids';
 
   double _hourHeight = 60.0;
   double _baseHourHeight = 60.0;
@@ -132,6 +134,7 @@ class WeekScreenState extends State<WeekScreen> {
     _weekStart = _getWeekStart(DateTime.now());
     _initStreams();
     _loadIcsEvents();
+    _loadOverrides();
     _checkYearlyChecklists();
     DaylightService.loadSettings();
     DaylightService.prefetchLocation();
@@ -179,10 +182,48 @@ class WeekScreenState extends State<WeekScreen> {
         _icsEvents = all
             .where((e) =>
                 !e.startTime.isBefore(_weekStart) &&
-                e.startTime.isBefore(weekEnd))
+                e.startTime.isBefore(weekEnd) &&
+                !_overriddenIcsIds.contains(e.id))
             .toList();
       });
     }
+  }
+
+  Future<void> _loadOverrides() async {
+    final prefs = await SharedPreferences.getInstance();
+    final ids = prefs.getStringList(_overriddenIcsKey) ?? [];
+    if (mounted) setState(() => _overriddenIcsIds.addAll(ids));
+  }
+
+  Future<void> _saveOverrides() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setStringList(_overriddenIcsKey, _overriddenIcsIds.toList());
+  }
+
+  CalendarEvent _convertIcsToApp(CalendarEvent ics) {
+    return CalendarEvent(
+      id: _uuid.v4(),
+      title: ics.title,
+      description: ics.description,
+      startTime: ics.startTime,
+      endTime: ics.endTime,
+      isAllDay: ics.isAllDay,
+      source: 'app',
+      category: ics.category,
+      address: ics.address,
+    );
+  }
+
+  Future<CalendarEvent> _adoptIcsEvent(
+      CalendarEvent icsEvent, CalendarEvent Function(CalendarEvent) transform) async {
+    final appEvent = transform(_convertIcsToApp(icsEvent));
+    _overriddenIcsIds.add(icsEvent.id);
+    await _saveOverrides();
+    if (mounted) setState(() {
+      _icsEvents = _icsEvents.where((e) => e.id != icsEvent.id).toList();
+    });
+    await SupabaseService.saveEvent(appEvent);
+    return appEvent;
   }
 
   void _scrollToNow() {
@@ -304,7 +345,6 @@ class WeekScreenState extends State<WeekScreen> {
       scheduledStartMinute: minute,
     );
     await SupabaseService.saveTodo(updated);
-    if (mounted) setState(() => _initStreams());
   }
 
   Future<void> _onEventDrop(
@@ -313,16 +353,20 @@ class WeekScreenState extends State<WeekScreen> {
     final newStart = DateTime(day.year, day.month, day.day, hour, minute);
     final newEnd = newStart.add(duration);
 
+    if (event.source == 'ics') {
+      await _adoptIcsEvent(event, (e) => e.copyWith(startTime: newStart, endTime: newEnd));
+      return;
+    }
+
     final updated = event.copyWith(startTime: newStart, endTime: newEnd);
     await SupabaseService.saveEvent(updated);
-    if (mounted) setState(() => _initStreams());
   }
 
   Future<void> _onEventTap(CalendarEvent event) async {
-    // ICS-Event: nur Info anzeigen
+    // ICS-Event: in App-Event konvertieren und bearbeiten
     if (event.source == 'ics') {
       if (!mounted) return;
-      showDialog(
+      final confirm = await showDialog<bool>(
         context: context,
         builder: (ctx) => AlertDialog(
           backgroundColor: AppColors.surface,
@@ -334,25 +378,40 @@ class WeekScreenState extends State<WeekScreen> {
             children: [
               Text(
                 '${_fmt(event.startTime)} – ${_fmt(event.endTime)}',
-                style: const TextStyle(
-                    color: AppColors.textSecondary, fontSize: 13),
+                style: const TextStyle(color: AppColors.textSecondary, fontSize: 13),
               ),
               if (event.description.isNotEmpty) ...[
                 const SizedBox(height: 8),
                 Text(event.description,
-                    style: const TextStyle(
-                        color: AppColors.textSecondary, fontSize: 12)),
+                    style: const TextStyle(color: AppColors.textSecondary, fontSize: 12)),
               ],
+              const SizedBox(height: 12),
+              const Text(
+                'In App-Termin umwandeln um ihn zu bearbeiten?',
+                style: TextStyle(color: AppColors.textSecondary, fontSize: 12),
+              ),
             ],
           ),
           actions: [
             TextButton(
-              onPressed: () => Navigator.pop(ctx),
-              child: const Text('OK',
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Abbrechen',
+                  style: TextStyle(color: AppColors.textSecondary)),
+            ),
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('Bearbeiten',
                   style: TextStyle(color: AppColors.primary)),
             ),
           ],
         ),
+      );
+      if (confirm != true || !mounted) return;
+      final appEvent = await _adoptIcsEvent(event, (e) => e);
+      if (!mounted) return;
+      await Navigator.push(
+        context,
+        MaterialPageRoute(builder: (_) => EventEditScreen(event: appEvent)),
       );
       return;
     }
@@ -402,7 +461,6 @@ class WeekScreenState extends State<WeekScreen> {
       case 'delete':
         await SupabaseService.deleteEvent(event.id);
     }
-    if (mounted) setState(() => _initStreams());
   }
 
   Future<void> _onTodoTap(Todo todo) async {
@@ -464,7 +522,6 @@ class WeekScreenState extends State<WeekScreen> {
       case 'delete':
         await SupabaseService.deleteTodo(todo.id);
     }
-    if (mounted) setState(() => _initStreams());
   }
 
   Future<void> _addEvent() async {
@@ -1140,7 +1197,6 @@ class WeekScreenState extends State<WeekScreen> {
       requiredCategory: event.category,
     );
     await SupabaseService.saveTodo(updated);
-    if (mounted) setState(() => _initStreams());
   }
 
   bool _dayBlockedByAllDay(DateTime day) {
@@ -1459,7 +1515,6 @@ class WeekScreenState extends State<WeekScreen> {
     }
 
     if (!mounted) return;
-    if (shifted) setState(() => _initStreams());
 
     // Warnung für Todos ohne Slot
     if (newNoSlot.isNotEmpty) {
