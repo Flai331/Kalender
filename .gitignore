@@ -1,6 +1,9 @@
 # Secrets (never commit)
 lib/secrets.dart
 
+# Git worktrees
+.worktrees/
+
 # Miscellaneous
 *.class
 *.log
