@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:uuid/uuid.dart';
@@ -75,14 +76,18 @@ class CalendarService {
     await prefs.setString(_defaultCalendarKey, defaultId);
 
     // 2. Migrate existing IcsSources
-    final sources = await IcsService.getSources();
-    for (final src in sources) {
-      await saveCalendar(Calendar(
-        id: _uuid.v4(),
-        name: src.name,
-        color: src.color ?? 0xFF448AFF,
-        icsFeeds: [src],
-      ));
+    try {
+      final sources = await IcsService.getSources();
+      for (final src in sources) {
+        await saveCalendar(Calendar(
+          id: _uuid.v4(),
+          name: src.name,
+          color: src.color ?? 0xFF448AFF,
+          icsFeeds: [src],
+        ));
+      }
+    } catch (e) {
+      debugPrint('IcsSource migration skipped: $e');
     }
 
     await prefs.setBool(_calendarsMigratedKey, true);
