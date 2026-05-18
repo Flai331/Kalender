@@ -24,6 +24,8 @@ import '../widgets/feedback_button.dart';
 import '../week/event_status_dialog.dart';
 import '../week/event_edit_screen.dart';
 import '../todos/todo_edit_screen.dart';
+import 'dart:io';
+import 'package:desktop_drop/desktop_drop.dart';
 
 const _uuid = Uuid();
 
@@ -1851,4 +1853,101 @@ class _AllDaySpan {
   final int startCol;
   final int endCol;
   const _AllDaySpan({required this.event, required this.startCol, required this.endCol});
+}
+
+class _IcsImportDialog extends StatefulWidget {
+  final List<CalendarEvent> events;
+  final String filename;
+
+  const _IcsImportDialog({required this.events, required this.filename});
+
+  @override
+  State<_IcsImportDialog> createState() => _IcsImportDialogState();
+}
+
+class _IcsImportDialogState extends State<_IcsImportDialog> {
+  List<Calendar> _calendars = [];
+  String _selectedCalendarId = '';
+  bool _loading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    final cals = await CalendarService.getCalendars();
+    final defaultId = await CalendarService.getDefaultCalendarId();
+    if (!mounted) return;
+    setState(() {
+      _calendars = cals;
+      _selectedCalendarId = cals.any((c) => c.id == defaultId)
+          ? defaultId
+          : (cals.isNotEmpty ? cals.first.id : '');
+      _loading = false;
+    });
+  }
+
+  Future<void> _import() async {
+    for (final event in widget.events) {
+      await LocalService.saveEvent(
+        event.copyWith(calendarId: _selectedCalendarId),
+      );
+    }
+    if (mounted) Navigator.pop(context, widget.events.length);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      backgroundColor: AppColors.surface,
+      title: Text(widget.filename,
+          style: const TextStyle(color: AppColors.textPrimary)),
+      content: _loading
+          ? const SizedBox(
+              height: 48,
+              child: Center(child: CircularProgressIndicator()))
+          : Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  '${widget.events.length} Events gefunden',
+                  style: const TextStyle(color: AppColors.textSecondary),
+                ),
+                const SizedBox(height: 16),
+                if (_calendars.isNotEmpty)
+                  DropdownButton<String>(
+                    value: _selectedCalendarId.isEmpty ? null : _selectedCalendarId,
+                    dropdownColor: AppColors.surface,
+                    isExpanded: true,
+                    items: _calendars
+                        .map((c) => DropdownMenuItem(
+                              value: c.id,
+                              child: Text(c.name,
+                                  style: const TextStyle(
+                                      color: AppColors.textPrimary)),
+                            ))
+                        .toList(),
+                    onChanged: (v) {
+                      if (v != null) setState(() => _selectedCalendarId = v);
+                    },
+                  ),
+              ],
+            ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: const Text('Abbrechen',
+              style: TextStyle(color: AppColors.textSecondary)),
+        ),
+        TextButton(
+          onPressed: widget.events.isEmpty || _loading ? null : _import,
+          child: const Text('Importieren',
+              style: TextStyle(color: AppColors.primary)),
+        ),
+      ],
+    );
+  }
 }
