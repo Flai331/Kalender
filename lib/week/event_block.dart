@@ -24,7 +24,7 @@ class EventBlock extends StatelessWidget {
   Widget build(BuildContext context) {
     final title = event?.title ?? todo?.title ?? '';
     final isFixed = event?.isFixed ?? todo?.isFixed ?? false;
-    final category = event?.category.name ?? todo?.category ?? 'personal';
+    final category = event?.calendarId ?? todo?.calendarId ?? 'personal';
     final hasAddress = (event?.address ?? todo?.address) != null;
     final status = event?.status ?? _todoStatus;
     final durationMinutes = event != null

@@ -23,7 +23,7 @@ class WidgetService {
     final grouped = <String, List<Map<String, dynamic>>>{};
     for (final t in todayTodos) {
       if (t.isCompleted) continue;
-      grouped.putIfAbsent(t.category, () => []).add({
+      grouped.putIfAbsent(t.calendarId ?? 'personal', () => []).add({
         'id': t.id,
         'title': t.title,
         'isDone': t.status == TodoStatus.done,

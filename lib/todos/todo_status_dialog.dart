@@ -65,7 +65,7 @@ class _TodoStatusDialogState extends State<TodoStatusDialog> {
                 height: 12,
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
-                  color: AppColors.forCategory(widget.todo.category),
+                  color: AppColors.forCategory(widget.todo.calendarId ?? 'personal'),
                 ),
               ),
               const SizedBox(width: 8),

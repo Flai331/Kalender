@@ -58,7 +58,7 @@ class _CardContent extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final color = AppColors.forCategory(todo.category);
+    final color = AppColors.forCategory(todo.calendarId ?? 'personal');
     return Container(
       width: isDragging ? 200 : null,
       margin: const EdgeInsets.only(bottom: 8),

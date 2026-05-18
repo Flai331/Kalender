@@ -9,6 +9,7 @@ import 'app_colors.dart';
 import 'db/app_database.dart';
 import 'models/todo.dart';
 import 'services/auth_service.dart';
+import 'services/calendar_service.dart';
 import 'services/feedback_service.dart';
 import 'services/local_service.dart';
 import 'services/reminder_service.dart';
@@ -52,6 +53,7 @@ void main() async {
         anonKey: SupabaseConfig.anonKey,
       );
       await AuthService.ensureSignedIn();
+      await CalendarService.migrateIfNeeded();
       supabaseReady = true;
     } catch (e) {
       debugPrint('Supabase Fehler: $e');
