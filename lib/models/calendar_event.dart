@@ -2,8 +2,6 @@ import 'package:flutter/material.dart';
 
 enum RepeatType { none, daily, weekly, monthly, yearly }
 
-enum EventCategory { work, sport, vacation, personal }
-
 enum EventStatus { pending, started, paused, done }
 
 class CalendarEvent {
@@ -16,7 +14,7 @@ class CalendarEvent {
   final bool isAllDay;
   final RepeatType repeatType;
   final String? repeatNote;
-  final EventCategory category;
+  final String calendarId; // UUID of owning Calendar; '' = default calendar
   final String source; // 'app' | 'outlook'
   final String? outlookEventId; // Graph API event ID für PATCH-Calls
   final EventStatus status;
@@ -40,7 +38,7 @@ class CalendarEvent {
     this.isAllDay = false,
     this.repeatType = RepeatType.none,
     this.repeatNote,
-    this.category = EventCategory.personal,
+    this.calendarId = '',
     this.source = 'app',
     this.outlookEventId,
     this.status = EventStatus.pending,
@@ -77,7 +75,7 @@ class CalendarEvent {
     bool? isAllDay,
     RepeatType? repeatType,
     String? repeatNote,
-    EventCategory? category,
+    String? calendarId,
     String? source,
     String? outlookEventId,
     EventStatus? status,
@@ -101,7 +99,7 @@ class CalendarEvent {
       isAllDay: isAllDay ?? this.isAllDay,
       repeatType: repeatType ?? this.repeatType,
       repeatNote: repeatNote ?? this.repeatNote,
-      category: category ?? this.category,
+      calendarId: calendarId ?? this.calendarId,
       source: source ?? this.source,
       outlookEventId: outlookEventId ?? this.outlookEventId,
       status: status ?? this.status,
@@ -127,7 +125,7 @@ class CalendarEvent {
         'isAllDay': isAllDay,
         'repeatType': repeatType.name,
         'repeatNote': repeatNote,
-        'category': category.name,
+        'calendarId': calendarId,
         'source': source,
         'outlookEventId': outlookEventId,
         'status': status.name,
@@ -154,10 +152,7 @@ class CalendarEvent {
           orElse: () => RepeatType.none,
         ),
         repeatNote: json['repeatNote'] as String?,
-        category: EventCategory.values.firstWhere(
-          (e) => e.name == json['category'],
-          orElse: () => EventCategory.personal,
-        ),
+        calendarId: json['calendarId'] as String? ?? '',
         source: json['source'] as String? ?? 'app',
         outlookEventId: json['outlookEventId'] as String?,
         status: EventStatus.values.firstWhere(
