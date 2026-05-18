@@ -198,7 +198,16 @@ class WeekScreenState extends State<WeekScreen> {
       return;
     }
 
-    final events = IcsService.parseIcsRaw(raw);
+    final List<CalendarEvent> events;
+    try {
+      events = IcsService.parseIcsRaw(raw);
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('ICS-Datei konnte nicht verarbeitet werden')),
+      );
+      return;
+    }
     if (!mounted) return;
 
     final count = await showDialog<int>(
@@ -210,6 +219,8 @@ class WeekScreenState extends State<WeekScreen> {
     );
 
     if (count != null && count > 0 && mounted) {
+      setState(() => _initStreams());
+      _loadIcsEvents();
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('$count Events importiert')),
       );
@@ -2007,7 +2018,7 @@ class _IcsImportDialogState extends State<_IcsImportDialog> {
               style: TextStyle(color: AppColors.textSecondary)),
         ),
         TextButton(
-          onPressed: widget.events.isEmpty || _loading ? null : _import,
+          onPressed: widget.events.isEmpty || _loading || _selectedCalendarId.isEmpty ? null : _import,
           child: const Text('Importieren',
               style: TextStyle(color: AppColors.primary)),
         ),
