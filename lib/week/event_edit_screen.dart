@@ -1,7 +1,9 @@
 ﻿import 'package:flutter/material.dart';
 import 'package:uuid/uuid.dart';
 import '../app_colors.dart';
+import '../models/calendar.dart';
 import '../models/calendar_event.dart';
+import '../services/calendar_service.dart';
 import '../services/supabase_service.dart';
 import '../widgets/feedback_button.dart';
 
@@ -22,7 +24,8 @@ class _EventEditScreenState extends State<EventEditScreen> {
   late TextEditingController _addressCtrl;
   late DateTime _startTime;
   late DateTime _endTime;
-  late EventCategory _category;
+  late String _calendarId;
+  List<Calendar> _calendars = [];
   late bool _isFixed;
   late RepeatType _repeatType;
   late int _travelBefore;
@@ -40,8 +43,11 @@ class _EventEditScreenState extends State<EventEditScreen> {
     _addressCtrl = TextEditingController(text: e?.address ?? '');
     _startTime = e?.startTime ?? _roundToNext30();
     _endTime = e?.endTime ?? _startTime.add(const Duration(hours: 1));
-    _category = e?.category ?? EventCategory.personal;
+    _calendarId = e?.calendarId ?? '';
     _isFixed = e?.isFixed ?? false;
+    CalendarService.getCalendars().then((cals) {
+      if (mounted) setState(() => _calendars = cals);
+    });
     _repeatType = e?.repeatType ?? RepeatType.none;
     _travelBefore = e?.travelMinutesBefore ?? 0;
     _travelAfter = e?.travelMinutesAfter ?? 0;
@@ -98,7 +104,7 @@ class _EventEditScreenState extends State<EventEditScreen> {
         description: _descCtrl.text.trim(),
         startTime: _startTime,
         endTime: _endTime,
-        category: _category,
+        calendarId: _calendarId,
         isFixed: _isFixed,
         repeatType: _repeatType,
         source: 'app',
@@ -113,7 +119,7 @@ class _EventEditScreenState extends State<EventEditScreen> {
         description: _descCtrl.text.trim(),
         startTime: _startTime,
         endTime: _endTime,
-        category: _category,
+        calendarId: _calendarId,
         isFixed: _isFixed,
         repeatType: _repeatType,
         source: 'app',
@@ -195,10 +201,11 @@ class _EventEditScreenState extends State<EventEditScreen> {
             onTap: () => _pickDateTime(isStart: false),
           ),
           const SizedBox(height: 16),
-          _SectionLabel('Kategorie'),
-          _CategorySelector(
-            selected: _category,
-            onChanged: (c) => setState(() => _category = c),
+          _SectionLabel('Kalender'),
+          _CalendarPicker(
+            calendarId: _calendarId,
+            calendars: _calendars,
+            onChanged: (id) => setState(() => _calendarId = id),
           ),
           const SizedBox(height: 16),
           _SectionLabel('Wiederholung'),
@@ -506,38 +513,40 @@ class _TimeRow extends StatelessWidget {
   }
 }
 
-class _CategorySelector extends StatelessWidget {
-  final EventCategory selected;
-  final ValueChanged<EventCategory> onChanged;
+class _CalendarPicker extends StatelessWidget {
+  final String calendarId;
+  final List<Calendar> calendars;
+  final ValueChanged<String> onChanged;
 
-  const _CategorySelector(
-      {required this.selected, required this.onChanged});
-
-  static const _labels = {
-    EventCategory.work: 'Arbeit',
-    EventCategory.sport: 'Sport',
-    EventCategory.vacation: 'Urlaub',
-    EventCategory.personal: 'Persönlich',
-  };
+  const _CalendarPicker({
+    required this.calendarId,
+    required this.calendars,
+    required this.onChanged,
+  });
 
   @override
   Widget build(BuildContext context) {
+    if (calendars.isEmpty) {
+      return const Text('Lade Kalender…',
+          style: TextStyle(color: AppColors.textDisabled, fontSize: 13));
+    }
     return Wrap(
       spacing: 8,
-      children: EventCategory.values.map((c) {
-        final color = AppColors.forCategory(c.name);
-        final isSelected = selected == c;
+      children: calendars.map((cal) {
+        final selected = calendarId == cal.id ||
+            (calendarId.isEmpty && cal == calendars.first);
+        final color = Color(cal.color);
         return ChoiceChip(
-          label: Text(_labels[c] ?? c.name),
-          selected: isSelected,
-          onSelected: (_) => onChanged(c),
+          label: Text(cal.name),
+          selected: selected,
+          onSelected: (_) => onChanged(cal.id),
           selectedColor: color.withValues(alpha: 0.3),
           backgroundColor: AppColors.card,
           labelStyle: TextStyle(
-              color: isSelected ? color : AppColors.textSecondary,
+              color: selected ? color : AppColors.textSecondary,
               fontSize: 13),
           side: BorderSide(
-              color: isSelected ? color : AppColors.divider, width: 1),
+              color: selected ? color : AppColors.divider, width: 1),
         );
       }).toList(),
     );

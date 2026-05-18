@@ -1,8 +1,10 @@
 ﻿import 'package:flutter/material.dart';
 import 'package:uuid/uuid.dart';
 import '../app_colors.dart';
+import '../models/calendar.dart';
 import '../models/todo.dart';
 import '../models/calendar_event.dart';
+import '../services/calendar_service.dart';
 import '../services/supabase_service.dart';
 import '../widgets/feedback_button.dart';
 
@@ -24,13 +26,14 @@ class _TodoEditScreenState extends State<TodoEditScreen> {
   late int _estimatedMinutes;
   late RepeatType _repeatType;
   late bool _isFixed;
-  late String _category;
+  String? _calendarId;
+  List<Calendar> _calendars = [];
   late int _travelBefore;
   late int _travelAfter;
   int? _windowStartHour;
   int? _windowEndHour;
   late TodoContextMode _contextMode;
-  EventCategory? _requiredCategory;
+  String? _requiredCalendarId;
   late List<int> _allowedWeekdays;
   late DaylightMode _daylightMode;
   late List<SubTask> _subTasks;
@@ -47,13 +50,16 @@ class _TodoEditScreenState extends State<TodoEditScreen> {
     _estimatedMinutes = t?.estimatedMinutes ?? 30;
     _repeatType = t?.repeatType ?? RepeatType.none;
     _isFixed = t?.isFixed ?? false;
-    _category = t?.category ?? 'personal';
+    _calendarId = t?.calendarId;
     _travelBefore = t?.travelMinutesBefore ?? 0;
     _travelAfter = t?.travelMinutesAfter ?? 0;
     _windowStartHour = t?.dueWindowStartHour;
     _windowEndHour = t?.dueWindowEndHour;
     _contextMode = t?.contextMode ?? TodoContextMode.anyTime;
-    _requiredCategory = t?.requiredCategory;
+    _requiredCalendarId = t?.requiredCalendarId;
+    CalendarService.getCalendars().then((cals) {
+      if (mounted) setState(() => _calendars = cals);
+    });
     _allowedWeekdays = List.from(t?.allowedWeekdays ?? []);
     _daylightMode = t?.daylightMode ?? DaylightMode.none;
     _subTasks = List.from(t?.subTasks ?? []);
@@ -68,7 +74,7 @@ class _TodoEditScreenState extends State<TodoEditScreen> {
       estimatedMinutes: _estimatedMinutes,
       repeatType: _repeatType,
       isFixed: _isFixed,
-      category: _category,
+      calendarId: _calendarId,
       createdAt: widget.todo?.createdAt ?? DateTime.now(),
       scheduledDate: widget.todo?.scheduledDate,
       scheduledStartHour: widget.todo?.scheduledStartHour,
@@ -87,7 +93,7 @@ class _TodoEditScreenState extends State<TodoEditScreen> {
       dueWindowStartHour: _windowStartHour,
       dueWindowEndHour: _windowEndHour,
       contextMode: _contextMode,
-      requiredCategory: _requiredCategory,
+      requiredCalendarId: _requiredCalendarId,
       allowedWeekdays: _allowedWeekdays.isEmpty ? null : _allowedWeekdays,
       daylightMode: _daylightMode,
       repeatConfig: widget.todo?.repeatConfig,
@@ -208,11 +214,12 @@ class _TodoEditScreenState extends State<TodoEditScreen> {
           ),
           const SizedBox(height: 16),
 
-          // Kategorie
-          _SectionLabel('Kategorie'),
-          _CategorySelector(
-            selected: _category,
-            onChanged: (c) => setState(() => _category = c),
+          // Kalender
+          _SectionLabel('Kalender'),
+          _CalendarPicker(
+            calendarId: _calendarId,
+            calendars: _calendars,
+            onChanged: (id) => setState(() => _calendarId = id),
           ),
           const SizedBox(height: 16),
 
@@ -249,16 +256,17 @@ class _TodoEditScreenState extends State<TodoEditScreen> {
               _contextMode = m;
               if (m != TodoContextMode.categoryEvent &&
                   m != TodoContextMode.opportunistic) {
-                _requiredCategory = null;
+                _requiredCalendarId = null;
               }
             }),
           ),
           if (_contextMode == TodoContextMode.categoryEvent ||
               _contextMode == TodoContextMode.opportunistic) ...[
             const SizedBox(height: 8),
-            _CategoryEventPicker(
-              selected: _requiredCategory,
-              onChanged: (c) => setState(() => _requiredCategory = c),
+            _CalendarEventPicker(
+              calendarId: _requiredCalendarId,
+              calendars: _calendars,
+              onChanged: (id) => setState(() => _requiredCalendarId = id),
             ),
           ],
           const SizedBox(height: 12),
@@ -569,38 +577,39 @@ class _DurationPickerState extends State<_DurationPicker> {
   }
 }
 
-class _CategorySelector extends StatelessWidget {
-  final String selected;
+class _CalendarPicker extends StatelessWidget {
+  final String? calendarId;
+  final List<Calendar> calendars;
   final ValueChanged<String> onChanged;
 
-  const _CategorySelector(
-      {required this.selected, required this.onChanged});
-
-  static const _options = {
-    'personal': 'Persönlich',
-    'work': 'Arbeit',
-    'sport': 'Sport',
-    'vacation': 'Urlaub',
-  };
+  const _CalendarPicker({
+    required this.calendarId,
+    required this.calendars,
+    required this.onChanged,
+  });
 
   @override
   Widget build(BuildContext context) {
+    if (calendars.isEmpty) {
+      return const Text('Lade Kalender…',
+          style: TextStyle(color: AppColors.textDisabled, fontSize: 13));
+    }
     return Wrap(
       spacing: 8,
-      children: _options.entries.map((e) {
-        final color = AppColors.forCategory(e.key);
-        final isSelected = selected == e.key;
+      children: calendars.map((cal) {
+        final selected = calendarId == cal.id;
+        final color = Color(cal.color);
         return ChoiceChip(
-          label: Text(e.value),
-          selected: isSelected,
-          onSelected: (_) => onChanged(e.key),
+          label: Text(cal.name),
+          selected: selected,
+          onSelected: (_) => onChanged(cal.id),
           selectedColor: color.withValues(alpha: 0.3),
           backgroundColor: AppColors.card,
           labelStyle: TextStyle(
-              color: isSelected ? color : AppColors.textSecondary,
+              color: selected ? color : AppColors.textSecondary,
               fontSize: 13),
           side: BorderSide(
-              color: isSelected ? color : AppColors.divider, width: 1),
+              color: selected ? color : AppColors.divider, width: 1),
         );
       }).toList(),
     );
@@ -788,37 +797,39 @@ class _ContextModePicker extends StatelessWidget {
   }
 }
 
-class _CategoryEventPicker extends StatelessWidget {
-  final EventCategory? selected;
-  final ValueChanged<EventCategory?> onChanged;
+class _CalendarEventPicker extends StatelessWidget {
+  final String? calendarId;
+  final List<Calendar> calendars;
+  final ValueChanged<String?> onChanged;
 
-  const _CategoryEventPicker({required this.selected, required this.onChanged});
-
-  static const _labels = {
-    EventCategory.work: 'Arbeit',
-    EventCategory.sport: 'Sport',
-    EventCategory.vacation: 'Urlaub',
-    EventCategory.personal: 'Persönlich',
-  };
+  const _CalendarEventPicker({
+    required this.calendarId,
+    required this.calendars,
+    required this.onChanged,
+  });
 
   @override
   Widget build(BuildContext context) {
+    if (calendars.isEmpty) {
+      return const Text('Lade Kalender…',
+          style: TextStyle(color: AppColors.textDisabled, fontSize: 13));
+    }
     return Wrap(
       spacing: 8,
-      children: EventCategory.values.map((c) {
-        final isSelected = selected == c;
+      children: calendars.map((cal) {
+        final selected = calendarId == cal.id;
         return ChoiceChip(
-          label: Text(_labels[c] ?? c.name),
-          selected: isSelected,
-          onSelected: (_) => onChanged(isSelected ? null : c),
+          label: Text(cal.name),
+          selected: selected,
+          onSelected: (_) => onChanged(selected ? null : cal.id),
           selectedColor: AppColors.primary.withValues(alpha: 0.3),
           backgroundColor: AppColors.card,
           labelStyle: TextStyle(
-            color: isSelected ? AppColors.primary : AppColors.textSecondary,
+            color: selected ? AppColors.primary : AppColors.textSecondary,
             fontSize: 13,
           ),
           side: BorderSide(
-              color: isSelected ? AppColors.primary : AppColors.divider),
+              color: selected ? AppColors.primary : AppColors.divider),
         );
       }).toList(),
     );
