@@ -37,6 +37,7 @@ dependencies:
 
   # File picking
   file_picker: ^8.1.2
+  desktop_drop: ^0.4.4
 
   # Utils
   intl: ^0.20.0
