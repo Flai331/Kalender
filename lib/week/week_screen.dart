@@ -5,6 +5,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uuid/uuid.dart';
+import '../models/calendar.dart';
+import '../services/calendar_service.dart';
 import '../app_colors.dart';
 import '../models/calendar_event.dart';
 import '../models/todo.dart';
@@ -52,7 +54,7 @@ class WeekScreenState extends State<WeekScreen> {
   bool _outlookAllowTodoDrop = false;
 
   Timer? _nowTimer;
-  List<String> _blockingAllDayCats = ['vacation'];
+  List<Calendar> _calendars = [];
   final Set<String> _noSlotTodos = {};
   final Set<String> _overriddenIcsIds = {};
   static const String _overriddenIcsKey = 'overridden_ics_ids';
@@ -139,7 +141,7 @@ class WeekScreenState extends State<WeekScreen> {
     _checkYearlyChecklists();
     DaylightService.loadSettings();
     DaylightService.prefetchLocation();
-    _loadBlockingCats();
+    _loadCalendars();
     SnapState.snapNotifier.addListener(_onSnapChanged);
     SnapState.isDraggingNotifier.addListener(_onSnapChanged);
     HardwareKeyboard.instance.addHandler(_onKey);
@@ -210,7 +212,6 @@ class WeekScreenState extends State<WeekScreen> {
       endTime: ics.endTime,
       isAllDay: ics.isAllDay,
       source: 'app',
-      category: ics.category,
       address: ics.address,
     );
   }
@@ -931,10 +932,7 @@ class WeekScreenState extends State<WeekScreen> {
                             onTap: () => _onEventTap(span.event),
                             child: Container(
                               decoration: BoxDecoration(
-                                color: (span.event.calendarColor != null
-                                        ? Color(span.event.calendarColor!)
-                                        : _categoryColor(span.event.category))
-                                    .withValues(alpha: 0.85),
+                                color: _calendarColor(span.event).withValues(alpha: 0.85),
                                 borderRadius: BorderRadius.circular(3),
                               ),
                               padding: const EdgeInsets.symmetric(horizontal: 4),
@@ -961,13 +959,10 @@ class WeekScreenState extends State<WeekScreen> {
     );
   }
 
-  Color _categoryColor(EventCategory cat) {
-    switch (cat) {
-      case EventCategory.work: return AppColors.work;
-      case EventCategory.sport: return AppColors.sport;
-      case EventCategory.vacation: return AppColors.vacation;
-      case EventCategory.personal: return AppColors.primary;
-    }
+  Color _calendarColor(CalendarEvent event) {
+    if (event.calendarColor != null) return Color(event.calendarColor!);
+    final cal = _calendars.where((c) => c.id == event.calendarId).firstOrNull;
+    return cal != null ? Color(cal.color) : AppColors.primary;
   }
 
   Widget _buildWeekView() {
@@ -1231,13 +1226,10 @@ class WeekScreenState extends State<WeekScreen> {
 
   // ── Constraint-Helpers ─────────────────────────────────────────────────────
 
-  Future<void> _loadBlockingCats() async {
-    final prefs = await SharedPreferences.getInstance();
+  Future<void> _loadCalendars() async {
+    final cals = await CalendarService.getCalendars();
     if (!mounted) return;
-    setState(() {
-      _blockingAllDayCats =
-          prefs.getStringList('blocking_allday_cats') ?? ['vacation'];
-    });
+    setState(() => _calendars = cals);
   }
 
   Future<void> _onTodoDroppedOnEvent(Todo todo, CalendarEvent event) async {
@@ -1261,7 +1253,7 @@ class WeekScreenState extends State<WeekScreen> {
       scheduledStartHour: newStart ~/ 60,
       scheduledStartMinute: newStart % 60,
       contextMode: TodoContextMode.opportunistic,
-      requiredCategory: event.category,
+      requiredCalendarId: event.calendarId,
     );
     await LocalService.saveTodo(updated);
   }
@@ -1275,8 +1267,10 @@ class WeekScreenState extends State<WeekScreen> {
         e.startTime.year == day.year &&
         e.startTime.month == day.month &&
         e.startTime.day == day.day);
-    return allEventsOnDay
-        .any((e) => _blockingAllDayCats.contains(e.category.name));
+    return allEventsOnDay.any((e) {
+      final cal = _calendars.where((c) => c.id == e.calendarId).firstOrNull;
+      return cal?.blocksAutoShift ?? false;
+    });
   }
 
   List<CalendarEvent> _timedEventsOnDay(DateTime day) {
@@ -1338,13 +1332,13 @@ class WeekScreenState extends State<WeekScreen> {
       // Kontext-Modus
       if (todo.contextMode == TodoContextMode.categoryEvent ||
           todo.contextMode == TodoContextMode.opportunistic) {
-        if (todo.requiredCategory == null) {
+        if (todo.requiredCalendarId == null) {
           day = day.add(const Duration(days: 1));
           startMinute = 0;
           continue;
         }
         final matchEvents = _timedEventsOnDay(day)
-            .where((e) => e.category == todo.requiredCategory)
+            .where((e) => e.calendarId == todo.requiredCalendarId)
             .toList();
 
         for (final ev in matchEvents) {
