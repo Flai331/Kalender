@@ -40,6 +40,7 @@ class WeekScreenState extends State<WeekScreen> {
   late DateTime _weekStart;
   late DateTime _selectedDay;
   bool _isDayView = false;
+  bool _isDragOver = false;
   final ScrollController _scrollController = ScrollController();
 
   // Daten-Streams
@@ -177,6 +178,42 @@ class WeekScreenState extends State<WeekScreen> {
       _initStreams();
     });
     _loadIcsEvents();
+  }
+
+  Future<void> _handleDrop(DropDoneDetails details) async {
+    final file = details.files.firstWhere(
+      (f) => f.name.toLowerCase().endsWith('.ics'),
+      orElse: () => details.files.first,
+    );
+    if (!file.name.toLowerCase().endsWith('.ics')) return;
+
+    final String raw;
+    try {
+      raw = await File(file.path).readAsString();
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Datei konnte nicht gelesen werden')),
+      );
+      return;
+    }
+
+    final events = IcsService.parseIcsRaw(raw);
+    if (!mounted) return;
+
+    final count = await showDialog<int>(
+      context: context,
+      builder: (_) => _IcsImportDialog(
+        events: events,
+        filename: file.name,
+      ),
+    );
+
+    if (count != null && count > 0 && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('$count Events importiert')),
+      );
+    }
   }
 
   Future<void> _loadIcsEvents() async {
@@ -590,71 +627,98 @@ class WeekScreenState extends State<WeekScreen> {
     return Scaffold(
       backgroundColor: AppColors.background,
       appBar: _buildAppBar(),
-      body: Stack(
-        children: [
-          Column(
-            children: [
-              if (_pendingChecklists.isNotEmpty) _buildChecklistBanner(),
-              Expanded(child: _isDayView ? _buildDayView() : _buildWeekView()),
-              _buildTodoPool(),
-            ],
-          ),
-          // Snap-Level + Zeit Overlay
-          AnimatedBuilder(
-            animation: Listenable.merge([
-              SnapState.isDraggingNotifier,
-              SnapState.snapNotifier,
-              SnapState.currentTimeNotifier,
-            ]),
-            builder: (ctx, _) {
-              if (!SnapState.isDraggingNotifier.value) return const SizedBox.shrink();
-              final snap = SnapState.snapNotifier.value;
-              final time = SnapState.currentTimeNotifier.value;
-              return Positioned(
-                bottom: 80,
-                left: 0,
-                right: 0,
-                child: Center(
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-                    decoration: BoxDecoration(
-                      color: AppColors.primary,
-                      borderRadius: BorderRadius.circular(24),
-                      boxShadow: [BoxShadow(color: Colors.black38, blurRadius: 10)],
-                    ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        if (time.isNotEmpty) ...[
+      body: DropTarget(
+        onDragEntered: (_) => setState(() => _isDragOver = true),
+        onDragExited: (_) => setState(() => _isDragOver = false),
+        onDragDone: (details) {
+          setState(() => _isDragOver = false);
+          _handleDrop(details);
+        },
+        child: Stack(
+          children: [
+            Column(
+              children: [
+                if (_pendingChecklists.isNotEmpty) _buildChecklistBanner(),
+                Expanded(child: _isDayView ? _buildDayView() : _buildWeekView()),
+                _buildTodoPool(),
+              ],
+            ),
+            // Snap-Level + Zeit Overlay
+            AnimatedBuilder(
+              animation: Listenable.merge([
+                SnapState.isDraggingNotifier,
+                SnapState.snapNotifier,
+                SnapState.currentTimeNotifier,
+              ]),
+              builder: (ctx, _) {
+                if (!SnapState.isDraggingNotifier.value) return const SizedBox.shrink();
+                final snap = SnapState.snapNotifier.value;
+                final time = SnapState.currentTimeNotifier.value;
+                return Positioned(
+                  bottom: 80,
+                  left: 0,
+                  right: 0,
+                  child: Center(
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                      decoration: BoxDecoration(
+                        color: AppColors.primary,
+                        borderRadius: BorderRadius.circular(24),
+                        boxShadow: [BoxShadow(color: Colors.black38, blurRadius: 10)],
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          if (time.isNotEmpty) ...[
+                            Text(
+                              time,
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 20,
+                                fontWeight: FontWeight.w800,
+                                letterSpacing: 1,
+                              ),
+                            ),
+                            const SizedBox(width: 10),
+                            Container(width: 1, height: 20, color: Colors.white38),
+                            const SizedBox(width: 10),
+                          ],
                           Text(
-                            time,
+                            snap == 1 ? '1 min' : '$snap min',
                             style: const TextStyle(
-                              color: Colors.white,
-                              fontSize: 20,
-                              fontWeight: FontWeight.w800,
-                              letterSpacing: 1,
+                              color: Colors.white70,
+                              fontSize: 13,
+                              fontWeight: FontWeight.w600,
                             ),
                           ),
-                          const SizedBox(width: 10),
-                          Container(width: 1, height: 20, color: Colors.white38),
-                          const SizedBox(width: 10),
                         ],
-                        Text(
-                          snap == 1 ? '1 min' : '$snap min',
-                          style: const TextStyle(
-                            color: Colors.white70,
-                            fontSize: 13,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                      ],
+                      ),
                     ),
                   ),
+                );
+              },
+            ),
+            if (_isDragOver)
+              Container(
+                color: AppColors.primary.withValues(alpha: 0.15),
+                child: const Center(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.calendar_today,
+                          size: 48, color: AppColors.primary),
+                      SizedBox(height: 12),
+                      Text('ICS-Datei loslassen',
+                          style: TextStyle(
+                              color: AppColors.primary,
+                              fontSize: 18,
+                              fontWeight: FontWeight.w600)),
+                    ],
+                  ),
                 ),
-              );
-            },
-          ),
-        ],
+              ),
+          ],
+        ),
       ),
       floatingActionButton: FloatingActionButton(
         heroTag: 'week_fab',
