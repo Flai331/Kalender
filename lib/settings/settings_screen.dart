@@ -1,9 +1,7 @@
-﻿import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../app_colors.dart';
-import '../models/calendar_event.dart';
-import '../models/ics_source.dart';
+import '../calendars/calendar_list_screen.dart';
 import '../services/auth_service.dart';
 import '../services/daylight_service.dart';
 import '../services/feedback_service.dart';
@@ -19,28 +17,22 @@ class SettingsScreen extends StatefulWidget {
 }
 
 class _SettingsScreenState extends State<SettingsScreen> {
-  List<IcsSource> _sources = [];
-  bool _sourcesLoading = true;
   bool _outlookAllowTodoDrop = false;
 
-  List<String> _blockingAllDayCats = ['vacation'];
   int _daylightSunrise = 6;
   int _daylightSunset = 20;
 
   @override
   void initState() {
     super.initState();
-    _loadSources();
+    _loadOutlookSetting();
     _loadConstraintSettings();
   }
 
-  Future<void> _loadSources() async {
-    final sources = await IcsService.getSources();
+  Future<void> _loadOutlookSetting() async {
     final outlook = await IcsService.getOutlookAllowTodoDrop();
     if (mounted) {
       setState(() {
-        _sources = sources;
-        _sourcesLoading = false;
         _outlookAllowTodoDrop = outlook;
       });
     }
@@ -50,210 +42,15 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final prefs = await SharedPreferences.getInstance();
     if (!mounted) return;
     setState(() {
-      _blockingAllDayCats =
-          prefs.getStringList('blocking_allday_cats') ?? ['vacation'];
       _daylightSunrise = prefs.getInt('daylight_sunrise') ?? 6;
       _daylightSunset = prefs.getInt('daylight_sunset') ?? 20;
     });
-  }
-
-  Future<void> _saveBlockingCats() async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setStringList('blocking_allday_cats', _blockingAllDayCats);
-  }
-
-  Future<void> _toggleIcsAllowTodoDrop(IcsSource src, bool value) async {
-    final sources = await IcsService.getSources();
-    final updated = sources.map((s) =>
-        s.id == src.id ? s.copyWith(allowTodoDrop: value) : s).toList();
-    await IcsService.saveSources(updated);
-    await _loadSources();
   }
 
   Future<void> _toggleOutlookAllowTodoDrop(bool value) async {
     await IcsService.setOutlookAllowTodoDrop(value);
     setState(() => _outlookAllowTodoDrop = value);
   }
-
-  Future<void> _addUrl() async {
-    final nameCtrl = TextEditingController();
-    final urlCtrl = TextEditingController();
-    final result = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: AppColors.surface,
-        title: const Text('URL hinzufügen',
-            style: TextStyle(color: AppColors.textPrimary)),
-        content: SizedBox(
-          width: double.maxFinite,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              TextField(
-                controller: nameCtrl,
-                style: const TextStyle(color: AppColors.textPrimary, fontSize: 13),
-                decoration: _inputDeco('Name (z.B. Outlook)'),
-              ),
-              const SizedBox(height: 10),
-              TextField(
-                controller: urlCtrl,
-                style: const TextStyle(color: AppColors.textPrimary, fontSize: 12),
-                decoration: _inputDeco('webcal://outlook.live.com/...'),
-              ),
-            ],
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('Abbrechen',
-                style: TextStyle(color: AppColors.textSecondary)),
-          ),
-          ElevatedButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            style: ElevatedButton.styleFrom(
-                backgroundColor: AppColors.primary,
-                foregroundColor: Colors.white),
-            child: const Text('Hinzufügen'),
-          ),
-        ],
-      ),
-    );
-    if (result != true) return;
-    final url = urlCtrl.text.trim();
-    if (url.isEmpty) return;
-    setState(() => _sourcesLoading = true);
-    await IcsService.addUrl(url, nameCtrl.text.trim());
-    await _loadSources();
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Kalender hinzugefügt'),
-            backgroundColor: AppColors.started),
-      );
-    }
-  }
-
-  Future<void> _addFile() async {
-    final result = await FilePicker.platform.pickFiles(
-      type: FileType.custom,
-      allowedExtensions: ['ics'],
-    );
-    if (result == null || result.files.isEmpty) return;
-    final path = result.files.single.path;
-    if (path == null) return;
-    if (!mounted) return;
-
-    final nameCtrl = TextEditingController(
-        text: result.files.single.name.replaceAll('.ics', ''));
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: AppColors.surface,
-        title: const Text('Datei hinzufügen',
-            style: TextStyle(color: AppColors.textPrimary)),
-        content: SizedBox(
-          width: double.maxFinite,
-          child: TextField(
-            controller: nameCtrl,
-            style: const TextStyle(color: AppColors.textPrimary, fontSize: 13),
-            decoration: _inputDeco('Name'),
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('Abbrechen',
-                style: TextStyle(color: AppColors.textSecondary)),
-          ),
-          ElevatedButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            style: ElevatedButton.styleFrom(
-                backgroundColor: AppColors.primary,
-                foregroundColor: Colors.white),
-            child: const Text('Hinzufügen'),
-          ),
-        ],
-      ),
-    );
-    if (confirmed != true) return;
-    setState(() => _sourcesLoading = true);
-    await IcsService.addFile(path, nameCtrl.text.trim());
-    await _loadSources();
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('ICS-Datei hinzugefügt'),
-            backgroundColor: AppColors.started),
-      );
-    }
-  }
-
-  static const List<int> _presetColors = [
-    0xFF6C63FF, 0xFF448AFF, 0xFF00BCD4, 0xFF4CAF50,
-    0xFF8BC34A, 0xFFFFD740, 0xFFFF9800, 0xFFFF5252,
-    0xFFE040FB, 0xFFFF4081, 0xFF795548, 0xFF607D8B,
-  ];
-
-  Future<void> _pickColor(IcsSource src) async {
-    final picked = await showDialog<int>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: AppColors.surface,
-        title: Text('Farbe für ${src.name}',
-            style: const TextStyle(color: AppColors.textPrimary, fontSize: 15)),
-        content: Wrap(
-          spacing: 10,
-          runSpacing: 10,
-          children: _presetColors.map((c) {
-            final isSelected = src.color == c;
-            return GestureDetector(
-              onTap: () => Navigator.pop(ctx, c),
-              child: Container(
-                width: 36,
-                height: 36,
-                decoration: BoxDecoration(
-                  color: Color(c),
-                  shape: BoxShape.circle,
-                  border: isSelected
-                      ? Border.all(color: Colors.white, width: 2.5)
-                      : null,
-                ),
-              ),
-            );
-          }).toList(),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text('Abbrechen',
-                style: TextStyle(color: AppColors.textSecondary)),
-          ),
-        ],
-      ),
-    );
-    if (picked == null) return;
-    final sources = await IcsService.getSources();
-    final updated = sources.map((s) =>
-        s.id == src.id ? s.copyWith(color: picked) : s).toList();
-    await IcsService.saveSources(updated);
-    await _loadSources();
-  }
-
-  Future<void> _removeSource(String id) async {
-    await IcsService.removeSource(id);
-    await _loadSources();
-  }
-
-  InputDecoration _inputDeco(String hint) => InputDecoration(
-        hintText: hint,
-        hintStyle:
-            const TextStyle(color: AppColors.textDisabled, fontSize: 12),
-        filled: true,
-        fillColor: AppColors.background,
-        border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(8),
-          borderSide: BorderSide.none,
-        ),
-      );
 
   Future<void> _testNotification() async {
     await ReminderService.showTestNotification(
@@ -298,117 +95,22 @@ class _SettingsScreenState extends State<SettingsScreen> {
           ),
           const SizedBox(height: 16),
 
-          // ICS Kalender
+          // Kalender
           _Section(
-            title: 'Kalender (ICS)',
+            title: 'Kalender',
             children: [
-              if (_sourcesLoading)
-                const Padding(
-                  padding: EdgeInsets.all(16),
-                  child: Center(
-                      child: CircularProgressIndicator(
-                          color: AppColors.primary, strokeWidth: 2)),
-                )
-              else if (_sources.isEmpty)
-                const Padding(
-                  padding: EdgeInsets.fromLTRB(16, 12, 16, 4),
-                  child: Text('Noch kein Kalender hinzugefügt',
-                      style: TextStyle(
-                          color: AppColors.textDisabled, fontSize: 13)),
-                )
-              else
-                ..._sources.map((src) {
-                  final srcColor = src.color != null
-                      ? Color(src.color!)
-                      : AppColors.primary;
-                  return ListTile(
-                    leading: GestureDetector(
-                      onTap: () => _pickColor(src),
-                      child: Container(
-                        width: 28,
-                        height: 28,
-                        decoration: BoxDecoration(
-                          color: srcColor,
-                          shape: BoxShape.circle,
-                          border: Border.all(
-                              color: Colors.white24, width: 1),
-                        ),
-                        child: Icon(
-                          src.isFile
-                              ? Icons.insert_drive_file_outlined
-                              : Icons.calendar_month_outlined,
-                          color: Colors.white,
-                          size: 14,
-                        ),
-                      ),
-                    ),
-                    title: Text(src.name,
-                        style: const TextStyle(
-                            color: AppColors.textPrimary, fontSize: 14)),
-                    subtitle: Text(
-                      src.url,
-                      style: const TextStyle(
-                          color: AppColors.textSecondary, fontSize: 10),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                    trailing: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Tooltip(
-                          message: 'Todo-Drop erlauben',
-                          child: Switch(
-                            value: src.allowTodoDrop,
-                            onChanged: (v) => _toggleIcsAllowTodoDrop(src, v),
-                            activeThumbColor: AppColors.primary,
-                            materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                          ),
-                        ),
-                        IconButton(
-                          icon: const Icon(Icons.delete_outline,
-                              color: Colors.redAccent, size: 20),
-                          onPressed: () => _removeSource(src.id),
-                          tooltip: 'Entfernen',
-                        ),
-                      ],
-                    ),
-                  );
-                }),
-              const Divider(height: 1, color: AppColors.background),
-              Padding(
-                padding: const EdgeInsets.fromLTRB(12, 8, 12, 12),
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: OutlinedButton.icon(
-                        onPressed: _addUrl,
-                        icon: const Icon(Icons.link, size: 16),
-                        label: const Text('URL', style: TextStyle(fontSize: 13)),
-                        style: OutlinedButton.styleFrom(
-                          foregroundColor: AppColors.primary,
-                          side: const BorderSide(color: AppColors.primary),
-                          padding: const EdgeInsets.symmetric(vertical: 8),
-                          shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(8)),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: OutlinedButton.icon(
-                        onPressed: _addFile,
-                        icon: const Icon(Icons.upload_file, size: 16),
-                        label: const Text('Datei', style: TextStyle(fontSize: 13)),
-                        style: OutlinedButton.styleFrom(
-                          foregroundColor: AppColors.primary,
-                          side: const BorderSide(color: AppColors.primary),
-                          padding: const EdgeInsets.symmetric(vertical: 8),
-                          shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(8)),
-                        ),
-                      ),
-                    ),
-                  ],
+              ListTile(
+                leading: const Icon(Icons.calendar_month,
+                    color: AppColors.primary, size: 22),
+                title: const Text('Kalender verwalten',
+                    style: TextStyle(color: AppColors.textPrimary, fontSize: 14)),
+                subtitle: const Text('Erstellen, bearbeiten, ICS-Feeds',
+                    style: TextStyle(color: AppColors.textSecondary, fontSize: 12)),
+                trailing: const Icon(Icons.chevron_right,
+                    color: AppColors.textSecondary),
+                onTap: () => Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (_) => const CalendarListScreen()),
                 ),
               ),
             ],
@@ -484,46 +186,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
               ),
             ),
           ),
-
-          // Blockierende Ganztags-Kategorien
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16),
-            child: Text(
-              'Ganztags-Termine blockieren Auto-Shift:',
-              style: const TextStyle(
-                color: AppColors.textPrimary,
-                fontSize: 14,
-              ),
-            ),
-          ),
-          ...EventCategory.values.map((cat) {
-            final name = cat.name;
-            final label = switch (cat) {
-              EventCategory.work     => 'Arbeit',
-              EventCategory.sport    => 'Sport',
-              EventCategory.vacation => 'Urlaub',
-              EventCategory.personal => 'Persönlich',
-            };
-            return CheckboxListTile(
-              title: Text(label,
-                  style: const TextStyle(color: AppColors.textPrimary)),
-              value: _blockingAllDayCats.contains(name),
-              activeColor: AppColors.primary,
-              tileColor: AppColors.card,
-              shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(8)),
-              onChanged: (on) {
-                setState(() {
-                  if (on == true) {
-                    _blockingAllDayCats.add(name);
-                  } else {
-                    _blockingAllDayCats.remove(name);
-                  }
-                });
-                _saveBlockingCats();
-              },
-            );
-          }),
 
           const SizedBox(height: 12),
 
