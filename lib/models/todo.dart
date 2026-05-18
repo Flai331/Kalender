@@ -69,7 +69,7 @@ class Todo {
   final DateTime? actualEnd;
   final int pausedMinutes;
   final DateTime? pauseStart;
-  final String category;
+  final String? calendarId;        // null = unassigned
   final DateTime createdAt;
   final String? outlookTaskId;  // Microsoft To Do Task ID
   final String? outlookListId;  // Microsoft To Do List ID
@@ -79,7 +79,7 @@ class Todo {
   final int? dueWindowStartHour; // früheste Startzeit (z.B. 8)
   final int? dueWindowEndHour;   // späteste Endzeit (z.B. 22)
   final TodoContextMode contextMode;
-  final EventCategory? requiredCategory;   // für categoryEvent + opportunistic
+  final String? requiredCalendarId; // for categoryEvent / opportunistic context modes
   final List<int>? allowedWeekdays;        // null=alle; [1..5]=Mo-Fr (1=Mo,7=So)
   final DaylightMode daylightMode;
   final List<SubTask> subTasks;
@@ -102,7 +102,7 @@ class Todo {
     this.actualEnd,
     this.pausedMinutes = 0,
     this.pauseStart,
-    this.category = 'personal',
+    this.calendarId,
     required this.createdAt,
     this.outlookTaskId,
     this.outlookListId,
@@ -112,7 +112,7 @@ class Todo {
     this.dueWindowStartHour,
     this.dueWindowEndHour,
     this.contextMode = TodoContextMode.anyTime,
-    this.requiredCategory,
+    this.requiredCalendarId,
     this.allowedWeekdays,
     this.daylightMode = DaylightMode.none,
     this.subTasks = const [],
@@ -165,7 +165,7 @@ class Todo {
     Object? actualEnd = _unset,
     int? pausedMinutes,
     Object? pauseStart = _unset,
-    String? category,
+    Object? calendarId = _unset,
     DateTime? createdAt,
     Object? outlookTaskId = _unset,
     Object? outlookListId = _unset,
@@ -175,7 +175,7 @@ class Todo {
     Object? dueWindowStartHour = _unset,
     Object? dueWindowEndHour = _unset,
     TodoContextMode? contextMode,
-    Object? requiredCategory = _unset,
+    Object? requiredCalendarId = _unset,
     Object? allowedWeekdays = _unset,
     DaylightMode? daylightMode,
     List<SubTask>? subTasks,
@@ -198,7 +198,7 @@ class Todo {
       actualEnd: actualEnd == _unset ? this.actualEnd : actualEnd as DateTime?,
       pausedMinutes: pausedMinutes ?? this.pausedMinutes,
       pauseStart: pauseStart == _unset ? this.pauseStart : pauseStart as DateTime?,
-      category: category ?? this.category,
+      calendarId: calendarId == _unset ? this.calendarId : calendarId as String?,
       createdAt: createdAt ?? this.createdAt,
       outlookTaskId: outlookTaskId == _unset ? this.outlookTaskId : outlookTaskId as String?,
       outlookListId: outlookListId == _unset ? this.outlookListId : outlookListId as String?,
@@ -208,7 +208,7 @@ class Todo {
       dueWindowStartHour: dueWindowStartHour == _unset ? this.dueWindowStartHour : dueWindowStartHour as int?,
       dueWindowEndHour: dueWindowEndHour == _unset ? this.dueWindowEndHour : dueWindowEndHour as int?,
       contextMode: contextMode ?? this.contextMode,
-      requiredCategory: requiredCategory == _unset ? this.requiredCategory : requiredCategory as EventCategory?,
+      requiredCalendarId: requiredCalendarId == _unset ? this.requiredCalendarId : requiredCalendarId as String?,
       allowedWeekdays: allowedWeekdays == _unset ? this.allowedWeekdays : allowedWeekdays as List<int>?,
       daylightMode: daylightMode ?? this.daylightMode,
       subTasks: subTasks ?? this.subTasks,
@@ -233,7 +233,7 @@ class Todo {
         'actualEnd': actualEnd?.toUtc().toIso8601String(),
         'pausedMinutes': pausedMinutes,
         'pauseStart': pauseStart?.toUtc().toIso8601String(),
-        'category': category,
+        'calendarId': calendarId,
         'createdAt': createdAt.toUtc().toIso8601String(),
         'outlookTaskId': outlookTaskId,
         'outlookListId': outlookListId,
@@ -243,7 +243,7 @@ class Todo {
         'dueWindowStartHour': dueWindowStartHour,
         'dueWindowEndHour': dueWindowEndHour,
         'contextMode': contextMode.name,
-        'requiredCategory': requiredCategory?.name,
+        'requiredCalendarId': requiredCalendarId,
         'allowedWeekdays': allowedWeekdays,
         'daylightMode': daylightMode.name,
         'subTasks': subTasks.map((s) => s.toJson()).toList(),
@@ -283,7 +283,7 @@ class Todo {
         pauseStart: json['pauseStart'] != null
             ? DateTime.parse(json['pauseStart'] as String).toLocal()
             : null,
-        category: json['category'] as String? ?? 'personal',
+        calendarId: json['calendarId'] as String?,
         createdAt: json['createdAt'] != null
             ? DateTime.parse(json['createdAt'] as String).toLocal()
             : DateTime.now(),
@@ -298,12 +298,7 @@ class Todo {
           (e) => e.name == json['contextMode'],
           orElse: () => TodoContextMode.anyTime,
         ),
-        requiredCategory: json['requiredCategory'] != null
-            ? EventCategory.values.firstWhere(
-                (e) => e.name == json['requiredCategory'],
-                orElse: () => EventCategory.personal,
-              )
-            : null,
+        requiredCalendarId: json['requiredCalendarId'] as String?,
         allowedWeekdays: (json['allowedWeekdays'] as List<dynamic>?)
             ?.map((e) => (e as num).toInt())
             .toList(),
