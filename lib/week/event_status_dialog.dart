@@ -36,7 +36,7 @@ class EventStatusDialog extends StatelessWidget {
                 height: 12,
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
-                  color: AppColors.forCategory(event.calendarId),
+                  color: AppColors.primary,
                 ),
               ),
               const SizedBox(width: 8),

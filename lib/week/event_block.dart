@@ -186,7 +186,7 @@ class EventBlock extends StatelessWidget {
       case EventStatus.done:
         return AppColors.done;
       default:
-        return AppColors.forCategory(category);
+        return AppColors.primary;
     }
   }
 

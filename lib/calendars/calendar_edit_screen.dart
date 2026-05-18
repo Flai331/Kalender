@@ -53,15 +53,19 @@ class _CalendarEditScreenState extends State<CalendarEditScreen> {
   Future<void> _save() async {
     if (_nameCtrl.text.trim().isEmpty || _saving) return;
     _saving = true;
-    final cal = Calendar(
-      id: widget.calendar?.id ?? _uuid.v4(),
-      name: _nameCtrl.text.trim(),
-      color: _color,
-      icsFeeds: _feeds,
-      blocksAutoShift: _blocksAutoShift,
-    );
-    await CalendarService.saveCalendar(cal);
-    if (mounted) Navigator.pop(context);
+    try {
+      final cal = Calendar(
+        id: widget.calendar?.id ?? _uuid.v4(),
+        name: _nameCtrl.text.trim(),
+        color: _color,
+        icsFeeds: _feeds,
+        blocksAutoShift: _blocksAutoShift,
+      );
+      await CalendarService.saveCalendar(cal);
+      if (mounted) Navigator.pop(context);
+    } finally {
+      _saving = false;
+    }
   }
 
   Future<void> _delete() async {
