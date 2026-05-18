@@ -114,6 +114,9 @@ class IcsService {
     return results.expand((e) => e).toList();
   }
 
+  static List<CalendarEvent> parseIcsRaw(String raw) =>
+      _parseIcs(raw, calendarName: '');
+
   static Future<List<CalendarEvent>> _fetchSource(IcsSource source) async {
     try {
       final String raw;
