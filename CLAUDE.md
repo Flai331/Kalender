@@ -71,6 +71,9 @@ Verschiebt überfällige pending Todos automatisch nach vorne:
 | Auto-Shift ohne Reload | Kein Stream-Refresh nach saveTodo | `setState(() => _initStreams())` |
 | BOTTOM OVERFLOWED | EventBlock Column overflows | `clipBehavior: Clip.hardEdge` |
 | IcsSource not found | Fehlender Import | `import '../models/ics_source.dart'` |
+| Speichern-Knopf reagiert nicht mehr | `_saving = true` vor dem `await`, Exception (z.B. offline) → Flag wird nie zurückgesetzt | `try/finally` + `guardedAction()` aus `widgets/save_feedback.dart` |
+| Speichern schlägt still fehl | `await SupabaseService.save…()` ohne try/catch — Nutzer sieht keine Meldung | `guardedAction()` zeigt SnackBar + schreibt ins Protokoll |
+| Termin/Todo offline nicht speicherbar | Edit-Screen schrieb direkt gegen Supabase statt über die Sync-Queue | `LocalService.saveEvent/saveTodo` (wie in `week_screen.dart`) |
 | PointerScrollEvent not found | Fehlende Imports | `flutter/gestures.dart` + `flutter/services.dart` |
 
 ## Imports week_screen.dart

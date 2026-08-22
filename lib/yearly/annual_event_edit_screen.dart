@@ -3,6 +3,7 @@ import 'package:uuid/uuid.dart';
 import '../app_colors.dart';
 import '../models/annual_event.dart';
 import '../services/supabase_service.dart';
+import '../widgets/save_feedback.dart';
 
 const _uuid = Uuid();
 
@@ -44,8 +45,12 @@ class _AnnualEventEditScreenState extends State<AnnualEventEditScreen> {
   }
 
   Future<void> _save() async {
-    if (_nameCtrl.text.trim().isEmpty || _saving) return;
-    _saving = true;
+    if (_saving) return;
+    if (_nameCtrl.text.trim().isEmpty) {
+      showInfoSnack(context, 'Bitte einen Namen eingeben.');
+      return;
+    }
+    setState(() => _saving = true);
     final event = AnnualEvent(
       id: widget.event?.id ?? _uuid.v4(),
       name: _nameCtrl.text.trim(),
@@ -53,12 +58,23 @@ class _AnnualEventEditScreenState extends State<AnnualEventEditScreen> {
       colorHex: widget.event?.colorHex,
       occurrences: _occurrences,
     );
-    await SupabaseService.saveAnnualEvent(event);
-    if (mounted) Navigator.pop(context);
+    bool ok = false;
+    try {
+      ok = await guardedAction(
+        context,
+        () => SupabaseService.saveAnnualEvent(event),
+        errorPrefix: 'Jahres-Event speichern fehlgeschlagen',
+      );
+    } finally {
+      // Muss auch bei einem Fehler zurückgesetzt werden, sonst blockiert das
+      // Flag jeden weiteren Tippen auf "Speichern".
+      if (mounted) setState(() => _saving = false);
+    }
+    if (ok && mounted) Navigator.pop(context);
   }
 
   Future<void> _delete() async {
-    if (widget.event == null) return;
+    if (widget.event == null || _saving) return;
     final confirm = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -77,10 +93,21 @@ class _AnnualEventEditScreenState extends State<AnnualEventEditScreen> {
         ],
       ),
     );
-    if (confirm == true && mounted) {
-      await SupabaseService.deleteAnnualEvent(widget.event!.id);
-      if (mounted) Navigator.pop(context);
+    if (confirm != true || !mounted) return;
+    setState(() => _saving = true);
+    bool ok = false;
+    try {
+      ok = await guardedAction(
+        context,
+        () => SupabaseService.deleteAnnualEvent(widget.event!.id),
+        offlineMessage: 'Kein Internet – konnte nicht gelöscht werden. '
+            'Bitte später erneut versuchen.',
+        errorPrefix: 'Jahres-Event löschen fehlgeschlagen',
+      );
+    } finally {
+      if (mounted) setState(() => _saving = false);
     }
+    if (ok && mounted) Navigator.pop(context);
   }
 
   Future<void> _pickDate(int occIndex, {required bool isStart}) async {
@@ -118,14 +145,25 @@ class _AnnualEventEditScreenState extends State<AnnualEventEditScreen> {
           if (widget.event != null)
             IconButton(
               icon: const Icon(Icons.delete_outline, color: Colors.redAccent),
-              onPressed: _delete,
+              onPressed: _saving ? null : _delete,
             ),
-          TextButton(
-            onPressed: _save,
-            child: const Text('Speichern',
-                style: TextStyle(
-                    color: AppColors.primary, fontWeight: FontWeight.bold)),
-          ),
+          if (_saving)
+            const Padding(
+              padding: EdgeInsets.symmetric(horizontal: 20, vertical: 18),
+              child: SizedBox(
+                width: 20,
+                height: 20,
+                child: CircularProgressIndicator(
+                    strokeWidth: 2, color: AppColors.primary),
+              ),
+            )
+          else
+            TextButton(
+              onPressed: _save,
+              child: const Text('Speichern',
+                  style: TextStyle(
+                      color: AppColors.primary, fontWeight: FontWeight.bold)),
+            ),
         ],
       ),
       body: ListView(

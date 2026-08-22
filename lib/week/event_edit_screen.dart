@@ -2,8 +2,9 @@
 import 'package:uuid/uuid.dart';
 import '../app_colors.dart';
 import '../models/calendar_event.dart';
-import '../services/supabase_service.dart';
+import '../services/local_service.dart';
 import '../widgets/feedback_button.dart';
+import '../widgets/save_feedback.dart';
 
 const _uuid = Uuid();
 
@@ -87,8 +88,12 @@ class _EventEditScreenState extends State<EventEditScreen> {
   }
 
   Future<void> _save() async {
-    if (_titleCtrl.text.trim().isEmpty || _saving) return;
-    _saving = true;
+    if (_saving) return;
+    if (_titleCtrl.text.trim().isEmpty) {
+      showInfoSnack(context, 'Bitte einen Titel eingeben.');
+      return;
+    }
+    setState(() => _saving = true);
     final address = _addressCtrl.text.trim().isEmpty ? null : _addressCtrl.text.trim();
     final base = widget.event;
     final CalendarEvent event;
@@ -122,8 +127,19 @@ class _EventEditScreenState extends State<EventEditScreen> {
         travelMinutesAfter: _travelAfter,
       );
     }
-    await SupabaseService.saveEvent(event);
-    if (mounted) Navigator.pop(context);
+    // Lokal speichern + Sync-Queue (wie week_screen.dart) — funktioniert
+    // auch offline, statt direkt gegen Supabase zu schreiben.
+    bool ok = false;
+    try {
+      ok = await guardedAction(
+        context,
+        () => LocalService.saveEvent(event),
+        errorPrefix: 'Termin speichern fehlgeschlagen',
+      );
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+    if (ok && mounted) Navigator.pop(context);
   }
 
   @override
@@ -140,12 +156,23 @@ class _EventEditScreenState extends State<EventEditScreen> {
         ),
         actions: [
           const FeedbackIconButton(),
-          TextButton(
-            onPressed: _save,
-            child: const Text('Speichern',
-                style: TextStyle(
-                    color: AppColors.primary, fontWeight: FontWeight.bold)),
-          ),
+          if (_saving)
+            const Padding(
+              padding: EdgeInsets.symmetric(horizontal: 20, vertical: 18),
+              child: SizedBox(
+                width: 20,
+                height: 20,
+                child: CircularProgressIndicator(
+                    strokeWidth: 2, color: AppColors.primary),
+              ),
+            )
+          else
+            TextButton(
+              onPressed: _save,
+              child: const Text('Speichern',
+                  style: TextStyle(
+                      color: AppColors.primary, fontWeight: FontWeight.bold)),
+            ),
         ],
       ),
       body: ListView(

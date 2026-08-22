@@ -3,8 +3,9 @@ import 'package:uuid/uuid.dart';
 import '../app_colors.dart';
 import '../models/todo.dart';
 import '../models/calendar_event.dart';
-import '../services/supabase_service.dart';
+import '../services/local_service.dart';
 import '../widgets/feedback_button.dart';
+import '../widgets/save_feedback.dart';
 
 const _uuid = Uuid();
 
@@ -18,6 +19,7 @@ class TodoEditScreen extends StatefulWidget {
 }
 
 class _TodoEditScreenState extends State<TodoEditScreen> {
+  bool _saving = false;
   late TextEditingController _titleCtrl;
   late TextEditingController _descCtrl;
   late TextEditingController _addressCtrl;
@@ -60,7 +62,12 @@ class _TodoEditScreenState extends State<TodoEditScreen> {
   }
 
   Future<void> _save() async {
-    if (_titleCtrl.text.trim().isEmpty) return;
+    if (_saving) return;
+    if (_titleCtrl.text.trim().isEmpty) {
+      showInfoSnack(context, 'Bitte einen Titel eingeben.');
+      return;
+    }
+    setState(() => _saving = true);
     final todo = Todo(
       id: widget.todo?.id ?? _uuid.v4(),
       title: _titleCtrl.text.trim(),
@@ -93,12 +100,23 @@ class _TodoEditScreenState extends State<TodoEditScreen> {
       repeatConfig: widget.todo?.repeatConfig,
       subTasks: _subTasks,
     );
-    await SupabaseService.saveTodo(todo);
-    if (mounted) Navigator.pop(context);
+    // Lokal speichern + Sync-Queue (wie week_screen.dart) — funktioniert
+    // auch offline, statt direkt gegen Supabase zu schreiben.
+    bool ok = false;
+    try {
+      ok = await guardedAction(
+        context,
+        () => LocalService.saveTodo(todo),
+        errorPrefix: 'Todo speichern fehlgeschlagen',
+      );
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+    if (ok && mounted) Navigator.pop(context);
   }
 
   Future<void> _delete() async {
-    if (widget.todo == null) return;
+    if (widget.todo == null || _saving) return;
     final confirm = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -117,10 +135,21 @@ class _TodoEditScreenState extends State<TodoEditScreen> {
         ],
       ),
     );
-    if (confirm == true && mounted) {
-      await SupabaseService.deleteTodo(widget.todo!.id);
-      if (mounted) Navigator.pop(context);
+    if (confirm != true || !mounted) return;
+    setState(() => _saving = true);
+    bool ok = false;
+    try {
+      ok = await guardedAction(
+        context,
+        () => LocalService.deleteTodo(widget.todo!.id),
+        offlineMessage: 'Kein Internet – konnte nicht gelöscht werden. '
+            'Bitte später erneut versuchen.',
+        errorPrefix: 'Todo löschen fehlgeschlagen',
+      );
+    } finally {
+      if (mounted) setState(() => _saving = false);
     }
+    if (ok && mounted) Navigator.pop(context);
   }
 
   @override
@@ -139,15 +168,26 @@ class _TodoEditScreenState extends State<TodoEditScreen> {
           if (!_isNew)
             IconButton(
               icon: const Icon(Icons.delete_outline, color: Colors.redAccent),
-              onPressed: _delete,
+              onPressed: _saving ? null : _delete,
             ),
           const FeedbackIconButton(),
-          TextButton(
-            onPressed: _save,
-            child: const Text('Speichern',
-                style: TextStyle(
-                    color: AppColors.primary, fontWeight: FontWeight.bold)),
-          ),
+          if (_saving)
+            const Padding(
+              padding: EdgeInsets.symmetric(horizontal: 20, vertical: 18),
+              child: SizedBox(
+                width: 20,
+                height: 20,
+                child: CircularProgressIndicator(
+                    strokeWidth: 2, color: AppColors.primary),
+              ),
+            )
+          else
+            TextButton(
+              onPressed: _save,
+              child: const Text('Speichern',
+                  style: TextStyle(
+                      color: AppColors.primary, fontWeight: FontWeight.bold)),
+            ),
         ],
       ),
       body: ListView(

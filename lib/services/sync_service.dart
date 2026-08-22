@@ -53,6 +53,10 @@ class SyncService {
     if (decoded is! Map<String, dynamic>) return;
     final payload = decoded;
 
+    // Unbekannte Tabellen NICHT als Todo behandeln — ein falsch geroutetes
+    // delete/upsert würde sonst fremde Datensätze überschreiben oder löschen.
+    if (table != 'calendar_events' && table != 'todos') return;
+
     if (op == 'delete') {
       if (table == 'calendar_events') {
         await SupabaseService.deleteEvent(entry.entityId);

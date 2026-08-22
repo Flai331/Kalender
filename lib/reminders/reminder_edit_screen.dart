@@ -6,6 +6,7 @@ import '../models/yearly_checklist.dart';
 import '../services/supabase_service.dart';
 import '../services/outlook_service.dart';
 import '../widgets/feedback_button.dart';
+import '../widgets/save_feedback.dart';
 
 const _uuid = Uuid();
 
@@ -19,6 +20,7 @@ class ReminderEditScreen extends StatefulWidget {
 }
 
 class _ReminderEditScreenState extends State<ReminderEditScreen> {
+  bool _saving = false;
   late TextEditingController _titleCtrl;
   late TextEditingController _keywordCtrl;
   late TextEditingController _messageCtrl;
@@ -67,7 +69,12 @@ class _ReminderEditScreenState extends State<ReminderEditScreen> {
   }
 
   Future<void> _save() async {
-    if (_titleCtrl.text.trim().isEmpty) return;
+    if (_saving) return;
+    if (_titleCtrl.text.trim().isEmpty) {
+      showInfoSnack(context, 'Bitte einen Titel eingeben.');
+      return;
+    }
+    setState(() => _saving = true);
     final reminder = SeriesReminder(
       id: widget.reminder?.id ?? _uuid.v4(),
       title: _titleCtrl.text.trim(),
@@ -84,8 +91,17 @@ class _ReminderEditScreenState extends State<ReminderEditScreen> {
       message: _messageCtrl.text.trim(),
       isActive: _isActive,
     );
-    await SupabaseService.saveReminder(reminder);
-    if (mounted) Navigator.pop(context);
+    bool ok = false;
+    try {
+      ok = await guardedAction(
+        context,
+        () => SupabaseService.saveReminder(reminder),
+        errorPrefix: 'Erinnerung speichern fehlgeschlagen',
+      );
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+    if (ok && mounted) Navigator.pop(context);
   }
 
   @override
@@ -102,12 +118,23 @@ class _ReminderEditScreenState extends State<ReminderEditScreen> {
         ),
         actions: [
           const FeedbackIconButton(),
-          TextButton(
-            onPressed: _save,
-            child: const Text('Speichern',
-                style: TextStyle(
-                    color: AppColors.primary, fontWeight: FontWeight.bold)),
-          ),
+          if (_saving)
+            const Padding(
+              padding: EdgeInsets.symmetric(horizontal: 20, vertical: 18),
+              child: SizedBox(
+                width: 20,
+                height: 20,
+                child: CircularProgressIndicator(
+                    strokeWidth: 2, color: AppColors.primary),
+              ),
+            )
+          else
+            TextButton(
+              onPressed: _save,
+              child: const Text('Speichern',
+                  style: TextStyle(
+                      color: AppColors.primary, fontWeight: FontWeight.bold)),
+            ),
         ],
       ),
       body: ListView(
@@ -406,6 +433,7 @@ class YearlyChecklistEditScreen extends StatefulWidget {
 
 class _YearlyChecklistEditScreenState
     extends State<YearlyChecklistEditScreen> {
+  bool _saving = false;
   late TextEditingController _titleCtrl;
   late TextEditingController _templateCtrl;
   late int _reminderMonth;
@@ -420,7 +448,12 @@ class _YearlyChecklistEditScreenState
   }
 
   Future<void> _save() async {
-    if (_titleCtrl.text.trim().isEmpty) return;
+    if (_saving) return;
+    if (_titleCtrl.text.trim().isEmpty) {
+      showInfoSnack(context, 'Bitte einen Titel eingeben.');
+      return;
+    }
+    setState(() => _saving = true);
     final checklist = YearlyChecklist(
       id: widget.checklist?.id ?? _uuid.v4(),
       title: _titleCtrl.text.trim(),
@@ -428,8 +461,17 @@ class _YearlyChecklistEditScreenState
       template: _templateCtrl.text.trim(),
       lastTriggeredYear: widget.checklist?.lastTriggeredYear ?? 0,
     );
-    await SupabaseService.saveYearlyChecklist(checklist);
-    if (mounted) Navigator.pop(context);
+    bool ok = false;
+    try {
+      ok = await guardedAction(
+        context,
+        () => SupabaseService.saveYearlyChecklist(checklist),
+        errorPrefix: 'Jahres-Aufgabe speichern fehlgeschlagen',
+      );
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+    if (ok && mounted) Navigator.pop(context);
   }
 
   @override
@@ -449,12 +491,23 @@ class _YearlyChecklistEditScreenState
         ),
         actions: [
           const FeedbackIconButton(),
-          TextButton(
-            onPressed: _save,
-            child: const Text('Speichern',
-                style: TextStyle(
-                    color: AppColors.primary, fontWeight: FontWeight.bold)),
-          ),
+          if (_saving)
+            const Padding(
+              padding: EdgeInsets.symmetric(horizontal: 20, vertical: 18),
+              child: SizedBox(
+                width: 20,
+                height: 20,
+                child: CircularProgressIndicator(
+                    strokeWidth: 2, color: AppColors.primary),
+              ),
+            )
+          else
+            TextButton(
+              onPressed: _save,
+              child: const Text('Speichern',
+                  style: TextStyle(
+                      color: AppColors.primary, fontWeight: FontWeight.bold)),
+            ),
         ],
       ),
       body: ListView(
