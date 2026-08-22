@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import '../app_colors.dart';
 import '../models/annual_event.dart';
-import '../services/supabase_service.dart';
+import '../services/local_service.dart';
 import 'annual_event_edit_screen.dart';
 
 class YearlyPlannerScreen extends StatelessWidget {
@@ -30,7 +30,7 @@ class YearlyPlannerScreen extends StatelessWidget {
         ],
       ),
       body: StreamBuilder<List<AnnualEvent>>(
-        stream: SupabaseService.annualEvents(),
+        stream: LocalService.annualEvents(),
         builder: (context, snap) {
           if (!snap.hasData) {
             return const Center(child: CircularProgressIndicator());

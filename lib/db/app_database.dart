@@ -26,6 +26,16 @@ class TodosCache extends Table {
   Set<Column> get primaryKey => {id};
 }
 
+class AnnualEventsCache extends Table {
+  TextColumn get id => text()();
+  TextColumn get userId => text()();
+  TextColumn get data => text()();
+  IntColumn get updatedAt => integer()();
+
+  @override
+  Set<Column> get primaryKey => {id};
+}
+
 class SyncQueue extends Table {
   IntColumn get id => integer().autoIncrement()();
   TextColumn get entityId => text()();
@@ -35,12 +45,28 @@ class SyncQueue extends Table {
   IntColumn get createdAt => integer()();
 }
 
-@DriftDatabase(tables: [EventsCache, TodosCache, SyncQueue])
+@DriftDatabase(
+    tables: [EventsCache, TodosCache, AnnualEventsCache, SyncQueue])
 class AppDatabase extends _$AppDatabase {
   AppDatabase() : super(_openConnection());
 
+  /// Nur für Tests: erlaubt eine In-Memory-Datenbank statt der Datei.
+  AppDatabase.forTesting(super.executor);
+
   @override
-  int get schemaVersion => 1;
+  int get schemaVersion => 2;
+
+  @override
+  MigrationStrategy get migration => MigrationStrategy(
+        onCreate: (m) => m.createAll(),
+        onUpgrade: (m, from, to) async {
+          // v2: Jahres-Events werden lokal zwischengespeichert, damit sie
+          // auch offline gespeichert und angezeigt werden können.
+          if (from < 2) {
+            await m.createTable(annualEventsCache);
+          }
+        },
+      );
 
   static QueryExecutor _openConnection() {
     return LazyDatabase(() async {

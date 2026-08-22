@@ -76,6 +76,13 @@ void main() async {
         await LocalService.seedTodos(todos);
         await prefs.setBool('local_seeded', true);
       }
+      // Eigener Flag: bestehende Installationen haben 'local_seeded' bereits
+      // gesetzt und würden ihre Jahres-Events sonst nie lokal bekommen.
+      if (prefs.getBool('local_seeded_annual') != true) {
+        final annual = await SupabaseService.getAllAnnualEvents();
+        await LocalService.seedAnnualEvents(annual);
+        await prefs.setBool('local_seeded_annual', true);
+      }
     } catch (e) {
       debugPrint('Local seed failed: $e');
     }

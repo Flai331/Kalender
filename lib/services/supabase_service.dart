@@ -255,6 +255,13 @@ class SupabaseService {
           ..sort((a, b) => a.name.compareTo(b.name)));
   }
 
+  static Future<List<AnnualEvent>> getAllAnnualEvents() async {
+    final rows = await _db.from('annual_events').select().eq('user_id', _uid);
+    return (rows as List)
+        .map((r) => AnnualEvent.fromJson(r['data'] as Map<String, dynamic>))
+        .toList();
+  }
+
   static Future<void> saveAnnualEvent(AnnualEvent event) async {
     await _db.from('annual_events').upsert({
       'id': event.id,

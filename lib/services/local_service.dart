@@ -4,6 +4,7 @@ import 'package:drift/drift.dart';
 import '../db/app_database.dart';
 import '../models/calendar_event.dart';
 import '../models/todo.dart';
+import '../models/annual_event.dart';
 import 'auth_service.dart';
 
 class LocalService {
@@ -96,6 +97,38 @@ class LocalService {
     await _enqueue('todos', 'delete', id, {'id': id});
   }
 
+  // ── AnnualEvents ─────────────────────────────────────────────────────────
+
+  static Stream<List<AnnualEvent>> annualEvents() {
+    return (_db.select(_db.annualEventsCache)
+          ..where((e) => e.userId.equals(_uid)))
+        .watch()
+        .map((rows) => rows
+            .map((r) => AnnualEvent.fromJson(
+                jsonDecode(r.data) as Map<String, dynamic>))
+            .toList()
+          ..sort((a, b) => a.name.compareTo(b.name)));
+  }
+
+  static Future<void> saveAnnualEvent(AnnualEvent event) async {
+    final now = DateTime.now().millisecondsSinceEpoch;
+    await _db.into(_db.annualEventsCache).insertOnConflictUpdate(
+          AnnualEventsCacheCompanion(
+            id: Value(event.id),
+            userId: Value(_uid),
+            data: Value(jsonEncode(event.toJson())),
+            updatedAt: Value(now),
+          ),
+        );
+    await _enqueue('annual_events', 'upsert', event.id, event.toJson());
+  }
+
+  static Future<void> deleteAnnualEvent(String id) async {
+    await (_db.delete(_db.annualEventsCache)..where((e) => e.id.equals(id)))
+        .go();
+    await _enqueue('annual_events', 'delete', id, {'id': id});
+  }
+
   // ── Sync queue ────────────────────────────────────────────────────────────
 
   static Future<void> _enqueue(
@@ -146,6 +179,24 @@ class LocalService {
             id: Value(t.id),
             userId: Value(_uid),
             data: Value(jsonEncode(t.toJson())),
+            updatedAt: Value(now),
+          ),
+          mode: InsertMode.insertOrReplace,
+        );
+      }
+    });
+  }
+
+  static Future<void> seedAnnualEvents(List<AnnualEvent> events) async {
+    final now = DateTime.now().millisecondsSinceEpoch;
+    await _db.batch((batch) {
+      for (final e in events) {
+        batch.insert(
+          _db.annualEventsCache,
+          AnnualEventsCacheCompanion(
+            id: Value(e.id),
+            userId: Value(_uid),
+            data: Value(jsonEncode(e.toJson())),
             updatedAt: Value(now),
           ),
           mode: InsertMode.insertOrReplace,

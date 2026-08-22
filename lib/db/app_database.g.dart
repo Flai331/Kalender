@@ -615,6 +615,314 @@ class TodosCacheCompanion extends UpdateCompanion<TodosCacheData> {
   }
 }
 
+class $AnnualEventsCacheTable extends AnnualEventsCache
+    with TableInfo<$AnnualEventsCacheTable, AnnualEventsCacheData> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $AnnualEventsCacheTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<String> id = GeneratedColumn<String>(
+    'id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _userIdMeta = const VerificationMeta('userId');
+  @override
+  late final GeneratedColumn<String> userId = GeneratedColumn<String>(
+    'user_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _dataMeta = const VerificationMeta('data');
+  @override
+  late final GeneratedColumn<String> data = GeneratedColumn<String>(
+    'data',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _updatedAtMeta = const VerificationMeta(
+    'updatedAt',
+  );
+  @override
+  late final GeneratedColumn<int> updatedAt = GeneratedColumn<int>(
+    'updated_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [id, userId, data, updatedAt];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'annual_events_cache';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<AnnualEventsCacheData> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('id')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    } else if (isInserting) {
+      context.missing(_idMeta);
+    }
+    if (data.containsKey('user_id')) {
+      context.handle(
+        _userIdMeta,
+        userId.isAcceptableOrUnknown(data['user_id']!, _userIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_userIdMeta);
+    }
+    if (data.containsKey('data')) {
+      context.handle(
+        _dataMeta,
+        this.data.isAcceptableOrUnknown(data['data']!, _dataMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_dataMeta);
+    }
+    if (data.containsKey('updated_at')) {
+      context.handle(
+        _updatedAtMeta,
+        updatedAt.isAcceptableOrUnknown(data['updated_at']!, _updatedAtMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_updatedAtMeta);
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  AnnualEventsCacheData map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return AnnualEventsCacheData(
+      id: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}id'],
+      )!,
+      userId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}user_id'],
+      )!,
+      data: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}data'],
+      )!,
+      updatedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}updated_at'],
+      )!,
+    );
+  }
+
+  @override
+  $AnnualEventsCacheTable createAlias(String alias) {
+    return $AnnualEventsCacheTable(attachedDatabase, alias);
+  }
+}
+
+class AnnualEventsCacheData extends DataClass
+    implements Insertable<AnnualEventsCacheData> {
+  final String id;
+  final String userId;
+  final String data;
+  final int updatedAt;
+  const AnnualEventsCacheData({
+    required this.id,
+    required this.userId,
+    required this.data,
+    required this.updatedAt,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['id'] = Variable<String>(id);
+    map['user_id'] = Variable<String>(userId);
+    map['data'] = Variable<String>(data);
+    map['updated_at'] = Variable<int>(updatedAt);
+    return map;
+  }
+
+  AnnualEventsCacheCompanion toCompanion(bool nullToAbsent) {
+    return AnnualEventsCacheCompanion(
+      id: Value(id),
+      userId: Value(userId),
+      data: Value(data),
+      updatedAt: Value(updatedAt),
+    );
+  }
+
+  factory AnnualEventsCacheData.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return AnnualEventsCacheData(
+      id: serializer.fromJson<String>(json['id']),
+      userId: serializer.fromJson<String>(json['userId']),
+      data: serializer.fromJson<String>(json['data']),
+      updatedAt: serializer.fromJson<int>(json['updatedAt']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'id': serializer.toJson<String>(id),
+      'userId': serializer.toJson<String>(userId),
+      'data': serializer.toJson<String>(data),
+      'updatedAt': serializer.toJson<int>(updatedAt),
+    };
+  }
+
+  AnnualEventsCacheData copyWith({
+    String? id,
+    String? userId,
+    String? data,
+    int? updatedAt,
+  }) => AnnualEventsCacheData(
+    id: id ?? this.id,
+    userId: userId ?? this.userId,
+    data: data ?? this.data,
+    updatedAt: updatedAt ?? this.updatedAt,
+  );
+  AnnualEventsCacheData copyWithCompanion(AnnualEventsCacheCompanion data) {
+    return AnnualEventsCacheData(
+      id: data.id.present ? data.id.value : this.id,
+      userId: data.userId.present ? data.userId.value : this.userId,
+      data: data.data.present ? data.data.value : this.data,
+      updatedAt: data.updatedAt.present ? data.updatedAt.value : this.updatedAt,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('AnnualEventsCacheData(')
+          ..write('id: $id, ')
+          ..write('userId: $userId, ')
+          ..write('data: $data, ')
+          ..write('updatedAt: $updatedAt')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(id, userId, data, updatedAt);
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is AnnualEventsCacheData &&
+          other.id == this.id &&
+          other.userId == this.userId &&
+          other.data == this.data &&
+          other.updatedAt == this.updatedAt);
+}
+
+class AnnualEventsCacheCompanion
+    extends UpdateCompanion<AnnualEventsCacheData> {
+  final Value<String> id;
+  final Value<String> userId;
+  final Value<String> data;
+  final Value<int> updatedAt;
+  final Value<int> rowid;
+  const AnnualEventsCacheCompanion({
+    this.id = const Value.absent(),
+    this.userId = const Value.absent(),
+    this.data = const Value.absent(),
+    this.updatedAt = const Value.absent(),
+    this.rowid = const Value.absent(),
+  });
+  AnnualEventsCacheCompanion.insert({
+    required String id,
+    required String userId,
+    required String data,
+    required int updatedAt,
+    this.rowid = const Value.absent(),
+  }) : id = Value(id),
+       userId = Value(userId),
+       data = Value(data),
+       updatedAt = Value(updatedAt);
+  static Insertable<AnnualEventsCacheData> custom({
+    Expression<String>? id,
+    Expression<String>? userId,
+    Expression<String>? data,
+    Expression<int>? updatedAt,
+    Expression<int>? rowid,
+  }) {
+    return RawValuesInsertable({
+      if (id != null) 'id': id,
+      if (userId != null) 'user_id': userId,
+      if (data != null) 'data': data,
+      if (updatedAt != null) 'updated_at': updatedAt,
+      if (rowid != null) 'rowid': rowid,
+    });
+  }
+
+  AnnualEventsCacheCompanion copyWith({
+    Value<String>? id,
+    Value<String>? userId,
+    Value<String>? data,
+    Value<int>? updatedAt,
+    Value<int>? rowid,
+  }) {
+    return AnnualEventsCacheCompanion(
+      id: id ?? this.id,
+      userId: userId ?? this.userId,
+      data: data ?? this.data,
+      updatedAt: updatedAt ?? this.updatedAt,
+      rowid: rowid ?? this.rowid,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (id.present) {
+      map['id'] = Variable<String>(id.value);
+    }
+    if (userId.present) {
+      map['user_id'] = Variable<String>(userId.value);
+    }
+    if (data.present) {
+      map['data'] = Variable<String>(data.value);
+    }
+    if (updatedAt.present) {
+      map['updated_at'] = Variable<int>(updatedAt.value);
+    }
+    if (rowid.present) {
+      map['rowid'] = Variable<int>(rowid.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('AnnualEventsCacheCompanion(')
+          ..write('id: $id, ')
+          ..write('userId: $userId, ')
+          ..write('data: $data, ')
+          ..write('updatedAt: $updatedAt, ')
+          ..write('rowid: $rowid')
+          ..write(')'))
+        .toString();
+  }
+}
+
 class $SyncQueueTable extends SyncQueue
     with TableInfo<$SyncQueueTable, SyncQueueData> {
   @override
@@ -1025,6 +1333,8 @@ abstract class _$AppDatabase extends GeneratedDatabase {
   $AppDatabaseManager get managers => $AppDatabaseManager(this);
   late final $EventsCacheTable eventsCache = $EventsCacheTable(this);
   late final $TodosCacheTable todosCache = $TodosCacheTable(this);
+  late final $AnnualEventsCacheTable annualEventsCache =
+      $AnnualEventsCacheTable(this);
   late final $SyncQueueTable syncQueue = $SyncQueueTable(this);
   @override
   Iterable<TableInfo<Table, Object?>> get allTables =>
@@ -1033,6 +1343,7 @@ abstract class _$AppDatabase extends GeneratedDatabase {
   List<DatabaseSchemaEntity> get allSchemaEntities => [
     eventsCache,
     todosCache,
+    annualEventsCache,
     syncQueue,
   ];
 }
@@ -1399,6 +1710,200 @@ typedef $$TodosCacheTableProcessedTableManager =
       TodosCacheData,
       PrefetchHooks Function()
     >;
+typedef $$AnnualEventsCacheTableCreateCompanionBuilder =
+    AnnualEventsCacheCompanion Function({
+      required String id,
+      required String userId,
+      required String data,
+      required int updatedAt,
+      Value<int> rowid,
+    });
+typedef $$AnnualEventsCacheTableUpdateCompanionBuilder =
+    AnnualEventsCacheCompanion Function({
+      Value<String> id,
+      Value<String> userId,
+      Value<String> data,
+      Value<int> updatedAt,
+      Value<int> rowid,
+    });
+
+class $$AnnualEventsCacheTableFilterComposer
+    extends Composer<_$AppDatabase, $AnnualEventsCacheTable> {
+  $$AnnualEventsCacheTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<String> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get userId => $composableBuilder(
+    column: $table.userId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get data => $composableBuilder(
+    column: $table.data,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get updatedAt => $composableBuilder(
+    column: $table.updatedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+}
+
+class $$AnnualEventsCacheTableOrderingComposer
+    extends Composer<_$AppDatabase, $AnnualEventsCacheTable> {
+  $$AnnualEventsCacheTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<String> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get userId => $composableBuilder(
+    column: $table.userId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get data => $composableBuilder(
+    column: $table.data,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get updatedAt => $composableBuilder(
+    column: $table.updatedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+}
+
+class $$AnnualEventsCacheTableAnnotationComposer
+    extends Composer<_$AppDatabase, $AnnualEventsCacheTable> {
+  $$AnnualEventsCacheTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<String> get id =>
+      $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumn<String> get userId =>
+      $composableBuilder(column: $table.userId, builder: (column) => column);
+
+  GeneratedColumn<String> get data =>
+      $composableBuilder(column: $table.data, builder: (column) => column);
+
+  GeneratedColumn<int> get updatedAt =>
+      $composableBuilder(column: $table.updatedAt, builder: (column) => column);
+}
+
+class $$AnnualEventsCacheTableTableManager
+    extends
+        RootTableManager<
+          _$AppDatabase,
+          $AnnualEventsCacheTable,
+          AnnualEventsCacheData,
+          $$AnnualEventsCacheTableFilterComposer,
+          $$AnnualEventsCacheTableOrderingComposer,
+          $$AnnualEventsCacheTableAnnotationComposer,
+          $$AnnualEventsCacheTableCreateCompanionBuilder,
+          $$AnnualEventsCacheTableUpdateCompanionBuilder,
+          (
+            AnnualEventsCacheData,
+            BaseReferences<
+              _$AppDatabase,
+              $AnnualEventsCacheTable,
+              AnnualEventsCacheData
+            >,
+          ),
+          AnnualEventsCacheData,
+          PrefetchHooks Function()
+        > {
+  $$AnnualEventsCacheTableTableManager(
+    _$AppDatabase db,
+    $AnnualEventsCacheTable table,
+  ) : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$AnnualEventsCacheTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$AnnualEventsCacheTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$AnnualEventsCacheTableAnnotationComposer(
+                $db: db,
+                $table: table,
+              ),
+          updateCompanionCallback:
+              ({
+                Value<String> id = const Value.absent(),
+                Value<String> userId = const Value.absent(),
+                Value<String> data = const Value.absent(),
+                Value<int> updatedAt = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => AnnualEventsCacheCompanion(
+                id: id,
+                userId: userId,
+                data: data,
+                updatedAt: updatedAt,
+                rowid: rowid,
+              ),
+          createCompanionCallback:
+              ({
+                required String id,
+                required String userId,
+                required String data,
+                required int updatedAt,
+                Value<int> rowid = const Value.absent(),
+              }) => AnnualEventsCacheCompanion.insert(
+                id: id,
+                userId: userId,
+                data: data,
+                updatedAt: updatedAt,
+                rowid: rowid,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
+              .toList(),
+          prefetchHooksCallback: null,
+        ),
+      );
+}
+
+typedef $$AnnualEventsCacheTableProcessedTableManager =
+    ProcessedTableManager<
+      _$AppDatabase,
+      $AnnualEventsCacheTable,
+      AnnualEventsCacheData,
+      $$AnnualEventsCacheTableFilterComposer,
+      $$AnnualEventsCacheTableOrderingComposer,
+      $$AnnualEventsCacheTableAnnotationComposer,
+      $$AnnualEventsCacheTableCreateCompanionBuilder,
+      $$AnnualEventsCacheTableUpdateCompanionBuilder,
+      (
+        AnnualEventsCacheData,
+        BaseReferences<
+          _$AppDatabase,
+          $AnnualEventsCacheTable,
+          AnnualEventsCacheData
+        >,
+      ),
+      AnnualEventsCacheData,
+      PrefetchHooks Function()
+    >;
 typedef $$SyncQueueTableCreateCompanionBuilder =
     SyncQueueCompanion Function({
       Value<int> id,
@@ -1622,6 +2127,8 @@ class $AppDatabaseManager {
       $$EventsCacheTableTableManager(_db, _db.eventsCache);
   $$TodosCacheTableTableManager get todosCache =>
       $$TodosCacheTableTableManager(_db, _db.todosCache);
+  $$AnnualEventsCacheTableTableManager get annualEventsCache =>
+      $$AnnualEventsCacheTableTableManager(_db, _db.annualEventsCache);
   $$SyncQueueTableTableManager get syncQueue =>
       $$SyncQueueTableTableManager(_db, _db.syncQueue);
 }

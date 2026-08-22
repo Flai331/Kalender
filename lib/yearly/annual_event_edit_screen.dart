@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:uuid/uuid.dart';
 import '../app_colors.dart';
 import '../models/annual_event.dart';
-import '../services/supabase_service.dart';
+import '../services/local_service.dart';
 import '../widgets/save_feedback.dart';
 
 const _uuid = Uuid();
@@ -58,11 +58,12 @@ class _AnnualEventEditScreenState extends State<AnnualEventEditScreen> {
       colorHex: widget.event?.colorHex,
       occurrences: _occurrences,
     );
+    // Lokal speichern + Sync-Queue — funktioniert auch offline.
     bool ok = false;
     try {
       ok = await guardedAction(
         context,
-        () => SupabaseService.saveAnnualEvent(event),
+        () => LocalService.saveAnnualEvent(event),
         errorPrefix: 'Jahres-Event speichern fehlgeschlagen',
       );
     } finally {
@@ -99,7 +100,7 @@ class _AnnualEventEditScreenState extends State<AnnualEventEditScreen> {
     try {
       ok = await guardedAction(
         context,
-        () => SupabaseService.deleteAnnualEvent(widget.event!.id),
+        () => LocalService.deleteAnnualEvent(widget.event!.id),
         offlineMessage: 'Kein Internet – konnte nicht gelöscht werden. '
             'Bitte später erneut versuchen.',
         errorPrefix: 'Jahres-Event löschen fehlgeschlagen',

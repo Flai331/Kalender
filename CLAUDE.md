@@ -74,6 +74,32 @@ Verschiebt überfällige pending Todos automatisch nach vorne:
 | Speichern-Knopf reagiert nicht mehr | `_saving = true` vor dem `await`, Exception (z.B. offline) → Flag wird nie zurückgesetzt | `try/finally` + `guardedAction()` aus `widgets/save_feedback.dart` |
 | Speichern schlägt still fehl | `await SupabaseService.save…()` ohne try/catch — Nutzer sieht keine Meldung | `guardedAction()` zeigt SnackBar + schreibt ins Protokoll |
 | Termin/Todo offline nicht speicherbar | Edit-Screen schrieb direkt gegen Supabase statt über die Sync-Queue | `LocalService.saveEvent/saveTodo` (wie in `week_screen.dart`) |
+
+## Offline-Architektur (drift + Sync-Queue)
+
+Schreibende Screens gehen **immer** über `LocalService`, nie direkt über
+`SupabaseService` — sonst schlägt das Speichern ohne Netz fehl.
+
+- `LocalService.save*/delete*` schreibt in den drift-Cache **und** stellt einen
+  Auftrag in `sync_queue` ein
+- `SyncService` arbeitet die Queue ab, sobald `connectivity_plus` online meldet
+- `_processEntry` kennt nur `calendar_events`, `todos`, `annual_events` —
+  unbekannte Tabellen werden verworfen (früher landeten sie im Todo-Zweig!)
+- Screens lesen über `LocalService`-Streams (`.watch()`), damit lokal
+  gespeicherte Daten sofort sichtbar sind
+
+**Neue Entität offline-fähig machen:**
+1. Tabelle in `db/app_database.dart` anlegen, `schemaVersion` erhöhen und in
+   `MigrationStrategy.onUpgrade` per `m.createTable(...)` ergänzen
+2. `dart run build_runner build` (regeneriert `app_database.g.dart`)
+3. `LocalService`: Stream + save/delete + seed ergänzen
+4. `SyncService._processEntry`: Tabelle in der Whitelist und im switch ergänzen
+5. `main.dart`: eigenen Seed-Flag verwenden — bestehende Installationen haben
+   `local_seeded` schon auf `true` und würden sonst nie seeden
+6. Screens auf `LocalService` umstellen
+
+Migrationen sind in `test/annual_events_offline_test.dart` getestet
+(v1-DB per rohem sqlite3 anlegen, dann `AppDatabase.forTesting(...)` öffnen).
 | PointerScrollEvent not found | Fehlende Imports | `flutter/gestures.dart` + `flutter/services.dart` |
 
 ## Imports week_screen.dart
