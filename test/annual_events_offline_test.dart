@@ -38,6 +38,21 @@ Database _openV1Database() {
   return raw;
 }
 
+/// Datenbank im Schema-Stand v2 (mit annual_events_cache, ohne die
+/// Erinnerungs-Tabellen) — der Stand nach dem vorherigen Update.
+Database _openV2Database() {
+  final raw = _openV1Database();
+  raw.execute('''
+    CREATE TABLE annual_events_cache (
+      id TEXT NOT NULL PRIMARY KEY,
+      user_id TEXT NOT NULL,
+      data TEXT NOT NULL,
+      updated_at INTEGER NOT NULL);
+  ''');
+  raw.execute('PRAGMA user_version = 2;');
+  return raw;
+}
+
 void main() {
   late AppDatabase db;
 
@@ -57,7 +72,7 @@ void main() {
           .toList();
 
       expect(tables, contains('annual_events_cache'));
-      expect(raw.userVersion, 2);
+      expect(raw.userVersion, 3);
       // Bestandsdaten-Tabellen bleiben erhalten.
       expect(tables, contains('events_cache'));
       expect(tables, contains('todos_cache'));
@@ -76,6 +91,46 @@ void main() {
       final rows = raw.select('SELECT id FROM todos_cache');
       expect(rows.length, 1);
       expect(rows.first['id'], 't1');
+    });
+  });
+
+  group('Schema-Migration v2 → v3', () {
+    test('legt die Erinnerungs-Tabellen auf einer v2-DB an', () async {
+      final raw = _openV2Database();
+      db = AppDatabase.forTesting(NativeDatabase.opened(raw));
+      await db.customSelect('SELECT 1').get();
+
+      final tables = raw
+          .select("SELECT name FROM sqlite_master WHERE type = 'table'")
+          .map((r) => r['name'] as String)
+          .toList();
+
+      expect(tables, contains('series_reminders_cache'));
+      expect(tables, contains('yearly_checklists_cache'));
+      expect(tables, contains('annual_events_cache'));
+      expect(raw.userVersion, 3);
+    });
+
+    test('v1 springt direkt auf v3 durch', () async {
+      final raw = _openV1Database();
+      raw.execute(
+        "INSERT INTO events_cache (id, user_id, data, updated_at) "
+        "VALUES ('e1', 'u1', '{}', 1)",
+      );
+      db = AppDatabase.forTesting(NativeDatabase.opened(raw));
+      await db.customSelect('SELECT 1').get();
+
+      final tables = raw
+          .select("SELECT name FROM sqlite_master WHERE type = 'table'")
+          .map((r) => r['name'] as String)
+          .toList();
+
+      expect(tables, contains('annual_events_cache'));
+      expect(tables, contains('series_reminders_cache'));
+      expect(tables, contains('yearly_checklists_cache'));
+      expect(raw.userVersion, 3);
+      // Bestandsdaten überleben den Sprung über zwei Versionen.
+      expect(raw.select('SELECT id FROM events_cache').length, 1);
     });
   });
 

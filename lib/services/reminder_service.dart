@@ -2,7 +2,8 @@ import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:timezone/data/latest.dart' as tz;
 import 'package:timezone/timezone.dart' as tz;
 import '../models/series_reminder.dart';
-import 'supabase_service.dart';
+import 'feedback_service.dart';
+import 'local_service.dart';
 import 'outlook_service.dart';
 
 class ReminderService {
@@ -24,14 +25,30 @@ class ReminderService {
         ?.requestNotificationsPermission();
   }
 
-  /// Alle aktiven Serien-Erinnerungen evaluieren und Notifications planen
+  /// Alle aktiven Serien-Erinnerungen evaluieren und Notifications planen.
+  ///
+  /// Wirft nie: die Methode läuft beim App-Start und nach jedem Speichern,
+  /// ein Fehler darf weder den Start noch die übrigen Erinnerungen kippen.
+  /// `_evaluate` fragt für die Fallback-Regel Outlook ab — ohne Netz schlägt
+  /// das fehl, die Erinnerungen ohne Fallback müssen trotzdem geplant werden.
   static Future<void> evaluateAll() async {
-    final reminders = await SupabaseService.getReminders();
+    final List<SeriesReminder> reminders;
+    try {
+      reminders = await LocalService.getReminders();
+    } catch (e) {
+      FeedbackService.log('Erinnerungen konnten nicht geladen werden: $e');
+      return;
+    }
     final now = DateTime.now();
 
     for (final reminder in reminders) {
       if (!reminder.isActive) continue;
-      await _evaluate(reminder, now);
+      try {
+        await _evaluate(reminder, now);
+      } catch (e) {
+        FeedbackService.log(
+            'Erinnerung "${reminder.title}" nicht planbar: $e');
+      }
     }
   }
 

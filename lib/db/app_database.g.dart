@@ -923,6 +923,632 @@ class AnnualEventsCacheCompanion
   }
 }
 
+class $SeriesRemindersCacheTable extends SeriesRemindersCache
+    with TableInfo<$SeriesRemindersCacheTable, SeriesRemindersCacheData> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $SeriesRemindersCacheTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<String> id = GeneratedColumn<String>(
+    'id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _userIdMeta = const VerificationMeta('userId');
+  @override
+  late final GeneratedColumn<String> userId = GeneratedColumn<String>(
+    'user_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _dataMeta = const VerificationMeta('data');
+  @override
+  late final GeneratedColumn<String> data = GeneratedColumn<String>(
+    'data',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _updatedAtMeta = const VerificationMeta(
+    'updatedAt',
+  );
+  @override
+  late final GeneratedColumn<int> updatedAt = GeneratedColumn<int>(
+    'updated_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [id, userId, data, updatedAt];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'series_reminders_cache';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<SeriesRemindersCacheData> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('id')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    } else if (isInserting) {
+      context.missing(_idMeta);
+    }
+    if (data.containsKey('user_id')) {
+      context.handle(
+        _userIdMeta,
+        userId.isAcceptableOrUnknown(data['user_id']!, _userIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_userIdMeta);
+    }
+    if (data.containsKey('data')) {
+      context.handle(
+        _dataMeta,
+        this.data.isAcceptableOrUnknown(data['data']!, _dataMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_dataMeta);
+    }
+    if (data.containsKey('updated_at')) {
+      context.handle(
+        _updatedAtMeta,
+        updatedAt.isAcceptableOrUnknown(data['updated_at']!, _updatedAtMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_updatedAtMeta);
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  SeriesRemindersCacheData map(
+    Map<String, dynamic> data, {
+    String? tablePrefix,
+  }) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return SeriesRemindersCacheData(
+      id: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}id'],
+      )!,
+      userId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}user_id'],
+      )!,
+      data: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}data'],
+      )!,
+      updatedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}updated_at'],
+      )!,
+    );
+  }
+
+  @override
+  $SeriesRemindersCacheTable createAlias(String alias) {
+    return $SeriesRemindersCacheTable(attachedDatabase, alias);
+  }
+}
+
+class SeriesRemindersCacheData extends DataClass
+    implements Insertable<SeriesRemindersCacheData> {
+  final String id;
+  final String userId;
+  final String data;
+  final int updatedAt;
+  const SeriesRemindersCacheData({
+    required this.id,
+    required this.userId,
+    required this.data,
+    required this.updatedAt,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['id'] = Variable<String>(id);
+    map['user_id'] = Variable<String>(userId);
+    map['data'] = Variable<String>(data);
+    map['updated_at'] = Variable<int>(updatedAt);
+    return map;
+  }
+
+  SeriesRemindersCacheCompanion toCompanion(bool nullToAbsent) {
+    return SeriesRemindersCacheCompanion(
+      id: Value(id),
+      userId: Value(userId),
+      data: Value(data),
+      updatedAt: Value(updatedAt),
+    );
+  }
+
+  factory SeriesRemindersCacheData.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return SeriesRemindersCacheData(
+      id: serializer.fromJson<String>(json['id']),
+      userId: serializer.fromJson<String>(json['userId']),
+      data: serializer.fromJson<String>(json['data']),
+      updatedAt: serializer.fromJson<int>(json['updatedAt']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'id': serializer.toJson<String>(id),
+      'userId': serializer.toJson<String>(userId),
+      'data': serializer.toJson<String>(data),
+      'updatedAt': serializer.toJson<int>(updatedAt),
+    };
+  }
+
+  SeriesRemindersCacheData copyWith({
+    String? id,
+    String? userId,
+    String? data,
+    int? updatedAt,
+  }) => SeriesRemindersCacheData(
+    id: id ?? this.id,
+    userId: userId ?? this.userId,
+    data: data ?? this.data,
+    updatedAt: updatedAt ?? this.updatedAt,
+  );
+  SeriesRemindersCacheData copyWithCompanion(
+    SeriesRemindersCacheCompanion data,
+  ) {
+    return SeriesRemindersCacheData(
+      id: data.id.present ? data.id.value : this.id,
+      userId: data.userId.present ? data.userId.value : this.userId,
+      data: data.data.present ? data.data.value : this.data,
+      updatedAt: data.updatedAt.present ? data.updatedAt.value : this.updatedAt,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('SeriesRemindersCacheData(')
+          ..write('id: $id, ')
+          ..write('userId: $userId, ')
+          ..write('data: $data, ')
+          ..write('updatedAt: $updatedAt')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(id, userId, data, updatedAt);
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is SeriesRemindersCacheData &&
+          other.id == this.id &&
+          other.userId == this.userId &&
+          other.data == this.data &&
+          other.updatedAt == this.updatedAt);
+}
+
+class SeriesRemindersCacheCompanion
+    extends UpdateCompanion<SeriesRemindersCacheData> {
+  final Value<String> id;
+  final Value<String> userId;
+  final Value<String> data;
+  final Value<int> updatedAt;
+  final Value<int> rowid;
+  const SeriesRemindersCacheCompanion({
+    this.id = const Value.absent(),
+    this.userId = const Value.absent(),
+    this.data = const Value.absent(),
+    this.updatedAt = const Value.absent(),
+    this.rowid = const Value.absent(),
+  });
+  SeriesRemindersCacheCompanion.insert({
+    required String id,
+    required String userId,
+    required String data,
+    required int updatedAt,
+    this.rowid = const Value.absent(),
+  }) : id = Value(id),
+       userId = Value(userId),
+       data = Value(data),
+       updatedAt = Value(updatedAt);
+  static Insertable<SeriesRemindersCacheData> custom({
+    Expression<String>? id,
+    Expression<String>? userId,
+    Expression<String>? data,
+    Expression<int>? updatedAt,
+    Expression<int>? rowid,
+  }) {
+    return RawValuesInsertable({
+      if (id != null) 'id': id,
+      if (userId != null) 'user_id': userId,
+      if (data != null) 'data': data,
+      if (updatedAt != null) 'updated_at': updatedAt,
+      if (rowid != null) 'rowid': rowid,
+    });
+  }
+
+  SeriesRemindersCacheCompanion copyWith({
+    Value<String>? id,
+    Value<String>? userId,
+    Value<String>? data,
+    Value<int>? updatedAt,
+    Value<int>? rowid,
+  }) {
+    return SeriesRemindersCacheCompanion(
+      id: id ?? this.id,
+      userId: userId ?? this.userId,
+      data: data ?? this.data,
+      updatedAt: updatedAt ?? this.updatedAt,
+      rowid: rowid ?? this.rowid,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (id.present) {
+      map['id'] = Variable<String>(id.value);
+    }
+    if (userId.present) {
+      map['user_id'] = Variable<String>(userId.value);
+    }
+    if (data.present) {
+      map['data'] = Variable<String>(data.value);
+    }
+    if (updatedAt.present) {
+      map['updated_at'] = Variable<int>(updatedAt.value);
+    }
+    if (rowid.present) {
+      map['rowid'] = Variable<int>(rowid.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('SeriesRemindersCacheCompanion(')
+          ..write('id: $id, ')
+          ..write('userId: $userId, ')
+          ..write('data: $data, ')
+          ..write('updatedAt: $updatedAt, ')
+          ..write('rowid: $rowid')
+          ..write(')'))
+        .toString();
+  }
+}
+
+class $YearlyChecklistsCacheTable extends YearlyChecklistsCache
+    with TableInfo<$YearlyChecklistsCacheTable, YearlyChecklistsCacheData> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $YearlyChecklistsCacheTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<String> id = GeneratedColumn<String>(
+    'id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _userIdMeta = const VerificationMeta('userId');
+  @override
+  late final GeneratedColumn<String> userId = GeneratedColumn<String>(
+    'user_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _dataMeta = const VerificationMeta('data');
+  @override
+  late final GeneratedColumn<String> data = GeneratedColumn<String>(
+    'data',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _updatedAtMeta = const VerificationMeta(
+    'updatedAt',
+  );
+  @override
+  late final GeneratedColumn<int> updatedAt = GeneratedColumn<int>(
+    'updated_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [id, userId, data, updatedAt];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'yearly_checklists_cache';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<YearlyChecklistsCacheData> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('id')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    } else if (isInserting) {
+      context.missing(_idMeta);
+    }
+    if (data.containsKey('user_id')) {
+      context.handle(
+        _userIdMeta,
+        userId.isAcceptableOrUnknown(data['user_id']!, _userIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_userIdMeta);
+    }
+    if (data.containsKey('data')) {
+      context.handle(
+        _dataMeta,
+        this.data.isAcceptableOrUnknown(data['data']!, _dataMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_dataMeta);
+    }
+    if (data.containsKey('updated_at')) {
+      context.handle(
+        _updatedAtMeta,
+        updatedAt.isAcceptableOrUnknown(data['updated_at']!, _updatedAtMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_updatedAtMeta);
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  YearlyChecklistsCacheData map(
+    Map<String, dynamic> data, {
+    String? tablePrefix,
+  }) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return YearlyChecklistsCacheData(
+      id: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}id'],
+      )!,
+      userId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}user_id'],
+      )!,
+      data: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}data'],
+      )!,
+      updatedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}updated_at'],
+      )!,
+    );
+  }
+
+  @override
+  $YearlyChecklistsCacheTable createAlias(String alias) {
+    return $YearlyChecklistsCacheTable(attachedDatabase, alias);
+  }
+}
+
+class YearlyChecklistsCacheData extends DataClass
+    implements Insertable<YearlyChecklistsCacheData> {
+  final String id;
+  final String userId;
+  final String data;
+  final int updatedAt;
+  const YearlyChecklistsCacheData({
+    required this.id,
+    required this.userId,
+    required this.data,
+    required this.updatedAt,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['id'] = Variable<String>(id);
+    map['user_id'] = Variable<String>(userId);
+    map['data'] = Variable<String>(data);
+    map['updated_at'] = Variable<int>(updatedAt);
+    return map;
+  }
+
+  YearlyChecklistsCacheCompanion toCompanion(bool nullToAbsent) {
+    return YearlyChecklistsCacheCompanion(
+      id: Value(id),
+      userId: Value(userId),
+      data: Value(data),
+      updatedAt: Value(updatedAt),
+    );
+  }
+
+  factory YearlyChecklistsCacheData.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return YearlyChecklistsCacheData(
+      id: serializer.fromJson<String>(json['id']),
+      userId: serializer.fromJson<String>(json['userId']),
+      data: serializer.fromJson<String>(json['data']),
+      updatedAt: serializer.fromJson<int>(json['updatedAt']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'id': serializer.toJson<String>(id),
+      'userId': serializer.toJson<String>(userId),
+      'data': serializer.toJson<String>(data),
+      'updatedAt': serializer.toJson<int>(updatedAt),
+    };
+  }
+
+  YearlyChecklistsCacheData copyWith({
+    String? id,
+    String? userId,
+    String? data,
+    int? updatedAt,
+  }) => YearlyChecklistsCacheData(
+    id: id ?? this.id,
+    userId: userId ?? this.userId,
+    data: data ?? this.data,
+    updatedAt: updatedAt ?? this.updatedAt,
+  );
+  YearlyChecklistsCacheData copyWithCompanion(
+    YearlyChecklistsCacheCompanion data,
+  ) {
+    return YearlyChecklistsCacheData(
+      id: data.id.present ? data.id.value : this.id,
+      userId: data.userId.present ? data.userId.value : this.userId,
+      data: data.data.present ? data.data.value : this.data,
+      updatedAt: data.updatedAt.present ? data.updatedAt.value : this.updatedAt,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('YearlyChecklistsCacheData(')
+          ..write('id: $id, ')
+          ..write('userId: $userId, ')
+          ..write('data: $data, ')
+          ..write('updatedAt: $updatedAt')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(id, userId, data, updatedAt);
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is YearlyChecklistsCacheData &&
+          other.id == this.id &&
+          other.userId == this.userId &&
+          other.data == this.data &&
+          other.updatedAt == this.updatedAt);
+}
+
+class YearlyChecklistsCacheCompanion
+    extends UpdateCompanion<YearlyChecklistsCacheData> {
+  final Value<String> id;
+  final Value<String> userId;
+  final Value<String> data;
+  final Value<int> updatedAt;
+  final Value<int> rowid;
+  const YearlyChecklistsCacheCompanion({
+    this.id = const Value.absent(),
+    this.userId = const Value.absent(),
+    this.data = const Value.absent(),
+    this.updatedAt = const Value.absent(),
+    this.rowid = const Value.absent(),
+  });
+  YearlyChecklistsCacheCompanion.insert({
+    required String id,
+    required String userId,
+    required String data,
+    required int updatedAt,
+    this.rowid = const Value.absent(),
+  }) : id = Value(id),
+       userId = Value(userId),
+       data = Value(data),
+       updatedAt = Value(updatedAt);
+  static Insertable<YearlyChecklistsCacheData> custom({
+    Expression<String>? id,
+    Expression<String>? userId,
+    Expression<String>? data,
+    Expression<int>? updatedAt,
+    Expression<int>? rowid,
+  }) {
+    return RawValuesInsertable({
+      if (id != null) 'id': id,
+      if (userId != null) 'user_id': userId,
+      if (data != null) 'data': data,
+      if (updatedAt != null) 'updated_at': updatedAt,
+      if (rowid != null) 'rowid': rowid,
+    });
+  }
+
+  YearlyChecklistsCacheCompanion copyWith({
+    Value<String>? id,
+    Value<String>? userId,
+    Value<String>? data,
+    Value<int>? updatedAt,
+    Value<int>? rowid,
+  }) {
+    return YearlyChecklistsCacheCompanion(
+      id: id ?? this.id,
+      userId: userId ?? this.userId,
+      data: data ?? this.data,
+      updatedAt: updatedAt ?? this.updatedAt,
+      rowid: rowid ?? this.rowid,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (id.present) {
+      map['id'] = Variable<String>(id.value);
+    }
+    if (userId.present) {
+      map['user_id'] = Variable<String>(userId.value);
+    }
+    if (data.present) {
+      map['data'] = Variable<String>(data.value);
+    }
+    if (updatedAt.present) {
+      map['updated_at'] = Variable<int>(updatedAt.value);
+    }
+    if (rowid.present) {
+      map['rowid'] = Variable<int>(rowid.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('YearlyChecklistsCacheCompanion(')
+          ..write('id: $id, ')
+          ..write('userId: $userId, ')
+          ..write('data: $data, ')
+          ..write('updatedAt: $updatedAt, ')
+          ..write('rowid: $rowid')
+          ..write(')'))
+        .toString();
+  }
+}
+
 class $SyncQueueTable extends SyncQueue
     with TableInfo<$SyncQueueTable, SyncQueueData> {
   @override
@@ -1335,6 +1961,10 @@ abstract class _$AppDatabase extends GeneratedDatabase {
   late final $TodosCacheTable todosCache = $TodosCacheTable(this);
   late final $AnnualEventsCacheTable annualEventsCache =
       $AnnualEventsCacheTable(this);
+  late final $SeriesRemindersCacheTable seriesRemindersCache =
+      $SeriesRemindersCacheTable(this);
+  late final $YearlyChecklistsCacheTable yearlyChecklistsCache =
+      $YearlyChecklistsCacheTable(this);
   late final $SyncQueueTable syncQueue = $SyncQueueTable(this);
   @override
   Iterable<TableInfo<Table, Object?>> get allTables =>
@@ -1344,6 +1974,8 @@ abstract class _$AppDatabase extends GeneratedDatabase {
     eventsCache,
     todosCache,
     annualEventsCache,
+    seriesRemindersCache,
+    yearlyChecklistsCache,
     syncQueue,
   ];
 }
@@ -1904,6 +2536,403 @@ typedef $$AnnualEventsCacheTableProcessedTableManager =
       AnnualEventsCacheData,
       PrefetchHooks Function()
     >;
+typedef $$SeriesRemindersCacheTableCreateCompanionBuilder =
+    SeriesRemindersCacheCompanion Function({
+      required String id,
+      required String userId,
+      required String data,
+      required int updatedAt,
+      Value<int> rowid,
+    });
+typedef $$SeriesRemindersCacheTableUpdateCompanionBuilder =
+    SeriesRemindersCacheCompanion Function({
+      Value<String> id,
+      Value<String> userId,
+      Value<String> data,
+      Value<int> updatedAt,
+      Value<int> rowid,
+    });
+
+class $$SeriesRemindersCacheTableFilterComposer
+    extends Composer<_$AppDatabase, $SeriesRemindersCacheTable> {
+  $$SeriesRemindersCacheTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<String> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get userId => $composableBuilder(
+    column: $table.userId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get data => $composableBuilder(
+    column: $table.data,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get updatedAt => $composableBuilder(
+    column: $table.updatedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+}
+
+class $$SeriesRemindersCacheTableOrderingComposer
+    extends Composer<_$AppDatabase, $SeriesRemindersCacheTable> {
+  $$SeriesRemindersCacheTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<String> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get userId => $composableBuilder(
+    column: $table.userId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get data => $composableBuilder(
+    column: $table.data,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get updatedAt => $composableBuilder(
+    column: $table.updatedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+}
+
+class $$SeriesRemindersCacheTableAnnotationComposer
+    extends Composer<_$AppDatabase, $SeriesRemindersCacheTable> {
+  $$SeriesRemindersCacheTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<String> get id =>
+      $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumn<String> get userId =>
+      $composableBuilder(column: $table.userId, builder: (column) => column);
+
+  GeneratedColumn<String> get data =>
+      $composableBuilder(column: $table.data, builder: (column) => column);
+
+  GeneratedColumn<int> get updatedAt =>
+      $composableBuilder(column: $table.updatedAt, builder: (column) => column);
+}
+
+class $$SeriesRemindersCacheTableTableManager
+    extends
+        RootTableManager<
+          _$AppDatabase,
+          $SeriesRemindersCacheTable,
+          SeriesRemindersCacheData,
+          $$SeriesRemindersCacheTableFilterComposer,
+          $$SeriesRemindersCacheTableOrderingComposer,
+          $$SeriesRemindersCacheTableAnnotationComposer,
+          $$SeriesRemindersCacheTableCreateCompanionBuilder,
+          $$SeriesRemindersCacheTableUpdateCompanionBuilder,
+          (
+            SeriesRemindersCacheData,
+            BaseReferences<
+              _$AppDatabase,
+              $SeriesRemindersCacheTable,
+              SeriesRemindersCacheData
+            >,
+          ),
+          SeriesRemindersCacheData,
+          PrefetchHooks Function()
+        > {
+  $$SeriesRemindersCacheTableTableManager(
+    _$AppDatabase db,
+    $SeriesRemindersCacheTable table,
+  ) : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$SeriesRemindersCacheTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$SeriesRemindersCacheTableOrderingComposer(
+                $db: db,
+                $table: table,
+              ),
+          createComputedFieldComposer: () =>
+              $$SeriesRemindersCacheTableAnnotationComposer(
+                $db: db,
+                $table: table,
+              ),
+          updateCompanionCallback:
+              ({
+                Value<String> id = const Value.absent(),
+                Value<String> userId = const Value.absent(),
+                Value<String> data = const Value.absent(),
+                Value<int> updatedAt = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => SeriesRemindersCacheCompanion(
+                id: id,
+                userId: userId,
+                data: data,
+                updatedAt: updatedAt,
+                rowid: rowid,
+              ),
+          createCompanionCallback:
+              ({
+                required String id,
+                required String userId,
+                required String data,
+                required int updatedAt,
+                Value<int> rowid = const Value.absent(),
+              }) => SeriesRemindersCacheCompanion.insert(
+                id: id,
+                userId: userId,
+                data: data,
+                updatedAt: updatedAt,
+                rowid: rowid,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
+              .toList(),
+          prefetchHooksCallback: null,
+        ),
+      );
+}
+
+typedef $$SeriesRemindersCacheTableProcessedTableManager =
+    ProcessedTableManager<
+      _$AppDatabase,
+      $SeriesRemindersCacheTable,
+      SeriesRemindersCacheData,
+      $$SeriesRemindersCacheTableFilterComposer,
+      $$SeriesRemindersCacheTableOrderingComposer,
+      $$SeriesRemindersCacheTableAnnotationComposer,
+      $$SeriesRemindersCacheTableCreateCompanionBuilder,
+      $$SeriesRemindersCacheTableUpdateCompanionBuilder,
+      (
+        SeriesRemindersCacheData,
+        BaseReferences<
+          _$AppDatabase,
+          $SeriesRemindersCacheTable,
+          SeriesRemindersCacheData
+        >,
+      ),
+      SeriesRemindersCacheData,
+      PrefetchHooks Function()
+    >;
+typedef $$YearlyChecklistsCacheTableCreateCompanionBuilder =
+    YearlyChecklistsCacheCompanion Function({
+      required String id,
+      required String userId,
+      required String data,
+      required int updatedAt,
+      Value<int> rowid,
+    });
+typedef $$YearlyChecklistsCacheTableUpdateCompanionBuilder =
+    YearlyChecklistsCacheCompanion Function({
+      Value<String> id,
+      Value<String> userId,
+      Value<String> data,
+      Value<int> updatedAt,
+      Value<int> rowid,
+    });
+
+class $$YearlyChecklistsCacheTableFilterComposer
+    extends Composer<_$AppDatabase, $YearlyChecklistsCacheTable> {
+  $$YearlyChecklistsCacheTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<String> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get userId => $composableBuilder(
+    column: $table.userId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get data => $composableBuilder(
+    column: $table.data,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get updatedAt => $composableBuilder(
+    column: $table.updatedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+}
+
+class $$YearlyChecklistsCacheTableOrderingComposer
+    extends Composer<_$AppDatabase, $YearlyChecklistsCacheTable> {
+  $$YearlyChecklistsCacheTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<String> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get userId => $composableBuilder(
+    column: $table.userId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get data => $composableBuilder(
+    column: $table.data,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get updatedAt => $composableBuilder(
+    column: $table.updatedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+}
+
+class $$YearlyChecklistsCacheTableAnnotationComposer
+    extends Composer<_$AppDatabase, $YearlyChecklistsCacheTable> {
+  $$YearlyChecklistsCacheTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<String> get id =>
+      $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumn<String> get userId =>
+      $composableBuilder(column: $table.userId, builder: (column) => column);
+
+  GeneratedColumn<String> get data =>
+      $composableBuilder(column: $table.data, builder: (column) => column);
+
+  GeneratedColumn<int> get updatedAt =>
+      $composableBuilder(column: $table.updatedAt, builder: (column) => column);
+}
+
+class $$YearlyChecklistsCacheTableTableManager
+    extends
+        RootTableManager<
+          _$AppDatabase,
+          $YearlyChecklistsCacheTable,
+          YearlyChecklistsCacheData,
+          $$YearlyChecklistsCacheTableFilterComposer,
+          $$YearlyChecklistsCacheTableOrderingComposer,
+          $$YearlyChecklistsCacheTableAnnotationComposer,
+          $$YearlyChecklistsCacheTableCreateCompanionBuilder,
+          $$YearlyChecklistsCacheTableUpdateCompanionBuilder,
+          (
+            YearlyChecklistsCacheData,
+            BaseReferences<
+              _$AppDatabase,
+              $YearlyChecklistsCacheTable,
+              YearlyChecklistsCacheData
+            >,
+          ),
+          YearlyChecklistsCacheData,
+          PrefetchHooks Function()
+        > {
+  $$YearlyChecklistsCacheTableTableManager(
+    _$AppDatabase db,
+    $YearlyChecklistsCacheTable table,
+  ) : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$YearlyChecklistsCacheTableFilterComposer(
+                $db: db,
+                $table: table,
+              ),
+          createOrderingComposer: () =>
+              $$YearlyChecklistsCacheTableOrderingComposer(
+                $db: db,
+                $table: table,
+              ),
+          createComputedFieldComposer: () =>
+              $$YearlyChecklistsCacheTableAnnotationComposer(
+                $db: db,
+                $table: table,
+              ),
+          updateCompanionCallback:
+              ({
+                Value<String> id = const Value.absent(),
+                Value<String> userId = const Value.absent(),
+                Value<String> data = const Value.absent(),
+                Value<int> updatedAt = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => YearlyChecklistsCacheCompanion(
+                id: id,
+                userId: userId,
+                data: data,
+                updatedAt: updatedAt,
+                rowid: rowid,
+              ),
+          createCompanionCallback:
+              ({
+                required String id,
+                required String userId,
+                required String data,
+                required int updatedAt,
+                Value<int> rowid = const Value.absent(),
+              }) => YearlyChecklistsCacheCompanion.insert(
+                id: id,
+                userId: userId,
+                data: data,
+                updatedAt: updatedAt,
+                rowid: rowid,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
+              .toList(),
+          prefetchHooksCallback: null,
+        ),
+      );
+}
+
+typedef $$YearlyChecklistsCacheTableProcessedTableManager =
+    ProcessedTableManager<
+      _$AppDatabase,
+      $YearlyChecklistsCacheTable,
+      YearlyChecklistsCacheData,
+      $$YearlyChecklistsCacheTableFilterComposer,
+      $$YearlyChecklistsCacheTableOrderingComposer,
+      $$YearlyChecklistsCacheTableAnnotationComposer,
+      $$YearlyChecklistsCacheTableCreateCompanionBuilder,
+      $$YearlyChecklistsCacheTableUpdateCompanionBuilder,
+      (
+        YearlyChecklistsCacheData,
+        BaseReferences<
+          _$AppDatabase,
+          $YearlyChecklistsCacheTable,
+          YearlyChecklistsCacheData
+        >,
+      ),
+      YearlyChecklistsCacheData,
+      PrefetchHooks Function()
+    >;
 typedef $$SyncQueueTableCreateCompanionBuilder =
     SyncQueueCompanion Function({
       Value<int> id,
@@ -2129,6 +3158,10 @@ class $AppDatabaseManager {
       $$TodosCacheTableTableManager(_db, _db.todosCache);
   $$AnnualEventsCacheTableTableManager get annualEventsCache =>
       $$AnnualEventsCacheTableTableManager(_db, _db.annualEventsCache);
+  $$SeriesRemindersCacheTableTableManager get seriesRemindersCache =>
+      $$SeriesRemindersCacheTableTableManager(_db, _db.seriesRemindersCache);
+  $$YearlyChecklistsCacheTableTableManager get yearlyChecklistsCache =>
+      $$YearlyChecklistsCacheTableTableManager(_db, _db.yearlyChecklistsCache);
   $$SyncQueueTableTableManager get syncQueue =>
       $$SyncQueueTableTableManager(_db, _db.syncQueue);
 }

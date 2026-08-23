@@ -5,6 +5,8 @@ import '../db/app_database.dart';
 import '../models/calendar_event.dart';
 import '../models/todo.dart';
 import '../models/annual_event.dart';
+import '../models/series_reminder.dart';
+import '../models/yearly_checklist.dart';
 import 'auth_service.dart';
 
 class LocalService {
@@ -129,6 +131,93 @@ class LocalService {
     await _enqueue('annual_events', 'delete', id, {'id': id});
   }
 
+  // ── SeriesReminders ──────────────────────────────────────────────────────
+
+  static Stream<List<SeriesReminder>> remindersStream() {
+    return (_db.select(_db.seriesRemindersCache)
+          ..where((r) => r.userId.equals(_uid)))
+        .watch()
+        .map((rows) => rows
+            .map((r) => SeriesReminder.fromJson(
+                jsonDecode(r.data) as Map<String, dynamic>))
+            .toList()
+          ..sort((a, b) => a.title.compareTo(b.title)));
+  }
+
+  /// Einmaliger Abruf — u.a. für die Notification-Planung beim App-Start,
+  /// die auch ohne Netz funktionieren muss.
+  static Future<List<SeriesReminder>> getReminders() async {
+    final rows = await (_db.select(_db.seriesRemindersCache)
+          ..where((r) => r.userId.equals(_uid)))
+        .get();
+    return rows
+        .map((r) =>
+            SeriesReminder.fromJson(jsonDecode(r.data) as Map<String, dynamic>))
+        .toList();
+  }
+
+  static Future<void> saveReminder(SeriesReminder reminder) async {
+    final now = DateTime.now().millisecondsSinceEpoch;
+    await _db.into(_db.seriesRemindersCache).insertOnConflictUpdate(
+          SeriesRemindersCacheCompanion(
+            id: Value(reminder.id),
+            userId: Value(_uid),
+            data: Value(jsonEncode(reminder.toJson())),
+            updatedAt: Value(now),
+          ),
+        );
+    await _enqueue('series_reminders', 'upsert', reminder.id, reminder.toJson());
+  }
+
+  static Future<void> deleteReminder(String id) async {
+    await (_db.delete(_db.seriesRemindersCache)..where((r) => r.id.equals(id)))
+        .go();
+    await _enqueue('series_reminders', 'delete', id, {'id': id});
+  }
+
+  // ── YearlyChecklists ─────────────────────────────────────────────────────
+
+  static Stream<List<YearlyChecklist>> yearlyChecklistsStream() {
+    return (_db.select(_db.yearlyChecklistsCache)
+          ..where((c) => c.userId.equals(_uid)))
+        .watch()
+        .map((rows) => rows
+            .map((r) => YearlyChecklist.fromJson(
+                jsonDecode(r.data) as Map<String, dynamic>))
+            .toList()
+          ..sort((a, b) => a.title.compareTo(b.title)));
+  }
+
+  static Future<List<YearlyChecklist>> getYearlyChecklists() async {
+    final rows = await (_db.select(_db.yearlyChecklistsCache)
+          ..where((c) => c.userId.equals(_uid)))
+        .get();
+    return rows
+        .map((r) => YearlyChecklist.fromJson(
+            jsonDecode(r.data) as Map<String, dynamic>))
+        .toList();
+  }
+
+  static Future<void> saveYearlyChecklist(YearlyChecklist checklist) async {
+    final now = DateTime.now().millisecondsSinceEpoch;
+    await _db.into(_db.yearlyChecklistsCache).insertOnConflictUpdate(
+          YearlyChecklistsCacheCompanion(
+            id: Value(checklist.id),
+            userId: Value(_uid),
+            data: Value(jsonEncode(checklist.toJson())),
+            updatedAt: Value(now),
+          ),
+        );
+    await _enqueue(
+        'yearly_checklists', 'upsert', checklist.id, checklist.toJson());
+  }
+
+  static Future<void> deleteYearlyChecklist(String id) async {
+    await (_db.delete(_db.yearlyChecklistsCache)..where((c) => c.id.equals(id)))
+        .go();
+    await _enqueue('yearly_checklists', 'delete', id, {'id': id});
+  }
+
   // ── Sync queue ────────────────────────────────────────────────────────────
 
   static Future<void> _enqueue(
@@ -197,6 +286,43 @@ class LocalService {
             id: Value(e.id),
             userId: Value(_uid),
             data: Value(jsonEncode(e.toJson())),
+            updatedAt: Value(now),
+          ),
+          mode: InsertMode.insertOrReplace,
+        );
+      }
+    });
+  }
+
+  static Future<void> seedReminders(List<SeriesReminder> reminders) async {
+    final now = DateTime.now().millisecondsSinceEpoch;
+    await _db.batch((batch) {
+      for (final r in reminders) {
+        batch.insert(
+          _db.seriesRemindersCache,
+          SeriesRemindersCacheCompanion(
+            id: Value(r.id),
+            userId: Value(_uid),
+            data: Value(jsonEncode(r.toJson())),
+            updatedAt: Value(now),
+          ),
+          mode: InsertMode.insertOrReplace,
+        );
+      }
+    });
+  }
+
+  static Future<void> seedYearlyChecklists(
+      List<YearlyChecklist> checklists) async {
+    final now = DateTime.now().millisecondsSinceEpoch;
+    await _db.batch((batch) {
+      for (final c in checklists) {
+        batch.insert(
+          _db.yearlyChecklistsCache,
+          YearlyChecklistsCacheCompanion(
+            id: Value(c.id),
+            userId: Value(_uid),
+            data: Value(jsonEncode(c.toJson())),
             updatedAt: Value(now),
           ),
           mode: InsertMode.insertOrReplace,

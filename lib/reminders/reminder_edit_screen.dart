@@ -1,10 +1,13 @@
-﻿import 'package:flutter/material.dart';
+﻿import 'dart:async';
+
+import 'package:flutter/material.dart';
 import 'package:uuid/uuid.dart';
 import '../app_colors.dart';
 import '../models/series_reminder.dart';
 import '../models/yearly_checklist.dart';
-import '../services/supabase_service.dart';
+import '../services/local_service.dart';
 import '../services/outlook_service.dart';
+import '../services/reminder_service.dart';
 import '../widgets/feedback_button.dart';
 import '../widgets/save_feedback.dart';
 
@@ -95,12 +98,15 @@ class _ReminderEditScreenState extends State<ReminderEditScreen> {
     try {
       ok = await guardedAction(
         context,
-        () => SupabaseService.saveReminder(reminder),
+        () => LocalService.saveReminder(reminder),
         errorPrefix: 'Erinnerung speichern fehlgeschlagen',
       );
     } finally {
       if (mounted) setState(() => _saving = false);
     }
+    // Neu einplanen, sonst greift die Änderung erst beim nächsten App-Start.
+    // Nicht awaited — die Outlook-Abfrage darf das Schließen nicht aufhalten.
+    if (ok) unawaited(ReminderService.evaluateAll());
     if (ok && mounted) Navigator.pop(context);
   }
 
@@ -465,7 +471,7 @@ class _YearlyChecklistEditScreenState
     try {
       ok = await guardedAction(
         context,
-        () => SupabaseService.saveYearlyChecklist(checklist),
+        () => LocalService.saveYearlyChecklist(checklist),
         errorPrefix: 'Jahres-Aufgabe speichern fehlgeschlagen',
       );
     } finally {

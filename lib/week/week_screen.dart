@@ -11,7 +11,6 @@ import '../models/todo.dart';
 import '../models/yearly_checklist.dart';
 import '../services/daylight_service.dart';
 import '../services/local_service.dart';
-import '../services/supabase_service.dart';
 import '../services/shift_service.dart';
 import '../services/widget_service.dart';
 import '../services/ics_service.dart';
@@ -246,7 +245,7 @@ class WeekScreenState extends State<WeekScreen> {
   }
 
   Future<void> _checkYearlyChecklists() async {
-    final checklists = await SupabaseService.getYearlyChecklists();
+    final checklists = await LocalService.getYearlyChecklists();
     final now = DateTime.now();
     final pending =
         checklists.where((c) => c.shouldTrigger(now)).toList();
@@ -758,7 +757,7 @@ class WeekScreenState extends State<WeekScreen> {
               // lastTriggeredYear aktualisieren
               final updated = checklist.copyWith(
                   lastTriggeredYear: DateTime.now().year);
-              await SupabaseService.saveYearlyChecklist(updated);
+              await LocalService.saveYearlyChecklist(updated);
               setState(() {
                 _pendingChecklists.remove(checklist);
                 _initStreams();

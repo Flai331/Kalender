@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 import 'dart:ui';
 import 'package:flutter/material.dart';
@@ -83,10 +84,22 @@ void main() async {
         await LocalService.seedAnnualEvents(annual);
         await prefs.setBool('local_seeded_annual', true);
       }
+      if (prefs.getBool('local_seeded_reminders') != true) {
+        await LocalService.seedReminders(await SupabaseService.getReminders());
+        await LocalService.seedYearlyChecklists(
+            await SupabaseService.getYearlyChecklists());
+        await prefs.setBool('local_seeded_reminders', true);
+      }
     } catch (e) {
       debugPrint('Local seed failed: $e');
     }
   }
+
+  // Serien-Erinnerungen einplanen. Muss nach LocalService.init + Seeding
+  // laufen. Bewusst nicht awaited: die Fallback-Regel fragt Outlook ab, und
+  // outlook_service setzt keinen Timeout — ein hängender Request würde sonst
+  // den App-Start blockieren. evaluateAll wirft nicht.
+  unawaited(ReminderService.evaluateAll());
 
   await WidgetService.init();
 

@@ -6,6 +6,8 @@ import '../db/app_database.dart';
 import '../models/calendar_event.dart';
 import '../models/todo.dart';
 import '../models/annual_event.dart';
+import '../models/series_reminder.dart';
+import '../models/yearly_checklist.dart';
 import '../widgets/conflict_dialog.dart';
 import 'local_service.dart';
 import 'supabase_service.dart';
@@ -56,11 +58,14 @@ class SyncService {
 
     // Unbekannte Tabellen NICHT als Todo behandeln — ein falsch geroutetes
     // delete/upsert würde sonst fremde Datensätze überschreiben oder löschen.
-    if (table != 'calendar_events' &&
-        table != 'todos' &&
-        table != 'annual_events') {
-      return;
-    }
+    const known = {
+      'calendar_events',
+      'todos',
+      'annual_events',
+      'series_reminders',
+      'yearly_checklists',
+    };
+    if (!known.contains(table)) return;
 
     if (op == 'delete') {
       switch (table) {
@@ -68,17 +73,30 @@ class SyncService {
           await SupabaseService.deleteEvent(entry.entityId);
         case 'annual_events':
           await SupabaseService.deleteAnnualEvent(entry.entityId);
+        case 'series_reminders':
+          await SupabaseService.deleteReminder(entry.entityId);
+        case 'yearly_checklists':
+          await SupabaseService.deleteYearlyChecklist(entry.entityId);
         default:
           await SupabaseService.deleteTodo(entry.entityId);
       }
       return;
     }
 
-    // Jahres-Events: kein Conflict-Dialog — sie werden selten und nur auf
-    // einem Gerät bearbeitet, ein Merge-Prompt wäre hier nur störend.
-    if (table == 'annual_events') {
-      await SupabaseService.saveAnnualEvent(AnnualEvent.fromJson(payload));
-      return;
+    // Jahres-Events, Serien-Erinnerungen und Jahres-Aufgaben: kein
+    // Conflict-Dialog — sie werden selten und nur auf einem Gerät bearbeitet,
+    // ein Merge-Prompt wäre hier nur störend.
+    switch (table) {
+      case 'annual_events':
+        await SupabaseService.saveAnnualEvent(AnnualEvent.fromJson(payload));
+        return;
+      case 'series_reminders':
+        await SupabaseService.saveReminder(SeriesReminder.fromJson(payload));
+        return;
+      case 'yearly_checklists':
+        await SupabaseService.saveYearlyChecklist(
+            YearlyChecklist.fromJson(payload));
+        return;
     }
 
     // upsert — detect conflict by comparing JSON payloads

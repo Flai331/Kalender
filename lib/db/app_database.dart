@@ -36,6 +36,26 @@ class AnnualEventsCache extends Table {
   Set<Column> get primaryKey => {id};
 }
 
+class SeriesRemindersCache extends Table {
+  TextColumn get id => text()();
+  TextColumn get userId => text()();
+  TextColumn get data => text()();
+  IntColumn get updatedAt => integer()();
+
+  @override
+  Set<Column> get primaryKey => {id};
+}
+
+class YearlyChecklistsCache extends Table {
+  TextColumn get id => text()();
+  TextColumn get userId => text()();
+  TextColumn get data => text()();
+  IntColumn get updatedAt => integer()();
+
+  @override
+  Set<Column> get primaryKey => {id};
+}
+
 class SyncQueue extends Table {
   IntColumn get id => integer().autoIncrement()();
   TextColumn get entityId => text()();
@@ -45,8 +65,14 @@ class SyncQueue extends Table {
   IntColumn get createdAt => integer()();
 }
 
-@DriftDatabase(
-    tables: [EventsCache, TodosCache, AnnualEventsCache, SyncQueue])
+@DriftDatabase(tables: [
+  EventsCache,
+  TodosCache,
+  AnnualEventsCache,
+  SeriesRemindersCache,
+  YearlyChecklistsCache,
+  SyncQueue,
+])
 class AppDatabase extends _$AppDatabase {
   AppDatabase() : super(_openConnection());
 
@@ -54,7 +80,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase.forTesting(super.executor);
 
   @override
-  int get schemaVersion => 2;
+  int get schemaVersion => 3;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -64,6 +90,12 @@ class AppDatabase extends _$AppDatabase {
           // auch offline gespeichert und angezeigt werden können.
           if (from < 2) {
             await m.createTable(annualEventsCache);
+          }
+          // v3: Serien-Erinnerungen und Jahres-Aufgaben ebenfalls lokal —
+          // sonst werden Erinnerungen ohne Netz gar nicht erst eingeplant.
+          if (from < 3) {
+            await m.createTable(seriesRemindersCache);
+            await m.createTable(yearlyChecklistsCache);
           }
         },
       );

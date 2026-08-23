@@ -100,6 +100,25 @@ Schreibende Screens gehen **immer** über `LocalService`, nie direkt über
 
 Migrationen sind in `test/annual_events_offline_test.dart` getestet
 (v1-DB per rohem sqlite3 anlegen, dann `AppDatabase.forTesting(...)` öffnen).
+Getestet werden v1→v2, v2→v3 und der Direktsprung v1→v3.
+
+Aktueller Stand: `calendar_events`, `todos`, `annual_events`,
+`series_reminders`, `yearly_checklists` laufen alle über den lokalen Cache.
+`SupabaseService` wird von Screens **nicht mehr direkt** aufgerufen — nur noch
+von `SyncService` (Queue abarbeiten) und `main.dart` (einmaliges Seeding).
+
+## Serien-Erinnerungen
+
+`ReminderService.evaluateAll()` plant die Notifications. Aufgerufen wird sie
+an zwei Stellen — beim App-Start (`main.dart`, nach Seeding) und nach dem
+Speichern im `reminder_edit_screen`. Vorher existierte die Methode, wurde aber
+nie aufgerufen: es wurde also nie eine Erinnerung eingeplant.
+
+- `evaluateAll()` **wirft nie** — jede Erinnerung ist einzeln abgesichert,
+  damit eine fehlschlagende (Outlook-Abfrage ohne Netz) die übrigen nicht
+  verhindert; Fehler landen im Protokoll
+- Beide Aufrufe sind `unawaited`: `outlook_service` setzt **keinen Timeout**,
+  ein hängender Request würde sonst den App-Start blockieren
 | PointerScrollEvent not found | Fehlende Imports | `flutter/gestures.dart` + `flutter/services.dart` |
 
 ## Imports week_screen.dart

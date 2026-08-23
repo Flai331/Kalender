@@ -2,7 +2,7 @@
 import '../app_colors.dart';
 import '../models/series_reminder.dart';
 import '../models/yearly_checklist.dart';
-import '../services/supabase_service.dart';
+import '../services/local_service.dart';
 import 'reminder_edit_screen.dart';
 import '../widgets/feedback_button.dart';
 
@@ -50,7 +50,7 @@ class _SeriesRemindersTab extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return StreamBuilder<List<SeriesReminder>>(
-      stream: SupabaseService.remindersStream(),
+      stream: LocalService.remindersStream(),
       builder: (ctx, snap) {
         final reminders = snap.data ?? [];
 
@@ -73,10 +73,10 @@ class _SeriesRemindersTab extends StatelessWidget {
                       reminder: r,
                       onTap: () => _openEdit(context, r),
                       onToggle: (v) {
-                        SupabaseService.saveReminder(r.copyWith(isActive: v));
+                        LocalService.saveReminder(r.copyWith(isActive: v));
                       },
                       onDelete: () =>
-                          SupabaseService.deleteReminder(r.id),
+                          LocalService.deleteReminder(r.id),
                     );
                   },
                 ),
@@ -186,7 +186,7 @@ class _YearlyChecklistsTab extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return StreamBuilder<List<YearlyChecklist>>(
-      stream: SupabaseService.yearlyChecklistsStream(),
+      stream: LocalService.yearlyChecklistsStream(),
       builder: (ctx, snap) {
         final lists = snap.data ?? [];
 
@@ -209,7 +209,7 @@ class _YearlyChecklistsTab extends StatelessWidget {
                       checklist: c,
                       onTap: () => _openEdit(context, c),
                       onDelete: () =>
-                          SupabaseService.deleteYearlyChecklist(c.id),
+                          LocalService.deleteYearlyChecklist(c.id),
                     );
                   },
                 ),
