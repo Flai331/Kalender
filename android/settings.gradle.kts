@@ -21,6 +21,9 @@ plugins {
     id("dev.flutter.flutter-plugin-loader") version "1.0.0"
     id("com.android.application") version "8.11.1" apply false
     id("org.jetbrains.kotlin.android") version "2.2.20" apply false
+    // Ab Kotlin 2.0 zwingend, sobald buildFeatures.compose aktiv ist
+    // (hier durch das Glance-Widget). Version muss zur Kotlin-Version passen.
+    id("org.jetbrains.kotlin.plugin.compose") version "2.2.20" apply false
 }
 
 include(":app")
