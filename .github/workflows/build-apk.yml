@@ -1,0 +1,67 @@
+name: APK bauen
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+      - 'claude/**'
+    paths-ignore:
+      - '**.md'
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # AGP 8.11 braucht Java 17+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.47.1'
+          channel: stable
+          cache: true
+
+      # lib/secrets.dart ist gitignored und liegt nicht im Repo. Sind die
+      # Repository-Secrets gesetzt, werden sie eingetragen — sonst greifen die
+      # Platzhalter aus der Vorlage. Die App baut in beiden Fällen; ohne echte
+      # Werte fällt die Fehlermeldung auf den E-Mail-Versand zurück.
+      - name: secrets.dart erzeugen
+        env:
+          NOTION_TOKEN: ${{ secrets.NOTION_TOKEN }}
+          NOTION_DB_ID: ${{ secrets.NOTION_DB_ID }}
+          SUPPORT_EMAIL: ${{ secrets.SUPPORT_EMAIL }}
+        run: |
+          cp lib/secrets.template.dart lib/secrets.dart
+          if [ -n "$NOTION_TOKEN" ]; then
+            {
+              echo "const String kNotionToken = '$NOTION_TOKEN';"
+              echo "const String kNotionDbId  = '$NOTION_DB_ID';"
+              echo "const String kSupportEmail = '$SUPPORT_EMAIL';"
+            } > lib/secrets.dart
+            echo "secrets.dart aus Repository-Secrets erzeugt"
+          else
+            echo "Keine Repository-Secrets gesetzt – Platzhalter aus der Vorlage"
+          fi
+
+      - run: flutter pub get
+
+      # Infos und Warnungen sind im Projekt vorhanden und sollen den Build
+      # nicht kippen — nur echte Fehler.
+      - run: flutter analyze --no-fatal-infos --no-fatal-warnings
+
+      - run: flutter test
+
+      - run: flutter build apk --release
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: kalender-apk
+          path: build/app/outputs/flutter-apk/app-release.apk
+          if-no-files-found: error
