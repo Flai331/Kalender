@@ -10,7 +10,8 @@ class YearlyPlannerScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final currentYear = DateTime.now().year;
-    final years = [currentYear, currentYear + 1, currentYear - 1];
+    // Chronologisch — sonst stehen die Abschnitte als 2026, 2027, 2025 da.
+    final years = [currentYear - 1, currentYear, currentYear + 1];
 
     return Scaffold(
       backgroundColor: AppColors.background,
