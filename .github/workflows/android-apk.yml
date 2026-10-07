@@ -1,0 +1,183 @@
+name: Android-APK bauen
+
+# Baut die App auf einem GitHub-Runner (kein PC nötig) und legt die APK als Release ab:
+#   Push auf den Standard-Branch   -> Release "latest"   (aktueller Stand)
+#   Push auf einen anderen Branch  -> Release "vorschau"  (Vorschau zum Testen, z. B. Claude-Branches)
+# Aufs Handy: Repo -> Releases -> kalender.apk laden und installieren.
+# Von Hand starten: Actions -> "Android-APK bauen" -> Run workflow.
+
+on:
+  push:
+    branches: ['**']
+    paths-ignore:
+      - '**.md'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: apk-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+    defaults:
+      run:
+        working-directory: .
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.44.0'
+          channel: stable
+          cache: true
+
+      # Dateien, die nicht ins Repo gehören (Token, Schlüssel), liegen als Secret
+      # LOCAL_FILES_B64 (tar.gz, base64) im Repo und werden hier zurückgelegt.
+      - name: Lokale Dateien (Secrets, Schlüssel) wiederherstellen
+        env:
+          LOCAL_FILES_B64: ${{ secrets.LOCAL_FILES_B64 }}
+        run: |
+          if [ -n "$LOCAL_FILES_B64" ]; then
+            echo "$LOCAL_FILES_B64" | base64 -d | tar xz
+            echo "Lokale Dateien wiederhergestellt"
+          else
+            echo "::notice::Secret LOCAL_FILES_B64 nicht gesetzt - Build ohne Token/Schlüssel"
+          fi
+          # Fehlt secrets.dart, wird sie aus der Vorlage erzeugt, damit die App trotzdem baut.
+          for t in lib/secrets.example.dart lib/secrets.template.dart; do
+            if [ -f "$t" ] && [ ! -f lib/secrets.dart ]; then
+              cp "$t" lib/secrets.dart
+              echo "lib/secrets.dart aus $t erzeugt"
+            fi
+          done
+
+      # Fester Signaturschlüssel: nur damit lässt sich jede neue APK als Update über die
+      # bereits installierte App legen (ohne Deinstallieren und ohne Datenverlust).
+      - name: Signaturschlüssel einrichten
+        env:
+          DEBUG_KEYSTORE_B64: ${{ secrets.ANDROID_DEBUG_KEYSTORE_B64 }}
+        run: |
+          if [ -n "$DEBUG_KEYSTORE_B64" ]; then
+            mkdir -p ~/.android
+            echo "$DEBUG_KEYSTORE_B64" | base64 -d > ~/.android/debug.keystore
+            # AGP nimmt nicht überall den Standardpfad. Ein Init-Skript legt die Debug-Signatur
+            # deshalb ausdrücklich auf diese Datei fest (Release-Signaturen der Apps bleiben unberührt).
+            mkdir -p ~/.gradle/init.d
+            cat > ~/.gradle/init.d/ci-debug-signing.gradle <<'GRADLE'
+          allprojects {
+              afterEvaluate { p ->
+                  def ext = p.extensions.findByName('android')
+                  if (ext != null && p.plugins.hasPlugin('com.android.application')) {
+                      def ks = new File(System.getProperty('user.home'), '.android/debug.keystore')
+                      if (ks.exists()) {
+                          ext.signingConfigs.debug.storeFile = ks
+                          ext.signingConfigs.debug.storePassword = 'android'
+                          ext.signingConfigs.debug.keyAlias = 'androiddebugkey'
+                          ext.signingConfigs.debug.keyPassword = 'android'
+                      }
+                  }
+              }
+          }
+          GRADLE
+            echo "Fester Signaturschlüssel eingerichtet"
+          else
+            echo "::warning::Kein fester Signaturschlüssel hinterlegt - die APK lässt sich nicht über eine vorhandene Installation legen (erst alte App deinstallieren)."
+          fi
+
+      - name: Android-Projekt ergänzen (falls nicht eingecheckt)
+        run: |
+          if [ ! -f android/settings.gradle.kts ] && [ ! -f android/settings.gradle ]; then
+            echo "::warning title=Android-Ordner fehlt im Repo::Es wird ein leeres Standard-Projekt erzeugt (ohne eigene Einstellungen, Paketname, Icons). android/ bitte ins Repo aufnehmen."
+            flutter create --platforms=android .
+          fi
+
+      - run: flutter pub get
+
+      - name: Analyse (nur Hinweis, bricht den Build nicht ab)
+        continue-on-error: true
+        run: flutter analyze --no-fatal-infos --no-fatal-warnings
+
+      - name: Tests (nur Hinweis, bricht den Build nicht ab)
+        continue-on-error: true
+        run: |
+          if [ -d test ]; then flutter test; else echo "keine Tests vorhanden"; fi
+
+      - name: APK bauen
+        run: |
+          BASIS=$(grep -oP '^version:\s*[^+\s]+\+\K[0-9]+' pubspec.yaml || echo 0)
+          NR=$(( ${BASIS:-0} + ${{ github.run_number }} ))
+          ARGS=""
+          if [ -f dart_defines.json ]; then ARGS="--dart-define-from-file=dart_defines.json"; fi
+          echo "Build-Nummer: $NR"
+          set +e
+          flutter build apk --release --build-number=$NR $ARGS 2>&1 | tee "$RUNNER_TEMP/build.log"
+          RC=${PIPESTATUS[0]}
+          if [ "$RC" -ne 0 ]; then
+            # Fehlerauszug als Annotation: lesbar ohne Log-Download (API: check-runs/<job>/annotations)
+            MSG=$(tail -n 30 "$RUNNER_TEMP/build.log" | cut -c1-250 | head -c 5000)
+            MSG="${MSG//'%'/'%25'}"; MSG="${MSG//$'\r'/'%0D'}"; MSG="${MSG//$'\n'/'%0A'}"
+            echo "::error title=Flutter-Build fehlgeschlagen::$MSG"
+          fi
+          exit $RC
+
+      - name: Signatur der APK prüfen (nur Hinweis)
+        continue-on-error: true
+        run: |
+          APK=build/app/outputs/flutter-apk/app-release.apk
+          AS=$(ls -d "${ANDROID_HOME:-$ANDROID_SDK_ROOT}"/build-tools/*/apksigner 2>/dev/null | sort -V | tail -1)
+          FP=$("$AS" verify --print-certs "$APK" 2>&1 | grep -m1 'certificate SHA-256 digest' | awk '{print $NF}')
+          KS=""
+          if [ -f ~/.android/debug.keystore ]; then
+            KS=$(keytool -list -v -keystore ~/.android/debug.keystore -storepass android 2>/dev/null | grep -m1 'SHA256:' | awk '{print $2}' | tr -d ':' | tr 'A-F' 'a-f')
+          fi
+          if [ -n "$KS" ] && [ "$FP" = "$KS" ]; then
+            echo "::notice title=APK-Signatur::fester CI-Schlüssel (${FP:0:16}) - die APK lässt sich über die installierte App legen"
+          else
+            echo "::notice title=APK-Signatur::APK-Zertifikat ${FP:0:16} / CI-Schlüssel ${KS:0:16} (anders = eigener Release-Schlüssel oder keiner hinterlegt)"
+          fi
+
+      - name: APK bereitstellen
+        id: apk
+        run: |
+          SRC=build/app/outputs/flutter-apk/app-release.apk
+          test -f "$SRC"
+          cp "$SRC" "kalender.apk"
+          echo "groesse=$(du -h "kalender.apk" | cut -f1)" >> "$GITHUB_OUTPUT"
+
+      # Nur Reserve (die APK steht im Release). Darf nie den Build kippen, falls der Artefakt-Speicher voll ist.
+      - uses: actions/upload-artifact@v4
+        continue-on-error: true
+        with:
+          name: kalender-${{ github.run_number }}
+          path: ./kalender.apk
+          retention-days: 1
+          if-no-files-found: error
+
+      - name: Release aktualisieren
+        run: |
+          if [ "${{ github.ref_name }}" = "${{ github.event.repository.default_branch }}" ]; then
+            TAG="latest"; TITLE="Kalender - aktuell (${{ github.ref_name }})"; PRE=""
+          else
+            TAG="vorschau"; TITLE="Kalender - Vorschau (${{ github.ref_name }})"; PRE="--prerelease"
+          fi
+          MSG=$(git log -1 --format=%s)
+          printf 'Branch: %s\nCommit: %s - %s\nBuild: #%s\nAPK: kalender.apk (%s)\n' \
+            "${{ github.ref_name }}" "${GITHUB_SHA::7}" "$MSG" "${{ github.run_number }}" "${{ steps.apk.outputs.groesse }}" > "$RUNNER_TEMP/notes.txt"
+          gh release delete "$TAG" --cleanup-tag --yes 2>/dev/null || true
+          gh release create "$TAG" "kalender.apk" --target "$GITHUB_SHA" --title "$TITLE" --notes-file "$RUNNER_TEMP/notes.txt" $PRE
+          echo "### APK fertig" >> "$GITHUB_STEP_SUMMARY"
+          echo "[kalender.apk laden](https://github.com/${{ github.repository }}/releases/tag/$TAG)" >> "$GITHUB_STEP_SUMMARY"
