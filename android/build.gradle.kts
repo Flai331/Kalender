@@ -3,6 +3,26 @@ allprojects {
         google()
         mavenCentral()
     }
+    // home_widget 0.9.1 fordert seine Android-Bibliotheken mit Platzhalter-Versionen
+    // an ("androidx.glance:glance-appwidget:1.+", "androidx.work:work-runtime-ktx:2.+",
+    // "kotlinx-coroutines-android:1.+"). Gradle nimmt dann die neueste Version samt
+    // Alpha-Releases, aktuell glance 1.3.0-alpha02: braucht Android-Gradle-Plugin 9.1
+    // und compileSdk 37, der Build bricht ab - und ändert sich mit jedem neuen Release.
+    // Nur solche Platzhalter-Anfragen werden auf eine feste, stabile Version gesetzt;
+    // ausdrücklich angeforderte Versionen bleiben unberührt.
+    configurations.all {
+        resolutionStrategy.eachDependency {
+            val angefragt = requested.version
+            if (angefragt != null && angefragt.endsWith("+")) {
+                when {
+                    requested.group == "androidx.glance" -> useVersion("1.1.1")
+                    requested.group == "androidx.work" -> useVersion("2.10.0")
+                    requested.group == "org.jetbrains.kotlinx" && requested.name.startsWith("kotlinx-coroutines") ->
+                        useVersion("1.10.2")
+                }
+            }
+        }
+    }
 }
 
 val newBuildDir: Directory =
