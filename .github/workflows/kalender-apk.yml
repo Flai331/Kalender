@@ -1,0 +1,132 @@
+name: Kalender APK Build
+
+# Baut die Kalender-APK auf einem GitHub-Runner, damit Änderungen auch ohne
+# PC (z. B. vom Handy aus) als installierbare APK landen. Danach wird das
+# Release "kalender" aktualisiert:
+# https://github.com/Flai331/Kalender/releases/download/kalender/Kalender.apk
+#
+# Benötigte Secrets (Settings → Secrets and variables → Actions):
+# - KALENDER_DEBUG_KEYSTORE: eigener debug.keystore als Base64. Die App wird mit
+#   dem Debug-Schlüssel signiert; ohne den eigenen Schlüssel ließe sich die APK
+#   nicht als Update über die installierte App installieren.
+# - NOTION_TOKEN, NOTION_DB_ID, SUPPORT_EMAIL: Werte für lib/secrets.dart
+#   (optional – fehlen sie, werden die Platzhalter aus secrets.template.dart genutzt).
+
+on:
+  push:
+    branches:
+      - main
+      - 'claude/**'
+      - 'ccr-**'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: kalender-apk
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          java-version: '21'
+          distribution: 'temurin'
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.47.1'
+          channel: stable
+          cache: true
+
+      - name: Debug-Schlüssel einrichten
+        env:
+          KALENDER_DEBUG_KEYSTORE: ${{ secrets.KALENDER_DEBUG_KEYSTORE }}
+        run: |
+          # Ohne eigenen Schlüssel erzeugt der Runner einen neuen – die APK ließe
+          # sich dann nicht als Update installieren. Lieber kein Release.
+          if [ -z "$KALENDER_DEBUG_KEYSTORE" ]; then
+            echo "::error::Secret KALENDER_DEBUG_KEYSTORE fehlt – kein passend signierter Build möglich."
+            exit 1
+          fi
+          mkdir -p ~/.android
+          echo "$KALENDER_DEBUG_KEYSTORE" | base64 -d > ~/.android/debug.keystore
+          keytool -list -v -keystore ~/.android/debug.keystore -storepass android \
+            -alias androiddebugkey | grep -E "SHA256:"
+
+      - name: secrets.dart erzeugen
+        env:
+          NOTION_TOKEN: ${{ secrets.NOTION_TOKEN }}
+          NOTION_DB_ID: ${{ secrets.NOTION_DB_ID }}
+          SUPPORT_EMAIL: ${{ secrets.SUPPORT_EMAIL }}
+        run: |
+          if [ -z "$NOTION_TOKEN" ] || [ -z "$NOTION_DB_ID" ] || [ -z "$SUPPORT_EMAIL" ]; then
+            echo "::warning::NOTION_TOKEN/NOTION_DB_ID/SUPPORT_EMAIL fehlen – Platzhalter aus secrets.template.dart, Feedback funktioniert dann nicht."
+            cp lib/secrets.template.dart lib/secrets.dart
+          else
+            printf "const String kNotionToken = '%s';\nconst String kNotionDbId  = '%s';\nconst String kSupportEmail = '%s';\n" \
+              "$NOTION_TOKEN" "$NOTION_DB_ID" "$SUPPORT_EMAIL" > lib/secrets.dart
+          fi
+
+      - name: Get dependencies
+        run: flutter pub get
+
+      - name: Android-NDK vorab installieren (mit Wiederholung)
+        # Gradle lädt das NDK sonst selbst – bricht der Download ab
+        # ("Error on ZipFile unknown archive"), scheitert der ganze Build.
+        # Version = flutter.ndkVersion von Flutter 3.47.1.
+        env:
+          NDK_VERSION: 28.2.13676358
+        run: |
+          SDKM="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
+          for i in 1 2 3; do
+            if [ -f "$ANDROID_HOME/ndk/$NDK_VERSION/source.properties" ]; then break; fi
+            rm -rf "$ANDROID_HOME/ndk/$NDK_VERSION"
+            printf 'y\n%.0s' $(seq 20) | "$SDKM" --install "ndk;$NDK_VERSION" > /dev/null \
+              || echo "NDK-Download fehlgeschlagen (Versuch $i)"
+            sleep 5
+          done
+          test -f "$ANDROID_HOME/ndk/$NDK_VERSION/source.properties"
+
+      - name: Run analyzer
+        run: flutter analyze --no-fatal-warnings --no-fatal-infos
+
+      - name: Run tests
+        run: flutter test
+
+      - name: Build APK
+        # Fortlaufende Versionsnummer, damit Android jede neue APK als Update sieht.
+        run: flutter build apk --release --build-number=${{ github.run_number }}
+
+      - name: Signatur der APK anzeigen
+        run: keytool -printcert -jarfile build/app/outputs/flutter-apk/app-release.apk | grep -E "Owner|SHA256:"
+
+      - name: Upload APK to artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: Kalender-${{ github.sha }}
+          path: build/app/outputs/flutter-apk/app-release.apk
+          retention-days: 30
+          if-no-files-found: error
+
+      - name: Create or update GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          cp build/app/outputs/flutter-apk/app-release.apk Kalender.apk
+          if gh release view kalender > /dev/null 2>&1; then
+            gh release upload kalender Kalender.apk --clobber
+          else
+            gh release create kalender Kalender.apk --target "${{ github.sha }}" \
+              --title "Kalender" \
+              --notes "Kalender & To-Do App. Automatisch gebaut. APK herunterladen und auf dem Handy installieren."
+          fi
