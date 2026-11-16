@@ -1,6 +1,6 @@
 ﻿import 'package:file_picker/file_picker.dart';
-import 'package:url_launcher/url_launcher.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart' show PlatformException;
 import 'package:shared_preferences/shared_preferences.dart';
 import '../app_colors.dart';
 import '../models/calendar_event.dart';
@@ -23,6 +23,7 @@ class SettingsScreen extends StatefulWidget {
 
 class _SettingsScreenState extends State<SettingsScreen> {
   bool _checkingUpdate = false;
+  double? _updateProgress; // null = laeuft nicht, sonst 0..1
   List<IcsSource> _sources = [];
   bool _sourcesLoading = true;
   bool _outlookAllowTodoDrop = false;
@@ -36,6 +37,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
     super.initState();
     _loadSources();
     _loadConstraintSettings();
+    // Echten versionCode holen, statt der beim Bauen eingetragenen Konstante.
+    UpdateService.refreshInstalledBuild().then((_) {
+      if (mounted) setState(() {});
+    });
   }
 
   Future<void> _loadSources() async {
@@ -320,8 +325,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
             ),
             const SizedBox(height: 12),
             const Text(
-              'Die APK wird im Browser geladen. Beim Öffnen legt Android sie '
-              'über die installierte App — deine Daten bleiben erhalten.',
+              'Die App lädt das Update selbst und öffnet danach die '
+              'Installation. Deine Daten bleiben erhalten.',
               style: TextStyle(color: AppColors.textSecondary, fontSize: 12),
             ),
           ],
@@ -334,7 +339,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
           ),
           TextButton(
             onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('Herunterladen',
+            child: const Text('Jetzt aktualisieren',
                 style: TextStyle(
                     color: AppColors.primary, fontWeight: FontWeight.bold)),
           ),
@@ -342,17 +347,62 @@ class _SettingsScreenState extends State<SettingsScreen> {
       ),
     );
     if (laden != true || !mounted) return;
+    await _downloadAndInstall(release);
+  }
 
+  /// Lädt die APK und übergibt sie dem Installer — wie in RHS Einsatz.
+  ///
+  /// Android zeigt am Ende immer sein eigenes Installationsfenster; eine App
+  /// ohne Systemrechte kann sich nicht still selbst installieren.
+  Future<void> _downloadAndInstall(ReleaseInfo release) async {
+    setState(() => _updateProgress = 0);
+    String? pfad;
     try {
-      final ok = await launchUrl(Uri.parse(release.downloadUrl),
-          mode: LaunchMode.externalApplication);
-      if (!ok && mounted) {
-        showErrorSnack(context,
-            'Browser konnte nicht geöffnet werden. Release: ${release.releaseUrl}');
-      }
+      pfad = await UpdateService.downloadApk(
+        release,
+        onProgress: (received, total) {
+          if (!mounted || total == null || total <= 0) return;
+          final anteil = received / total;
+          // Nur bei sichtbarer Änderung neu zeichnen.
+          if (_updateProgress == null ||
+              (anteil - _updateProgress!).abs() >= 0.01) {
+            setState(() => _updateProgress = anteil);
+          }
+        },
+      );
+      // Vor dem Installieren prüfen: gültiges Paket, gleicher Paketname,
+      // höhere Version. Sonst würde der Installer eine kaputte oder fremde
+      // Datei angeboten bekommen.
+      await UpdateService.verifyApk(pfad);
     } catch (e) {
       FeedbackService.log('Update-Download fehlgeschlagen: $e');
-      if (mounted) showErrorSnack(context, 'Download fehlgeschlagen: $e');
+      if (mounted) {
+        setState(() => _updateProgress = null);
+        showErrorSnack(
+          context,
+          isOfflineError(e)
+              ? 'Keine Verbindung — Update nicht geladen.'
+              : 'Update fehlgeschlagen: ${e is PlatformException ? e.message : e}',
+        );
+      }
+      return;
+    }
+    if (!mounted) return;
+    setState(() => _updateProgress = null);
+
+    final ergebnis = await UpdateService.install(pfad);
+    if (!mounted) return;
+    switch (ergebnis) {
+      case 'installer':
+        break; // Android übernimmt ab hier
+      case 'settings':
+        showInfoSnack(
+            context,
+            'Bitte "Unbekannte Apps installieren" für den Kalender erlauben, '
+            'dann erneut auf Aktualisieren tippen.');
+      default:
+        showErrorSnack(context,
+            'Installation konnte nicht gestartet werden. Release: ${release.releaseUrl}');
     }
   }
 
@@ -556,12 +606,20 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 icon: Icons.system_update_outlined,
                 iconColor: AppColors.accent,
                 title: 'Nach Update suchen',
-                subtitle: _checkingUpdate
-                    ? 'Prüfe GitHub-Release...'
-                    : 'Installiert: Build ${UpdateService.installedBuild}',
-                actionLabel: _checkingUpdate ? '...' : 'Prüfen',
+                subtitle: _updateProgress != null
+                    ? 'Lade Update... ${(_updateProgress! * 100).round()} %'
+                    : _checkingUpdate
+                        ? 'Prüfe GitHub-Release...'
+                        : 'Installiert: Build ${UpdateService.installedBuild}',
+                actionLabel: _updateProgress != null
+                    ? '${(_updateProgress! * 100).round()} %'
+                    : _checkingUpdate
+                        ? '...'
+                        : 'Prüfen',
                 actionColor: AppColors.accent,
-                onAction: _checkingUpdate ? () {} : _checkForUpdate,
+                onAction: (_checkingUpdate || _updateProgress != null)
+                    ? () {}
+                    : _checkForUpdate,
               ),
             ],
           ),

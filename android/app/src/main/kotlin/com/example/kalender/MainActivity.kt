@@ -11,6 +11,7 @@ import io.flutter.plugin.common.MethodChannel
 class MainActivity : FlutterActivity() {
 
     private val CHANNEL = "com.example.kalender/widget"
+    private val UPDATE_CHANNEL = "com.example.kalender/updater"
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
@@ -44,6 +45,44 @@ class MainActivity : FlutterActivity() {
                         result.success(true)
                     }
                     else -> result.notImplemented()
+                }
+            }
+
+        // Selbst-Update: nur was native sein muss (installierte Version,
+        // Prüfung der geladenen Datei, Installer-Aufruf). Der Download läuft
+        // in Dart.
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, UPDATE_CHANNEL)
+            .setMethodCallHandler { call, result ->
+                try {
+                    when (call.method) {
+                        "versionCode" -> result.success(Updater.versionCode(this))
+                        "versionName" -> result.success(Updater.versionName(this))
+                        "canInstall" -> result.success(Updater.canInstall(this))
+                        "openInstallSettings" -> {
+                            Updater.openInstallSettings(this)
+                            result.success(true)
+                        }
+                        "verifyApk" -> {
+                            val path = call.argument<String>("path")
+                            if (path == null) {
+                                result.error("ARG", "path fehlt", null)
+                            } else {
+                                result.success(Updater.verifyApk(this, path))
+                            }
+                        }
+                        "install" -> {
+                            val path = call.argument<String>("path")
+                            if (path == null) {
+                                result.error("ARG", "path fehlt", null)
+                            } else {
+                                result.success(Updater.install(this, path))
+                            }
+                        }
+                        else -> result.notImplemented()
+                    }
+                } catch (e: Exception) {
+                    // Die Meldung ist für den Nutzer gedacht (siehe verifyApk).
+                    result.error("UPDATER", e.message ?: "Unbekannter Fehler", null)
                 }
             }
     }

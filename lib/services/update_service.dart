@@ -1,9 +1,15 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 
+import 'package:flutter/foundation.dart' show visibleForTesting;
+import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
+import 'package:path/path.dart' as p;
+import 'package:path_provider/path_provider.dart';
 
 import '../build_info.dart';
+import 'feedback_service.dart';
 import 'offline_error.dart';
 
 /// Prüft, ob im GitHub-Release eine neuere APK liegt als die installierte.
@@ -33,8 +39,39 @@ class UpdateService {
   static String releaseUrl(String channel) =>
       'https://github.com/$repo/releases/tag/$channel';
 
-  /// Die eingebaute Build-Nummer dieser Installation.
-  static int get installedBuild => kBuildNumber;
+  /// Native Seite: installierte Version, Prüfung der geladenen Datei und der
+  /// Installer-Aufruf (siehe android/.../Updater.kt).
+  static const MethodChannel _channel =
+      MethodChannel('com.example.kalender/updater');
+
+  /// Nur für Tests: erlaubt es, den Kanal zu ersetzen.
+  @visibleForTesting
+  static Future<T?> Function<T>(String method, [dynamic args])? invokeOverride;
+
+  static Future<T?> _invoke<T>(String method, [dynamic args]) {
+    final override = invokeOverride;
+    if (override != null) return override<T>(method, args);
+    return _channel.invokeMethod<T>(method, args);
+  }
+
+  static int _installedBuild = kBuildNumber;
+
+  /// Die Build-Nummer dieser Installation.
+  ///
+  /// Wird beim ersten Aufruf vom System geholt (echter versionCode) und fällt
+  /// auf die beim Bauen eingetragene Konstante zurück, wenn das nicht geht
+  /// (z. B. im Test oder auf einer Plattform ohne den Kanal).
+  static int get installedBuild => _installedBuild;
+
+  static Future<int> refreshInstalledBuild() async {
+    try {
+      final code = await _invoke<int>('versionCode');
+      if (code != null && code > 0) _installedBuild = code;
+    } catch (e) {
+      FeedbackService.log('versionCode nicht lesbar, nutze kBuildNumber: $e');
+    }
+    return _installedBuild;
+  }
 
   static Future<UpdateCheckResult> check({http.Client? client}) async {
     final c = client ?? http.Client();
@@ -80,6 +117,72 @@ class UpdateService {
     }
     return UpdateCheckResult(status: UpdateStatus.aktuell, release: newest);
   }
+
+  /// Lädt die APK des Releases in den Cache und meldet den Fortschritt.
+  ///
+  /// Zurück kommt der Pfad der fertigen Datei. Geladen wird nach `.part` und
+  /// erst am Ende umbenannt — eine abgebrochene Übertragung hinterlässt so
+  /// keine halbe Datei, die der Installer annehmen könnte.
+  static Future<String> downloadApk(
+    ReleaseInfo release, {
+    void Function(int received, int? total)? onProgress,
+    http.Client? client,
+  }) async {
+    final dir = Directory(p.join((await getApplicationCacheDirectory()).path,
+        'update')); // muss zu res/xml/file_paths.xml passen
+    await dir.create(recursive: true);
+    final target = File(p.join(dir.path, 'kalender.apk'));
+    final part = File('${target.path}.part');
+    if (await part.exists()) await part.delete();
+
+    final c = client ?? http.Client();
+    try {
+      final req = http.Request('GET', Uri.parse(release.downloadUrl));
+      final res = await c.send(req).timeout(const Duration(seconds: 60));
+      if (res.statusCode != 200) {
+        throw HttpException('Download nicht möglich (HTTP ${res.statusCode})');
+      }
+      final total = res.contentLength;
+      var received = 0;
+      final sink = part.openWrite();
+      try {
+        await res.stream.forEach((chunk) {
+          sink.add(chunk);
+          received += chunk.length;
+          onProgress?.call(received, total);
+        });
+      } finally {
+        await sink.close();
+      }
+      if (await target.exists()) await target.delete();
+      await part.rename(target.path);
+      return target.path;
+    } catch (_) {
+      if (await part.exists()) await part.delete();
+      rethrow;
+    } finally {
+      if (client == null) c.close();
+    }
+  }
+
+  /// Prüft die geladene Datei nativ: gültiges Paket, derselbe Paketname,
+  /// höherer versionCode. Wirft mit lesbarem Text, wenn etwas nicht stimmt.
+  static Future<void> verifyApk(String path) async {
+    await _invoke<Map<dynamic, dynamic>>('verifyApk', {'path': path});
+  }
+
+  static Future<bool> canInstall() async =>
+      await _invoke<bool>('canInstall') ?? false;
+
+  static Future<void> openInstallSettings() async =>
+      _invoke<bool>('openInstallSettings');
+
+  /// Übergibt die Datei an den Android-Installer.
+  ///
+  /// 'installer' = Installer gestartet, 'settings' = Erlaubnis fehlte und die
+  /// Einstellung wurde geöffnet, 'error' = fehlgeschlagen.
+  static Future<String> install(String path) async =>
+      await _invoke<String>('install', {'path': path}) ?? 'error';
 
   /// Das Release mit der höchsten Build-Nummer. Pur — für Tests.
   static ReleaseInfo? newestOf(List<ReleaseInfo> releases) {

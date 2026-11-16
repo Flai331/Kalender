@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<paths>
+    <!-- Ablage der geladenen APK vor dem Installieren (siehe Updater.kt) -->
+    <cache-path name="update" path="update/" />
+</paths>

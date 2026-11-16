@@ -149,3 +149,30 @@ import 'package:flutter/services.dart';   // HardwareKeyboard
 import '../models/ics_source.dart';
 import '../todos/todo_edit_screen.dart';
 ```
+
+## Selbst-Update (wie in RHS Einsatz)
+
+Vorlage: `suchgebiet_karten/android/.../Updater.kt` im Programmieren-Repo.
+Dort läuft alles native und meldet an eine WebView. Hier ist es geteilt:
+
+- **Dart** (`services/update_service.dart`): Prüfung über `version.json` aus
+  dem Release, Download mit Fortschritt nach `<cache>/update/kalender.apk`
+- **Native** (`android/.../Updater.kt`, Channel `com.example.kalender/updater`)
+  nur, was native sein MUSS: `versionCode` der Installation, `verifyApk`
+  (gültiges Paket, gleicher Paketname, höhere Version) und `install` über
+  FileProvider
+
+Nötig im Manifest: `REQUEST_INSTALL_PACKAGES` und der FileProvider mit
+`${applicationId}.files`; der Pfad `update/` in `res/xml/file_paths.xml` muss
+zum Download-Ziel passen.
+
+**Android zeigt immer sein eigenes Installationsfenster** — eine App ohne
+Systemrechte kann sich nicht still selbst installieren. Fehlt die Erlaubnis
+"Unbekannte Apps installieren", gibt `install` "settings" zurück und die
+Einstellung wird geöffnet.
+
+Geladen wird nach `.part` und erst am Ende umbenannt: ein Abbruch hinterlässt
+so keine halbe Datei, die der Installer annehmen könnte.
+
+`installedBuild` kommt jetzt vom System (echter versionCode) und fällt nur auf
+`kBuildNumber` zurück, wenn der Kanal nicht antwortet.
