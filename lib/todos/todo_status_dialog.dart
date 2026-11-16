@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import '../app_colors.dart';
 import '../models/todo.dart';
-import '../services/supabase_service.dart';
+import '../services/local_service.dart';
 
 class TodoStatusDialog extends StatefulWidget {
   final Todo todo;
@@ -42,7 +42,7 @@ class _TodoStatusDialogState extends State<TodoStatusDialog> {
         .map((s) => s.id == id ? s.copyWith(isDone: isDone) : s)
         .toList();
     setState(() => _subTasks = newSubTasks);
-    SupabaseService.saveTodo(widget.todo.copyWith(subTasks: newSubTasks))
+    LocalService.saveTodo(widget.todo.copyWith(subTasks: newSubTasks))
         .catchError((_) {
       // rollback on save failure
       if (mounted) setState(() => _subTasks = prev);

@@ -53,12 +53,29 @@ Database _openV2Database() {
   return raw;
 }
 
+/// Datenbank im Schema-Stand v3 (alles ausser den Wochennotizen) — der Stand
+/// vor dem Offline-Umbau der Notizen.
+Database _openV3Database() {
+  final raw = _openV2Database();
+  for (final t in ['series_reminders_cache', 'yearly_checklists_cache']) {
+    raw.execute('''
+      CREATE TABLE $t (
+        id TEXT NOT NULL PRIMARY KEY,
+        user_id TEXT NOT NULL,
+        data TEXT NOT NULL,
+        updated_at INTEGER NOT NULL);
+    ''');
+  }
+  raw.execute('PRAGMA user_version = 3;');
+  return raw;
+}
+
 void main() {
   late AppDatabase db;
 
   tearDown(() async => db.close());
 
-  group('Schema-Migration v1 → v2', () {
+  group('Schema-Migration ab v1', () {
     test('legt annual_events_cache auf einer bestehenden v1-DB an', () async {
       final raw = _openV1Database();
       db = AppDatabase.forTesting(NativeDatabase.opened(raw));
@@ -72,7 +89,7 @@ void main() {
           .toList();
 
       expect(tables, contains('annual_events_cache'));
-      expect(raw.userVersion, 3);
+      expect(raw.userVersion, 4);
       // Bestandsdaten-Tabellen bleiben erhalten.
       expect(tables, contains('events_cache'));
       expect(tables, contains('todos_cache'));
@@ -94,7 +111,7 @@ void main() {
     });
   });
 
-  group('Schema-Migration v2 → v3', () {
+  group('Schema-Migration ab v2', () {
     test('legt die Erinnerungs-Tabellen auf einer v2-DB an', () async {
       final raw = _openV2Database();
       db = AppDatabase.forTesting(NativeDatabase.opened(raw));
@@ -108,7 +125,8 @@ void main() {
       expect(tables, contains('series_reminders_cache'));
       expect(tables, contains('yearly_checklists_cache'));
       expect(tables, contains('annual_events_cache'));
-      expect(raw.userVersion, 3);
+      expect(tables, contains('week_notes_cache'));
+      expect(raw.userVersion, 4);
     });
 
     test('v1 springt direkt auf v3 durch', () async {
@@ -128,9 +146,31 @@ void main() {
       expect(tables, contains('annual_events_cache'));
       expect(tables, contains('series_reminders_cache'));
       expect(tables, contains('yearly_checklists_cache'));
-      expect(raw.userVersion, 3);
+      expect(tables, contains('week_notes_cache'));
+      expect(raw.userVersion, 4);
       // Bestandsdaten überleben den Sprung über zwei Versionen.
       expect(raw.select('SELECT id FROM events_cache').length, 1);
+    });
+  });
+
+  group('Schema-Migration v3 → v4', () {
+    test('legt week_notes_cache an und behaelt die Bestandsdaten', () async {
+      final raw = _openV3Database();
+      raw.execute(
+        "INSERT INTO series_reminders_cache (id, user_id, data, updated_at) "
+        "VALUES ('r1', 'u1', '{}', 1)",
+      );
+      db = AppDatabase.forTesting(NativeDatabase.opened(raw));
+      await db.customSelect('SELECT 1').get();
+
+      final tables = raw
+          .select("SELECT name FROM sqlite_master WHERE type = 'table'")
+          .map((r) => r['name'] as String)
+          .toList();
+
+      expect(tables, contains('week_notes_cache'));
+      expect(raw.userVersion, 4);
+      expect(raw.select('SELECT id FROM series_reminders_cache').length, 1);
     });
   });
 

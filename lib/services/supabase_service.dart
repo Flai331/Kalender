@@ -160,6 +160,13 @@ class SupabaseService {
     return WeekNote(weekKey: weekKey);
   }
 
+  static Future<List<WeekNote>> getAllWeekNotes() async {
+    final rows = await _db.from('week_notes').select().eq('user_id', _uid);
+    return (rows as List)
+        .map((r) => WeekNote.fromJson(r['data'] as Map<String, dynamic>))
+        .toList();
+  }
+
   static Future<void> saveWeekNote(WeekNote note) async {
     await _db.from('week_notes').upsert({
       'week_key': note.weekKey,

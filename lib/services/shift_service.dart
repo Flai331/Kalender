@@ -1,5 +1,5 @@
 import '../models/todo.dart';
-import 'supabase_service.dart';
+import 'local_service.dart';
 
 class ShiftService {
   /// Verschiebt alle flexiblen Todos nach dem abgeschlossenen Todo
@@ -20,7 +20,7 @@ class ShiftService {
     final afterHour = scheduledEndMinutes ~/ 60;
     final afterMinute = scheduledEndMinutes % 60;
 
-    await SupabaseService.shiftTodosAfter(
+    await LocalService.shiftTodosAfter(
       day: completedTodo.scheduledDate!,
       afterHour: afterHour,
       afterMinute: afterMinute,

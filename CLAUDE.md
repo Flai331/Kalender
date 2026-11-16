@@ -102,10 +102,31 @@ Migrationen sind in `test/annual_events_offline_test.dart` getestet
 (v1-DB per rohem sqlite3 anlegen, dann `AppDatabase.forTesting(...)` öffnen).
 Getestet werden v1→v2, v2→v3 und der Direktsprung v1→v3.
 
-Aktueller Stand: `calendar_events`, `todos`, `annual_events`,
-`series_reminders`, `yearly_checklists` laufen alle über den lokalen Cache.
-`SupabaseService` wird von Screens **nicht mehr direkt** aufgerufen — nur noch
-von `SyncService` (Queue abarbeiten) und `main.dart` (einmaliges Seeding).
+Aktueller Stand (Schema v4): `calendar_events`, `todos`, `annual_events`,
+`series_reminders`, `yearly_checklists`, `week_notes` laufen **alle** über den
+lokalen Cache. `SupabaseService` wird außerhalb von `SyncService` (Queue
+abarbeiten) und `main.dart` (einmaliges Seeding) **nirgends** mehr aufgerufen.
+
+Auch die früheren Ausnahmen sind umgestellt:
+- Teilaufgaben-Haken (`todos/todo_status_dialog.dart`)
+- Auto-Shift — `LocalService.shiftTodosAfter` statt der Supabase-Variante
+- Wochennotizen und Wochenziele (`notes/notes_screen.dart`)
+- Homescreen-Widget (`LocalService.getTodoById` / `getTodosForDate`)
+
+## Benutzer-Kennung ohne Sitzung
+
+`LocalService._uid` ist **nicht** mehr `AuthService.userId ?? ''`. Der leere
+Wert ließ offline angelegte Daten nach einer späteren Anmeldung verwaisen.
+
+- `LocalService.init(db)` ist **async** und muss abgewartet werden: es legt
+  eine Geräte-Kennung (`local-<uuid>`) in SharedPreferences an
+- `_uid` nimmt die Sitzung, wenn es eine gibt, sonst die Geräte-Kennung
+- `sessionUid` kapselt `AuthService.userId` in try/catch — der Zugriff wirft,
+  wenn Supabase nie initialisiert wurde, und die lokale Schicht muss das
+  überleben
+- `adoptLocalRows(realUid)` schreibt die Zeilen aller sechs Tabellen von der
+  Geräte-Kennung auf die echte user_id um; `main.dart` ruft es nach dem Start
+  auf, wenn eine Sitzung besteht. Mehrfach ausführbar.
 
 ## Serien-Erinnerungen
 

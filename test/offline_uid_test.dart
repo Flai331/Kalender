@@ -5,15 +5,18 @@ import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:kalender/db/app_database.dart';
 
-/// Belegt, was passiert, wenn beim ersten Start keine Supabase-Sitzung
-/// zustande kommt (frische Installation ohne Netz):
+/// Frische Installation ohne Netz: es kommt keine Supabase-Sitzung zustande.
+/// Gespeichert wird dann unter einer Geräte-Kennung statt unter ''. Sobald
+/// eine Sitzung existiert, schreibt LocalService.adoptLocalRows die Zeilen auf
+/// die echte user_id um — sonst bliebe alles offline Angelegte unsichtbar.
 ///
-/// `LocalService._uid` liest `AuthService.userId`. Ohne Sitzung ist das null,
-/// und `_uid` fällt auf '' zurück. Gespeichert wird dann unter dem leeren
-/// Benutzer — und genau diese Zeilen findet die App nach einer späteren
-/// Anmeldung nicht mehr, weil jede Abfrage auf die echte user_id filtert.
+/// Geprüft wird hier die SQL-Ebene von adoptLocalRows, ohne Supabase:
+/// LocalService selbst braucht dafür eine Sitzung bzw. SharedPreferences.
 void main() {
   late AppDatabase db;
+
+  const geraet = 'local-abc-123';
+  const echt = 'echte-uid-456';
 
   setUp(() => db = AppDatabase.forTesting(NativeDatabase.memory()));
   tearDown(() async => db.close());
@@ -29,32 +32,76 @@ void main() {
         );
   }
 
-  Future<List<String>> idsForUser(String userId) async {
+  Future<void> insertNote(String weekKey, String userId) {
+    return db.into(db.weekNotesCache).insertOnConflictUpdate(
+          WeekNotesCacheCompanion(
+            weekKey: Value(weekKey),
+            userId: Value(userId),
+            data: Value(jsonEncode({'weekKey': weekKey, 'content': 'Notiz'})),
+            updatedAt: const Value(1),
+          ),
+        );
+  }
+
+  Future<List<String>> todoIdsForUser(String userId) async {
     final rows = await (db.select(db.todosCache)
           ..where((t) => t.userId.equals(userId)))
         .get();
     return rows.map((r) => r.id).toList();
   }
 
-  test('offline ohne Sitzung angelegte Daten landen unter leerer user_id', () async {
-    await insertTodo('t-offline', ''); // _uid == '' (kein Login moeglich)
+  /// Dieselbe Anweisung, die adoptLocalRows je Tabelle ausführt.
+  Future<int> adopt(String table, String from, String to) {
+    return db.customUpdate(
+      'UPDATE $table SET user_id = ? WHERE user_id = ?',
+      variables: [Variable<String>(to), Variable<String>(from)],
+      updates: const {},
+    );
+  }
 
-    expect(await idsForUser(''), ['t-offline'],
-        reason: 'die Zeile ist da — aber unter dem leeren Benutzer');
+  test('offline angelegte Todos sind nach der Übernahme sichtbar', () async {
+    await insertTodo('t-offline', geraet);
+    // Vor der Übernahme findet die Abfrage mit der echten Kennung nichts.
+    expect(await todoIdsForUser(echt), isEmpty);
+
+    final moved = await adopt('todos_cache', geraet, echt);
+
+    expect(moved, 1);
+    expect(await todoIdsForUser(echt), ['t-offline']);
+    expect(await todoIdsForUser(geraet), isEmpty);
   });
 
-  test('nach der Anmeldung sind diese Daten nicht mehr sichtbar', () async {
-    await insertTodo('t-offline', ''); // offline angelegt
-    await insertTodo('t-online', 'echte-uid-123'); // spaeter, angemeldet
+  test('lässt Daten anderer Benutzer unberührt', () async {
+    await insertTodo('t-offline', geraet);
+    await insertTodo('t-fremd', 'andere-uid-999');
 
-    // Die App fragt ab der Anmeldung nur noch mit der echten user_id ab.
-    expect(await idsForUser('echte-uid-123'), ['t-online']);
-    expect(await idsForUser('echte-uid-123'), isNot(contains('t-offline')),
-        reason: 'das offline angelegte Todo ist verwaist und verschwindet '
-            'aus der Ansicht, obwohl es noch in der Datenbank liegt');
+    await adopt('todos_cache', geraet, echt);
 
-    // Es ist nicht geloescht — nur unerreichbar.
-    final alle = await db.select(db.todosCache).get();
-    expect(alle.length, 2);
+    expect(await todoIdsForUser(echt), ['t-offline']);
+    expect(await todoIdsForUser('andere-uid-999'), ['t-fremd'],
+        reason: 'nur Zeilen der Geräte-Kennung werden umgeschrieben');
+  });
+
+  test('erfasst auch die Wochennotizen (Schema v4)', () async {
+    await insertNote('2026-W47', geraet);
+
+    final moved = await adopt('week_notes_cache', geraet, echt);
+
+    expect(moved, 1);
+    final rows = await (db.select(db.weekNotesCache)
+          ..where((n) => n.userId.equals(echt)))
+        .get();
+    expect(rows.single.weekKey, '2026-W47');
+  });
+
+  test('ist mehrfach ausführbar, ohne Schaden anzurichten', () async {
+    await insertTodo('t-offline', geraet);
+
+    final erst = await adopt('todos_cache', geraet, echt);
+    final zweit = await adopt('todos_cache', geraet, echt);
+
+    expect(erst, 1);
+    expect(zweit, 0, reason: 'nach der Übernahme gibt es nichts mehr zu tun');
+    expect(await todoIdsForUser(echt), ['t-offline']);
   });
 }

@@ -56,6 +56,17 @@ class YearlyChecklistsCache extends Table {
   Set<Column> get primaryKey => {id};
 }
 
+class WeekNotesCache extends Table {
+  // Schluessel ist der Wochenschluessel ("2026-W14"), nicht eine id.
+  TextColumn get weekKey => text()();
+  TextColumn get userId => text()();
+  TextColumn get data => text()();
+  IntColumn get updatedAt => integer()();
+
+  @override
+  Set<Column> get primaryKey => {weekKey, userId};
+}
+
 class SyncQueue extends Table {
   IntColumn get id => integer().autoIncrement()();
   TextColumn get entityId => text()();
@@ -71,6 +82,7 @@ class SyncQueue extends Table {
   AnnualEventsCache,
   SeriesRemindersCache,
   YearlyChecklistsCache,
+  WeekNotesCache,
   SyncQueue,
 ])
 class AppDatabase extends _$AppDatabase {
@@ -80,7 +92,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase.forTesting(super.executor);
 
   @override
-  int get schemaVersion => 3;
+  int get schemaVersion => 4;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -96,6 +108,11 @@ class AppDatabase extends _$AppDatabase {
           if (from < 3) {
             await m.createTable(seriesRemindersCache);
             await m.createTable(yearlyChecklistsCache);
+          }
+          // v4: Wochennotizen und Wochenziele lokal — vorher gab es dafuer
+          // gar keine Tabelle, sie liefen ausschliesslich ueber Supabase.
+          if (from < 4) {
+            await m.createTable(weekNotesCache);
           }
         },
       );

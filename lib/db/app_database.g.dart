@@ -1549,6 +1549,318 @@ class YearlyChecklistsCacheCompanion
   }
 }
 
+class $WeekNotesCacheTable extends WeekNotesCache
+    with TableInfo<$WeekNotesCacheTable, WeekNotesCacheData> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $WeekNotesCacheTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _weekKeyMeta = const VerificationMeta(
+    'weekKey',
+  );
+  @override
+  late final GeneratedColumn<String> weekKey = GeneratedColumn<String>(
+    'week_key',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _userIdMeta = const VerificationMeta('userId');
+  @override
+  late final GeneratedColumn<String> userId = GeneratedColumn<String>(
+    'user_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _dataMeta = const VerificationMeta('data');
+  @override
+  late final GeneratedColumn<String> data = GeneratedColumn<String>(
+    'data',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _updatedAtMeta = const VerificationMeta(
+    'updatedAt',
+  );
+  @override
+  late final GeneratedColumn<int> updatedAt = GeneratedColumn<int>(
+    'updated_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [weekKey, userId, data, updatedAt];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'week_notes_cache';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<WeekNotesCacheData> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('week_key')) {
+      context.handle(
+        _weekKeyMeta,
+        weekKey.isAcceptableOrUnknown(data['week_key']!, _weekKeyMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_weekKeyMeta);
+    }
+    if (data.containsKey('user_id')) {
+      context.handle(
+        _userIdMeta,
+        userId.isAcceptableOrUnknown(data['user_id']!, _userIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_userIdMeta);
+    }
+    if (data.containsKey('data')) {
+      context.handle(
+        _dataMeta,
+        this.data.isAcceptableOrUnknown(data['data']!, _dataMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_dataMeta);
+    }
+    if (data.containsKey('updated_at')) {
+      context.handle(
+        _updatedAtMeta,
+        updatedAt.isAcceptableOrUnknown(data['updated_at']!, _updatedAtMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_updatedAtMeta);
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {weekKey, userId};
+  @override
+  WeekNotesCacheData map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return WeekNotesCacheData(
+      weekKey: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}week_key'],
+      )!,
+      userId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}user_id'],
+      )!,
+      data: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}data'],
+      )!,
+      updatedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}updated_at'],
+      )!,
+    );
+  }
+
+  @override
+  $WeekNotesCacheTable createAlias(String alias) {
+    return $WeekNotesCacheTable(attachedDatabase, alias);
+  }
+}
+
+class WeekNotesCacheData extends DataClass
+    implements Insertable<WeekNotesCacheData> {
+  final String weekKey;
+  final String userId;
+  final String data;
+  final int updatedAt;
+  const WeekNotesCacheData({
+    required this.weekKey,
+    required this.userId,
+    required this.data,
+    required this.updatedAt,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['week_key'] = Variable<String>(weekKey);
+    map['user_id'] = Variable<String>(userId);
+    map['data'] = Variable<String>(data);
+    map['updated_at'] = Variable<int>(updatedAt);
+    return map;
+  }
+
+  WeekNotesCacheCompanion toCompanion(bool nullToAbsent) {
+    return WeekNotesCacheCompanion(
+      weekKey: Value(weekKey),
+      userId: Value(userId),
+      data: Value(data),
+      updatedAt: Value(updatedAt),
+    );
+  }
+
+  factory WeekNotesCacheData.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return WeekNotesCacheData(
+      weekKey: serializer.fromJson<String>(json['weekKey']),
+      userId: serializer.fromJson<String>(json['userId']),
+      data: serializer.fromJson<String>(json['data']),
+      updatedAt: serializer.fromJson<int>(json['updatedAt']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'weekKey': serializer.toJson<String>(weekKey),
+      'userId': serializer.toJson<String>(userId),
+      'data': serializer.toJson<String>(data),
+      'updatedAt': serializer.toJson<int>(updatedAt),
+    };
+  }
+
+  WeekNotesCacheData copyWith({
+    String? weekKey,
+    String? userId,
+    String? data,
+    int? updatedAt,
+  }) => WeekNotesCacheData(
+    weekKey: weekKey ?? this.weekKey,
+    userId: userId ?? this.userId,
+    data: data ?? this.data,
+    updatedAt: updatedAt ?? this.updatedAt,
+  );
+  WeekNotesCacheData copyWithCompanion(WeekNotesCacheCompanion data) {
+    return WeekNotesCacheData(
+      weekKey: data.weekKey.present ? data.weekKey.value : this.weekKey,
+      userId: data.userId.present ? data.userId.value : this.userId,
+      data: data.data.present ? data.data.value : this.data,
+      updatedAt: data.updatedAt.present ? data.updatedAt.value : this.updatedAt,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('WeekNotesCacheData(')
+          ..write('weekKey: $weekKey, ')
+          ..write('userId: $userId, ')
+          ..write('data: $data, ')
+          ..write('updatedAt: $updatedAt')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(weekKey, userId, data, updatedAt);
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is WeekNotesCacheData &&
+          other.weekKey == this.weekKey &&
+          other.userId == this.userId &&
+          other.data == this.data &&
+          other.updatedAt == this.updatedAt);
+}
+
+class WeekNotesCacheCompanion extends UpdateCompanion<WeekNotesCacheData> {
+  final Value<String> weekKey;
+  final Value<String> userId;
+  final Value<String> data;
+  final Value<int> updatedAt;
+  final Value<int> rowid;
+  const WeekNotesCacheCompanion({
+    this.weekKey = const Value.absent(),
+    this.userId = const Value.absent(),
+    this.data = const Value.absent(),
+    this.updatedAt = const Value.absent(),
+    this.rowid = const Value.absent(),
+  });
+  WeekNotesCacheCompanion.insert({
+    required String weekKey,
+    required String userId,
+    required String data,
+    required int updatedAt,
+    this.rowid = const Value.absent(),
+  }) : weekKey = Value(weekKey),
+       userId = Value(userId),
+       data = Value(data),
+       updatedAt = Value(updatedAt);
+  static Insertable<WeekNotesCacheData> custom({
+    Expression<String>? weekKey,
+    Expression<String>? userId,
+    Expression<String>? data,
+    Expression<int>? updatedAt,
+    Expression<int>? rowid,
+  }) {
+    return RawValuesInsertable({
+      if (weekKey != null) 'week_key': weekKey,
+      if (userId != null) 'user_id': userId,
+      if (data != null) 'data': data,
+      if (updatedAt != null) 'updated_at': updatedAt,
+      if (rowid != null) 'rowid': rowid,
+    });
+  }
+
+  WeekNotesCacheCompanion copyWith({
+    Value<String>? weekKey,
+    Value<String>? userId,
+    Value<String>? data,
+    Value<int>? updatedAt,
+    Value<int>? rowid,
+  }) {
+    return WeekNotesCacheCompanion(
+      weekKey: weekKey ?? this.weekKey,
+      userId: userId ?? this.userId,
+      data: data ?? this.data,
+      updatedAt: updatedAt ?? this.updatedAt,
+      rowid: rowid ?? this.rowid,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (weekKey.present) {
+      map['week_key'] = Variable<String>(weekKey.value);
+    }
+    if (userId.present) {
+      map['user_id'] = Variable<String>(userId.value);
+    }
+    if (data.present) {
+      map['data'] = Variable<String>(data.value);
+    }
+    if (updatedAt.present) {
+      map['updated_at'] = Variable<int>(updatedAt.value);
+    }
+    if (rowid.present) {
+      map['rowid'] = Variable<int>(rowid.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('WeekNotesCacheCompanion(')
+          ..write('weekKey: $weekKey, ')
+          ..write('userId: $userId, ')
+          ..write('data: $data, ')
+          ..write('updatedAt: $updatedAt, ')
+          ..write('rowid: $rowid')
+          ..write(')'))
+        .toString();
+  }
+}
+
 class $SyncQueueTable extends SyncQueue
     with TableInfo<$SyncQueueTable, SyncQueueData> {
   @override
@@ -1965,6 +2277,7 @@ abstract class _$AppDatabase extends GeneratedDatabase {
       $SeriesRemindersCacheTable(this);
   late final $YearlyChecklistsCacheTable yearlyChecklistsCache =
       $YearlyChecklistsCacheTable(this);
+  late final $WeekNotesCacheTable weekNotesCache = $WeekNotesCacheTable(this);
   late final $SyncQueueTable syncQueue = $SyncQueueTable(this);
   @override
   Iterable<TableInfo<Table, Object?>> get allTables =>
@@ -1976,6 +2289,7 @@ abstract class _$AppDatabase extends GeneratedDatabase {
     annualEventsCache,
     seriesRemindersCache,
     yearlyChecklistsCache,
+    weekNotesCache,
     syncQueue,
   ];
 }
@@ -2933,6 +3247,193 @@ typedef $$YearlyChecklistsCacheTableProcessedTableManager =
       YearlyChecklistsCacheData,
       PrefetchHooks Function()
     >;
+typedef $$WeekNotesCacheTableCreateCompanionBuilder =
+    WeekNotesCacheCompanion Function({
+      required String weekKey,
+      required String userId,
+      required String data,
+      required int updatedAt,
+      Value<int> rowid,
+    });
+typedef $$WeekNotesCacheTableUpdateCompanionBuilder =
+    WeekNotesCacheCompanion Function({
+      Value<String> weekKey,
+      Value<String> userId,
+      Value<String> data,
+      Value<int> updatedAt,
+      Value<int> rowid,
+    });
+
+class $$WeekNotesCacheTableFilterComposer
+    extends Composer<_$AppDatabase, $WeekNotesCacheTable> {
+  $$WeekNotesCacheTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<String> get weekKey => $composableBuilder(
+    column: $table.weekKey,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get userId => $composableBuilder(
+    column: $table.userId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get data => $composableBuilder(
+    column: $table.data,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get updatedAt => $composableBuilder(
+    column: $table.updatedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+}
+
+class $$WeekNotesCacheTableOrderingComposer
+    extends Composer<_$AppDatabase, $WeekNotesCacheTable> {
+  $$WeekNotesCacheTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<String> get weekKey => $composableBuilder(
+    column: $table.weekKey,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get userId => $composableBuilder(
+    column: $table.userId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get data => $composableBuilder(
+    column: $table.data,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get updatedAt => $composableBuilder(
+    column: $table.updatedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+}
+
+class $$WeekNotesCacheTableAnnotationComposer
+    extends Composer<_$AppDatabase, $WeekNotesCacheTable> {
+  $$WeekNotesCacheTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<String> get weekKey =>
+      $composableBuilder(column: $table.weekKey, builder: (column) => column);
+
+  GeneratedColumn<String> get userId =>
+      $composableBuilder(column: $table.userId, builder: (column) => column);
+
+  GeneratedColumn<String> get data =>
+      $composableBuilder(column: $table.data, builder: (column) => column);
+
+  GeneratedColumn<int> get updatedAt =>
+      $composableBuilder(column: $table.updatedAt, builder: (column) => column);
+}
+
+class $$WeekNotesCacheTableTableManager
+    extends
+        RootTableManager<
+          _$AppDatabase,
+          $WeekNotesCacheTable,
+          WeekNotesCacheData,
+          $$WeekNotesCacheTableFilterComposer,
+          $$WeekNotesCacheTableOrderingComposer,
+          $$WeekNotesCacheTableAnnotationComposer,
+          $$WeekNotesCacheTableCreateCompanionBuilder,
+          $$WeekNotesCacheTableUpdateCompanionBuilder,
+          (
+            WeekNotesCacheData,
+            BaseReferences<
+              _$AppDatabase,
+              $WeekNotesCacheTable,
+              WeekNotesCacheData
+            >,
+          ),
+          WeekNotesCacheData,
+          PrefetchHooks Function()
+        > {
+  $$WeekNotesCacheTableTableManager(
+    _$AppDatabase db,
+    $WeekNotesCacheTable table,
+  ) : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$WeekNotesCacheTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$WeekNotesCacheTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$WeekNotesCacheTableAnnotationComposer($db: db, $table: table),
+          updateCompanionCallback:
+              ({
+                Value<String> weekKey = const Value.absent(),
+                Value<String> userId = const Value.absent(),
+                Value<String> data = const Value.absent(),
+                Value<int> updatedAt = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => WeekNotesCacheCompanion(
+                weekKey: weekKey,
+                userId: userId,
+                data: data,
+                updatedAt: updatedAt,
+                rowid: rowid,
+              ),
+          createCompanionCallback:
+              ({
+                required String weekKey,
+                required String userId,
+                required String data,
+                required int updatedAt,
+                Value<int> rowid = const Value.absent(),
+              }) => WeekNotesCacheCompanion.insert(
+                weekKey: weekKey,
+                userId: userId,
+                data: data,
+                updatedAt: updatedAt,
+                rowid: rowid,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
+              .toList(),
+          prefetchHooksCallback: null,
+        ),
+      );
+}
+
+typedef $$WeekNotesCacheTableProcessedTableManager =
+    ProcessedTableManager<
+      _$AppDatabase,
+      $WeekNotesCacheTable,
+      WeekNotesCacheData,
+      $$WeekNotesCacheTableFilterComposer,
+      $$WeekNotesCacheTableOrderingComposer,
+      $$WeekNotesCacheTableAnnotationComposer,
+      $$WeekNotesCacheTableCreateCompanionBuilder,
+      $$WeekNotesCacheTableUpdateCompanionBuilder,
+      (
+        WeekNotesCacheData,
+        BaseReferences<_$AppDatabase, $WeekNotesCacheTable, WeekNotesCacheData>,
+      ),
+      WeekNotesCacheData,
+      PrefetchHooks Function()
+    >;
 typedef $$SyncQueueTableCreateCompanionBuilder =
     SyncQueueCompanion Function({
       Value<int> id,
@@ -3162,6 +3663,8 @@ class $AppDatabaseManager {
       $$SeriesRemindersCacheTableTableManager(_db, _db.seriesRemindersCache);
   $$YearlyChecklistsCacheTableTableManager get yearlyChecklistsCache =>
       $$YearlyChecklistsCacheTableTableManager(_db, _db.yearlyChecklistsCache);
+  $$WeekNotesCacheTableTableManager get weekNotesCache =>
+      $$WeekNotesCacheTableTableManager(_db, _db.weekNotesCache);
   $$SyncQueueTableTableManager get syncQueue =>
       $$SyncQueueTableTableManager(_db, _db.syncQueue);
 }

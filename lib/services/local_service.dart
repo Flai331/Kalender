@@ -1,18 +1,79 @@
 import 'dart:async';
 import 'dart:convert';
 import 'package:drift/drift.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:uuid/uuid.dart';
 import '../db/app_database.dart';
 import '../models/calendar_event.dart';
 import '../models/todo.dart';
 import '../models/annual_event.dart';
 import '../models/series_reminder.dart';
 import '../models/yearly_checklist.dart';
+import '../models/week_note.dart';
 import 'auth_service.dart';
 
 class LocalService {
   static late AppDatabase _db;
 
-  static void init(AppDatabase db) => _db = db;
+  /// Kennung, unter der gespeichert wird, solange keine Supabase-Sitzung
+  /// besteht. Ohne sie landete alles unter '' und war nach einer spaeteren
+  /// Anmeldung unerreichbar.
+  static String? _deviceUid;
+
+  static const String _deviceUidKey = 'local_device_user_id';
+
+  /// Muss vor dem ersten Zugriff abgewartet werden: legt die Geraete-Kennung
+  /// an oder liest sie aus den Einstellungen.
+  static Future<void> init(AppDatabase db) async {
+    _db = db;
+    final prefs = await SharedPreferences.getInstance();
+    var id = prefs.getString(_deviceUidKey);
+    if (id == null) {
+      id = 'local-${const Uuid().v4()}';
+      await prefs.setString(_deviceUidKey, id);
+    }
+    _deviceUid = id;
+  }
+
+  /// Die Kennung der aktuellen Sitzung, oder null.
+  ///
+  /// Gekapselt, weil `AuthService.userId` auf `Supabase.instance` zugreift und
+  /// das wirft, wenn Supabase nie initialisiert wurde (nicht konfiguriert oder
+  /// initialize ist gescheitert). Die lokale Schicht muss das ueberleben.
+  static String? get sessionUid {
+    try {
+      return AuthService.userId;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// Schreibt alle unter der Geraete-Kennung gespeicherten Zeilen auf
+  /// [realUid] um. Aufzurufen, sobald eine Sitzung zustande kommt — sonst
+  /// bleiben offline angelegte Daten unsichtbar.
+  ///
+  /// Gibt die Anzahl der umgeschriebenen Zeilen zurueck.
+  static Future<int> adoptLocalRows(String realUid) async {
+    final from = _deviceUid;
+    if (from == null || from == realUid || realUid.isEmpty) return 0;
+
+    var count = 0;
+    Future<void> move(String table) async {
+      count += await _db.customUpdate(
+        'UPDATE $table SET user_id = ? WHERE user_id = ?',
+        variables: [Variable<String>(realUid), Variable<String>(from)],
+        updates: const {},
+      );
+    }
+
+    await move('events_cache');
+    await move('todos_cache');
+    await move('annual_events_cache');
+    await move('series_reminders_cache');
+    await move('yearly_checklists_cache');
+    await move('week_notes_cache');
+    return count;
+  }
 
   // ── CalendarEvents ────────────────────────────────────────────────────────
 
@@ -218,6 +279,103 @@ class LocalService {
     await _enqueue('yearly_checklists', 'delete', id, {'id': id});
   }
 
+  /// Alle Todos des angemeldeten Benutzers aus dem Cache.
+  static Future<List<Todo>> _allTodos() async {
+    final rows = await (_db.select(_db.todosCache)
+          ..where((t) => t.userId.equals(_uid)))
+        .get();
+    return rows
+        .map((r) => Todo.fromJson(jsonDecode(r.data) as Map<String, dynamic>))
+        .toList();
+  }
+
+  static Future<Todo?> getTodoById(String id) async {
+    final rows = await (_db.select(_db.todosCache)
+          ..where((t) => t.id.equals(id) & t.userId.equals(_uid)))
+        .get();
+    if (rows.isEmpty) return null;
+    return Todo.fromJson(jsonDecode(rows.first.data) as Map<String, dynamic>);
+  }
+
+  static Future<List<Todo>> getTodosForDate(DateTime date) async {
+    final start = DateTime(date.year, date.month, date.day);
+    final end = start.add(const Duration(days: 1));
+    final todos = await _allTodos();
+    return todos
+        .where((t) =>
+            t.scheduledDate != null &&
+            !t.scheduledDate!.isBefore(start) &&
+            t.scheduledDate!.isBefore(end))
+        .toList()
+      ..sort((a, b) {
+        final am = (a.scheduledStartHour ?? 0) * 60 +
+            (a.scheduledStartMinute ?? 0);
+        final bm = (b.scheduledStartHour ?? 0) * 60 +
+            (b.scheduledStartMinute ?? 0);
+        return am.compareTo(bm);
+      });
+  }
+
+  /// Verschiebt die Todos eines Tages, die nach [afterHour]:[afterMinute]
+  /// beginnen, um [shiftMinutes]. Gleiche Logik wie vorher in
+  /// SupabaseService.shiftTodosAfter, nur gegen den lokalen Cache — damit
+  /// Auto-Shift auch ohne Netz greift.
+  static Future<void> shiftTodosAfter({
+    required DateTime day,
+    required int afterHour,
+    required int afterMinute,
+    required int shiftMinutes,
+    required bool onlyFlexible,
+  }) async {
+    final todos = await getTodosForDate(day);
+    final afterMinutes = afterHour * 60 + afterMinute;
+
+    for (final todo in todos) {
+      if (onlyFlexible && todo.isFixed) continue;
+      if (todo.scheduledStartHour == null) continue;
+
+      final todoMinutes =
+          todo.scheduledStartHour! * 60 + (todo.scheduledStartMinute ?? 0);
+      if (todoMinutes <= afterMinutes) continue;
+
+      final totalMinutes = todoMinutes + shiftMinutes;
+      final newHour = (totalMinutes ~/ 60).clamp(0, 23);
+      final newMinute = (totalMinutes % 60).clamp(0, 59);
+
+      await saveTodo(todo.copyWith(
+        scheduledStartHour: newHour,
+        scheduledStartMinute: newMinute,
+      ));
+    }
+  }
+
+  // ── WeekNotes ────────────────────────────────────────────────────────────
+
+  /// Gibt eine leere Notiz zurueck, wenn fuer die Woche nichts gespeichert ist
+  /// — genauso wie die Supabase-Variante vorher.
+  static Future<WeekNote> getWeekNote(String weekKey) async {
+    final rows = await (_db.select(_db.weekNotesCache)
+          ..where((n) => n.weekKey.equals(weekKey) & n.userId.equals(_uid)))
+        .get();
+    if (rows.isEmpty) return WeekNote(weekKey: weekKey);
+    return WeekNote.fromJson(
+        jsonDecode(rows.first.data) as Map<String, dynamic>);
+  }
+
+  static Future<void> saveWeekNote(WeekNote note) async {
+    final now = DateTime.now().millisecondsSinceEpoch;
+    await _db.into(_db.weekNotesCache).insertOnConflictUpdate(
+          WeekNotesCacheCompanion(
+            weekKey: Value(note.weekKey),
+            userId: Value(_uid),
+            data: Value(jsonEncode(note.toJson())),
+            updatedAt: Value(now),
+          ),
+        );
+    // entityId ist hier der Wochenschluessel — er identifiziert die Zeile.
+    await _enqueue('week_notes', 'upsert', note.weekKey, note.toJson());
+  }
+
   // ── Sync queue ────────────────────────────────────────────────────────────
 
   static Future<void> _enqueue(
@@ -331,9 +489,25 @@ class LocalService {
     });
   }
 
-  static String get _uid {
-    final uid = AuthService.userId;
-    assert(uid != null, 'LocalService called before user is authenticated');
-    return uid ?? '';
+  static Future<void> seedWeekNotes(List<WeekNote> notes) async {
+    final now = DateTime.now().millisecondsSinceEpoch;
+    await _db.batch((batch) {
+      for (final n in notes) {
+        batch.insert(
+          _db.weekNotesCache,
+          WeekNotesCacheCompanion(
+            weekKey: Value(n.weekKey),
+            userId: Value(_uid),
+            data: Value(jsonEncode(n.toJson())),
+            updatedAt: Value(now),
+          ),
+          mode: InsertMode.insertOrReplace,
+        );
+      }
+    });
   }
+
+  /// Unter dieser Kennung wird gespeichert und gelesen: die Sitzung, wenn es
+  /// eine gibt, sonst die Geraete-Kennung.
+  static String get _uid => sessionUid ?? _deviceUid ?? '';
 }

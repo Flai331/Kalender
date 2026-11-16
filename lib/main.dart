@@ -63,8 +63,22 @@ void main() async {
   await ReminderService.requestPermissions();
 
   final db = AppDatabase();
-  LocalService.init(db);
+  await LocalService.init(db);
   SyncService.init(navigatorKey);
+
+  // Offline angelegte Daten der echten Sitzung zuschlagen. Muss nach
+  // LocalService.init laufen und darf den Start nicht kippen.
+  final sessionUid = LocalService.sessionUid;
+  if (sessionUid != null) {
+    try {
+      final moved = await LocalService.adoptLocalRows(sessionUid);
+      if (moved > 0) {
+        FeedbackService.log('$moved lokale Zeilen der Sitzung zugeordnet');
+      }
+    } catch (e) {
+      FeedbackService.log('Zuordnung lokaler Daten fehlgeschlagen: $e');
+    }
+  }
 
   // Seed local DB on first launch
   if (SupabaseConfig.isConfigured) {
@@ -89,6 +103,11 @@ void main() async {
         await LocalService.seedYearlyChecklists(
             await SupabaseService.getYearlyChecklists());
         await prefs.setBool('local_seeded_reminders', true);
+      }
+      if (prefs.getBool('local_seeded_notes') != true) {
+        await LocalService.seedWeekNotes(
+            await SupabaseService.getAllWeekNotes());
+        await prefs.setBool('local_seeded_notes', true);
       }
     } catch (e) {
       debugPrint('Local seed failed: $e');
@@ -205,14 +224,14 @@ class _MainScreenState extends State<MainScreen> {
   }
 
   Future<void> _handleWidgetToggle(String todoId) async {
-    final todo = await SupabaseService.getTodoById(todoId);
+    final todo = await LocalService.getTodoById(todoId);
     if (todo == null) return;
     final updated = todo.copyWith(
       status: todo.status == TodoStatus.done ? TodoStatus.pending : TodoStatus.done,
       isCompleted: todo.status != TodoStatus.done,
     );
     await LocalService.saveTodo(updated);
-    final todayTodos = await SupabaseService.getTodosForDate(DateTime.now());
+    final todayTodos = await LocalService.getTodosForDate(DateTime.now());
     await WidgetService.update(todayTodos: todayTodos);
   }
 

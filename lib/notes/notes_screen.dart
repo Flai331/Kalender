@@ -1,7 +1,8 @@
 import 'package:flutter/material.dart';
 import '../app_colors.dart';
 import '../models/week_note.dart';
-import '../services/supabase_service.dart';
+import '../services/local_service.dart';
+import '../widgets/save_feedback.dart';
 import '../widgets/feedback_button.dart';
 
 class NotesScreen extends StatefulWidget {
@@ -26,7 +27,7 @@ class _NotesScreenState extends State<NotesScreen> {
   }
 
   Future<void> _load() async {
-    final note = await SupabaseService.getWeekNote(_weekKey);
+    final note = await LocalService.getWeekNote(_weekKey);
     setState(() {
       _contentCtrl.text = note.content;
       _goalCtrls.clear();
@@ -47,8 +48,13 @@ class _NotesScreenState extends State<NotesScreen> {
       content: _contentCtrl.text,
       goals: goals,
     );
-    await SupabaseService.saveWeekNote(updated);
-    if (mounted) {
+    // Lokal speichern + Sync-Queue — funktioniert auch offline.
+    final ok = await guardedAction(
+      context,
+      () => LocalService.saveWeekNote(updated),
+      errorPrefix: 'Notiz speichern fehlgeschlagen',
+    );
+    if (ok && mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('Gespeichert'),
