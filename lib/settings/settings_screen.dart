@@ -1,4 +1,5 @@
 ﻿import 'package:file_picker/file_picker.dart';
+import 'package:url_launcher/url_launcher.dart';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../app_colors.dart';
@@ -9,6 +10,8 @@ import '../services/daylight_service.dart';
 import '../services/feedback_service.dart';
 import '../services/ics_service.dart';
 import '../services/reminder_service.dart';
+import '../services/update_service.dart';
+import '../widgets/save_feedback.dart';
 import '../widgets/feedback_button.dart';
 
 class SettingsScreen extends StatefulWidget {
@@ -19,6 +22,7 @@ class SettingsScreen extends StatefulWidget {
 }
 
 class _SettingsScreenState extends State<SettingsScreen> {
+  bool _checkingUpdate = false;
   List<IcsSource> _sources = [];
   bool _sourcesLoading = true;
   bool _outlookAllowTodoDrop = false;
@@ -262,6 +266,96 @@ class _SettingsScreenState extends State<SettingsScreen> {
     );
   }
 
+  // ── Update-Prüfung ────────────────────────────────────────────
+  Future<void> _checkForUpdate() async {
+    if (_checkingUpdate) return;
+    setState(() => _checkingUpdate = true);
+    UpdateCheckResult result;
+    try {
+      result = await UpdateService.check();
+    } finally {
+      // Auch im Fehlerfall zurücksetzen, sonst bleibt der Knopf blockiert.
+      if (mounted) setState(() => _checkingUpdate = false);
+    }
+    if (!mounted) return;
+
+    switch (result.status) {
+      case UpdateStatus.fehler:
+        showErrorSnack(
+            context, result.message ?? 'Update-Prüfung fehlgeschlagen.');
+      case UpdateStatus.aktuell:
+        showInfoSnack(context,
+            'Du hast die neueste Version (Build ${UpdateService.installedBuild}).');
+      case UpdateStatus.verfuegbar:
+        await _showUpdateDialog(result.release!);
+    }
+  }
+
+  Future<void> _showUpdateDialog(ReleaseInfo release) async {
+    final kanal = release.channel == 'vorschau' ? 'Vorschau' : 'Aktuell';
+    final laden = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppColors.surface,
+        title: const Text('Update verfügbar',
+            style: TextStyle(color: AppColors.textPrimary)),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Build ${release.buildNumber} statt ${UpdateService.installedBuild}',
+              style: const TextStyle(
+                  color: AppColors.textPrimary,
+                  fontSize: 15,
+                  fontWeight: FontWeight.w600),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'Kanal: $kanal'
+              '${release.branch.isNotEmpty ? '\nBranch: ${release.branch}' : ''}'
+              '${release.commit.isNotEmpty ? '\nCommit: ${release.commit}' : ''}',
+              style: const TextStyle(
+                  color: AppColors.textSecondary, fontSize: 12),
+            ),
+            const SizedBox(height: 12),
+            const Text(
+              'Die APK wird im Browser geladen. Beim Öffnen legt Android sie '
+              'über die installierte App — deine Daten bleiben erhalten.',
+              style: TextStyle(color: AppColors.textSecondary, fontSize: 12),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Später',
+                style: TextStyle(color: AppColors.textSecondary)),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Herunterladen',
+                style: TextStyle(
+                    color: AppColors.primary, fontWeight: FontWeight.bold)),
+          ),
+        ],
+      ),
+    );
+    if (laden != true || !mounted) return;
+
+    try {
+      final ok = await launchUrl(Uri.parse(release.downloadUrl),
+          mode: LaunchMode.externalApplication);
+      if (!ok && mounted) {
+        showErrorSnack(context,
+            'Browser konnte nicht geöffnet werden. Release: ${release.releaseUrl}');
+      }
+    } catch (e) {
+      FeedbackService.log('Update-Download fehlgeschlagen: $e');
+      if (mounted) showErrorSnack(context, 'Download fehlgeschlagen: $e');
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -449,6 +543,25 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 actionLabel: 'Testen',
                 actionColor: AppColors.primary,
                 onAction: _testNotification,
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+
+          // App / Update
+          _Section(
+            title: 'App',
+            children: [
+              _ActionTile(
+                icon: Icons.system_update_outlined,
+                iconColor: AppColors.accent,
+                title: 'Nach Update suchen',
+                subtitle: _checkingUpdate
+                    ? 'Prüfe GitHub-Release...'
+                    : 'Installiert: Build ${UpdateService.installedBuild}',
+                actionLabel: _checkingUpdate ? '...' : 'Prüfen',
+                actionColor: AppColors.accent,
+                onAction: _checkingUpdate ? () {} : _checkForUpdate,
               ),
             ],
           ),

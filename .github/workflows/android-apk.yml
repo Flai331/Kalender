@@ -123,6 +123,13 @@ jobs:
           ARGS=""
           if [ -f dart_defines.json ]; then ARGS="--dart-define-from-file=dart_defines.json"; fi
           echo "Build-Nummer: $NR"
+          echo "NR=$NR" >> "$GITHUB_ENV"
+          # Die App muss ihre eigene Build-Nummer kennen, um sie mit dem
+          # Release vergleichen zu können (Einstellungen -> Nach Update suchen).
+          if [ -f lib/build_info.dart ]; then
+            printf '// Wird beim CI-Build gesetzt (siehe .github/workflows/android-apk.yml)\nconst int kBuildNumber = %s;\n' "$NR" > lib/build_info.dart
+            echo "lib/build_info.dart auf $NR gesetzt"
+          fi
           set +e
           flutter build apk --release --build-number=$NR $ARGS 2>&1 | tee "$RUNNER_TEMP/build.log"
           RC=${PIPESTATUS[0]}
@@ -157,6 +164,23 @@ jobs:
           test -f "$SRC"
           cp "$SRC" "kalender.apk"
           echo "groesse=$(du -h "kalender.apk" | cut -f1)" >> "$GITHUB_OUTPUT"
+          # Von der App gelesen (Einstellungen -> Nach Update suchen). Liegt als
+          # Release-Asset, weil das ohne Login abrufbar ist - anders als ein
+          # Actions-Artefakt, fuer das ein Token in der APK stecken muesste.
+          if [ "${{ github.ref_name }}" = "${{ github.event.repository.default_branch }}" ]; then
+            KANAL="latest"
+          else
+            KANAL="vorschau"
+          fi
+          printf '{\n' > version.json
+          printf '  "buildNumber": %s,\n' "$NR" >> version.json
+          printf '  "channel": "%s",\n' "$KANAL" >> version.json
+          printf '  "branch": "%s",\n' "${{ github.ref_name }}" >> version.json
+          printf '  "commit": "%s",\n' "${GITHUB_SHA::7}" >> version.json
+          printf '  "builtAt": "%s",\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> version.json
+          printf '  "apkUrl": "https://github.com/%s/releases/download/%s/kalender.apk"\n' "${{ github.repository }}" "$KANAL" >> version.json
+          printf '}\n' >> version.json
+          cat version.json
 
       # Nur Reserve (die APK steht im Release). Darf nie den Build kippen, falls der Artefakt-Speicher voll ist.
       - uses: actions/upload-artifact@v4
@@ -178,6 +202,6 @@ jobs:
           printf 'Branch: %s\nCommit: %s - %s\nBuild: #%s\nAPK: kalender.apk (%s)\n' \
             "${{ github.ref_name }}" "${GITHUB_SHA::7}" "$MSG" "${{ github.run_number }}" "${{ steps.apk.outputs.groesse }}" > "$RUNNER_TEMP/notes.txt"
           gh release delete "$TAG" --cleanup-tag --yes 2>/dev/null || true
-          gh release create "$TAG" "kalender.apk" --target "$GITHUB_SHA" --title "$TITLE" --notes-file "$RUNNER_TEMP/notes.txt" $PRE
+          gh release create "$TAG" "kalender.apk" "version.json" --target "$GITHUB_SHA" --title "$TITLE" --notes-file "$RUNNER_TEMP/notes.txt" $PRE
           echo "### APK fertig" >> "$GITHUB_STEP_SUMMARY"
           echo "[kalender.apk laden](https://github.com/${{ github.repository }}/releases/tag/$TAG)" >> "$GITHUB_STEP_SUMMARY"
