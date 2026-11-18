@@ -214,7 +214,7 @@ class IcsService {
         isAllDay: isAllDay,
         source: 'ics',
         outlookEventId: uid,
-        category: EventCategory.work,
+        category: 'work',
         calendarColor: calendarColor,
         icsSourceId: sourceId,
       );

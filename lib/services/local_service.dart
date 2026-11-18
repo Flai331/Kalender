@@ -280,6 +280,78 @@ class LocalService {
   }
 
   /// Alle Todos des angemeldeten Benutzers aus dem Cache.
+  static Future<List<Todo>> getAllTodos() => _allTodos();
+
+  /// Alle Termine des angemeldeten Benutzers aus dem Cache.
+  static Future<List<CalendarEvent>> getAllEvents() async {
+    final rows = await (_db.select(_db.eventsCache)
+          ..where((e) => e.userId.equals(_uid)))
+        .get();
+    return rows
+        .map((r) =>
+            CalendarEvent.fromJson(jsonDecode(r.data) as Map<String, dynamic>))
+        .toList();
+  }
+
+  /// Alle Jahres-Events des angemeldeten Benutzers aus dem Cache.
+  static Future<List<AnnualEvent>> getAllAnnualEvents() async {
+    final rows = await (_db.select(_db.annualEventsCache)
+          ..where((e) => e.userId.equals(_uid)))
+        .get();
+    return rows
+        .map((r) =>
+            AnnualEvent.fromJson(jsonDecode(r.data) as Map<String, dynamic>))
+        .toList();
+  }
+
+  /// Wie viele Eintraege an einer Kategorie haengen. Gezaehlt wird alles, was
+  /// einen Kategorie-Schluessel traegt — auch die Bedingung "nur waehrend
+  /// Terminen der Kategorie X" an einem To-do.
+  static Future<int> countByCategory(String key) async {
+    final todos = await getAllTodos();
+    final events = await getAllEvents();
+    final annual = await getAllAnnualEvents();
+    return todos
+            .where((t) => t.category == key || t.requiredCategory == key)
+            .length +
+        events.where((e) => e.category == key).length +
+        annual.where((a) => a.category == key).length;
+  }
+
+  /// Haengt alles von [from] auf [to] um und gibt die Zahl der geaenderten
+  /// Eintraege zurueck. Gedacht fuer das Loeschen einer Kategorie: ohne das
+  /// behielten die Eintraege einen Schluessel, den es nicht mehr gibt.
+  static Future<int> reassignCategory(String from, String to) async {
+    if (from == to) return 0;
+    var changed = 0;
+
+    for (final todo in await getAllTodos()) {
+      final hitsCategory = todo.category == from;
+      final hitsRequired = todo.requiredCategory == from;
+      if (!hitsCategory && !hitsRequired) continue;
+      await saveTodo(todo.copyWith(
+        category: hitsCategory ? to : null,
+        requiredCategory: hitsRequired ? to : todo.requiredCategory,
+      ));
+      changed++;
+    }
+
+    for (final event in await getAllEvents()) {
+      if (event.category != from) continue;
+      await saveEvent(event.copyWith(category: to));
+      changed++;
+    }
+
+    for (final annual in await getAllAnnualEvents()) {
+      if (annual.category != from) continue;
+      await saveAnnualEvent(annual.copyWith(category: to));
+      changed++;
+    }
+
+    return changed;
+  }
+
+  /// Alle Todos des angemeldeten Benutzers aus dem Cache.
   static Future<List<Todo>> _allTodos() async {
     final rows = await (_db.select(_db.todosCache)
           ..where((t) => t.userId.equals(_uid)))

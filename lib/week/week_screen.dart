@@ -12,6 +12,7 @@ import '../models/yearly_checklist.dart';
 import '../services/daylight_service.dart';
 import '../services/local_service.dart';
 import '../services/shift_service.dart';
+import '../services/category_service.dart';
 import '../services/travel_service.dart';
 import '../services/widget_service.dart';
 import '../services/ics_service.dart';
@@ -143,9 +144,11 @@ class WeekScreenState extends State<WeekScreen> {
     _loadBlockingCats();
     SnapState.snapNotifier.addListener(_onSnapChanged);
     SnapState.isDraggingNotifier.addListener(_onSnapChanged);
-    // Neue An-/Abfahrtsvorgabe: sofort neu zeichnen. Die Termine selbst haben
-    // sich nicht geaendert, der Stream meldet also nichts.
+    // Neue An-/Abfahrtsvorgabe oder umbenannte Kategorie: sofort neu
+    // zeichnen. Die Termine selbst haben sich nicht geaendert, der Stream
+    // meldet also nichts.
     TravelService.revision.addListener(_onTravelChanged);
+    CategoryService.revision.addListener(_onTravelChanged);
     HardwareKeyboard.instance.addHandler(_onKey);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _scrollToNow();
@@ -975,7 +978,8 @@ class WeekScreenState extends State<WeekScreen> {
                               decoration: BoxDecoration(
                                 color: (span.event.calendarColor != null
                                         ? Color(span.event.calendarColor!)
-                                        : _categoryColor(span.event.category))
+                                        : AppColors.forCategory(
+                                            span.event.category))
                                     .withValues(alpha: 0.85),
                                 borderRadius: BorderRadius.circular(3),
                               ),
@@ -1001,15 +1005,6 @@ class WeekScreenState extends State<WeekScreen> {
         ],
       ),
     );
-  }
-
-  Color _categoryColor(EventCategory cat) {
-    switch (cat) {
-      case EventCategory.work: return AppColors.work;
-      case EventCategory.sport: return AppColors.sport;
-      case EventCategory.vacation: return AppColors.vacation;
-      case EventCategory.personal: return AppColors.primary;
-    }
   }
 
   Widget _buildWeekView() {
@@ -1267,6 +1262,7 @@ class WeekScreenState extends State<WeekScreen> {
     SnapState.snapNotifier.removeListener(_onSnapChanged);
     SnapState.isDraggingNotifier.removeListener(_onSnapChanged);
     TravelService.revision.removeListener(_onTravelChanged);
+    CategoryService.revision.removeListener(_onTravelChanged);
     HardwareKeyboard.instance.removeHandler(_onKey);
     _scrollController.dispose();
     super.dispose();
@@ -1319,7 +1315,7 @@ class WeekScreenState extends State<WeekScreen> {
         e.startTime.month == day.month &&
         e.startTime.day == day.day);
     return allEventsOnDay
-        .any((e) => _blockingAllDayCats.contains(e.category.name));
+        .any((e) => _blockingAllDayCats.contains(e.category));
   }
 
   List<CalendarEvent> _timedEventsOnDay(DateTime day) {

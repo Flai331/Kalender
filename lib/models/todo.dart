@@ -79,7 +79,7 @@ class Todo {
   final int? dueWindowStartHour; // früheste Startzeit (z.B. 8)
   final int? dueWindowEndHour;   // späteste Endzeit (z.B. 22)
   final TodoContextMode contextMode;
-  final EventCategory? requiredCategory;   // für categoryEvent + opportunistic
+  final String? requiredCategory;   // für categoryEvent + opportunistic
   final List<int>? allowedWeekdays;        // null=alle; [1..5]=Mo-Fr (1=Mo,7=So)
   final DaylightMode daylightMode;
   final List<SubTask> subTasks;
@@ -208,7 +208,7 @@ class Todo {
       dueWindowStartHour: dueWindowStartHour == _unset ? this.dueWindowStartHour : dueWindowStartHour as int?,
       dueWindowEndHour: dueWindowEndHour == _unset ? this.dueWindowEndHour : dueWindowEndHour as int?,
       contextMode: contextMode ?? this.contextMode,
-      requiredCategory: requiredCategory == _unset ? this.requiredCategory : requiredCategory as EventCategory?,
+      requiredCategory: requiredCategory == _unset ? this.requiredCategory : requiredCategory as String?,
       allowedWeekdays: allowedWeekdays == _unset ? this.allowedWeekdays : allowedWeekdays as List<int>?,
       daylightMode: daylightMode ?? this.daylightMode,
       subTasks: subTasks ?? this.subTasks,
@@ -243,7 +243,7 @@ class Todo {
         'dueWindowStartHour': dueWindowStartHour,
         'dueWindowEndHour': dueWindowEndHour,
         'contextMode': contextMode.name,
-        'requiredCategory': requiredCategory?.name,
+        'requiredCategory': requiredCategory,
         'allowedWeekdays': allowedWeekdays,
         'daylightMode': daylightMode.name,
         'subTasks': subTasks.map((s) => s.toJson()).toList(),
@@ -298,12 +298,7 @@ class Todo {
           (e) => e.name == json['contextMode'],
           orElse: () => TodoContextMode.anyTime,
         ),
-        requiredCategory: json['requiredCategory'] != null
-            ? EventCategory.values.firstWhere(
-                (e) => e.name == json['requiredCategory'],
-                orElse: () => EventCategory.personal,
-              )
-            : null,
+        requiredCategory: json['requiredCategory'] as String?,
         allowedWeekdays: (json['allowedWeekdays'] as List<dynamic>?)
             ?.map((e) => (e as num).toInt())
             .toList(),

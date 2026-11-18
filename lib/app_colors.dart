@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import 'services/category_service.dart';
+
 class AppColors {
   // Primary
   static const Color primary = Color(0xFF6C63FF);
@@ -32,16 +34,11 @@ class AppColors {
   static const Color flexible = Color(0xFF6C63FF);
 
   // Methode: Kategorie → Farbe
-  static Color forCategory(String category) {
-    switch (category) {
-      case 'work':
-        return work;
-      case 'sport':
-        return sport;
-      case 'vacation':
-        return vacation;
-      default:
-        return personal;
-    }
-  }
+  //
+  // Die Farbe kommt aus den Kategorien des Benutzers. Die Konstanten darueber
+  // sind nur noch die mitgelieferte Palette; wer eine eigene Kategorie anlegt,
+  // waehlt ihre Farbe selbst. Ein Schluessel, den es nicht mehr gibt, wird
+  // neutral grau — sichtbar fehlend, statt faelschlich bunt.
+  static Color forCategory(String category) =>
+      CategoryService.colorOf(category);
 }

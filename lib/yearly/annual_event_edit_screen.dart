@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:uuid/uuid.dart';
 import '../app_colors.dart';
+import '../services/category_service.dart';
+import '../widgets/category_picker.dart';
 import '../models/annual_event.dart';
 import '../services/local_service.dart';
 import '../widgets/save_feedback.dart';
@@ -28,7 +30,7 @@ class _AnnualEventEditScreenState extends State<AnnualEventEditScreen> {
     super.initState();
     final e = widget.event;
     _nameCtrl = TextEditingController(text: e?.name ?? '');
-    _category = e?.category ?? 'personal';
+    _category = e?.category ?? CategoryService.fallbackKey;
     _occurrences = List.from(e?.occurrences ?? []);
 
     // Pre-add current/initial year if not present
@@ -182,23 +184,10 @@ class _AnnualEventEditScreenState extends State<AnnualEventEditScreen> {
           const Text('Kategorie',
               style: TextStyle(color: AppColors.textSecondary, fontSize: 12)),
           const SizedBox(height: 8),
-          Wrap(
-            spacing: 8,
-            children: ['personal', 'work', 'sport', 'vacation'].map((cat) {
-              final selected = _category == cat;
-              final color = AppColors.forCategory(cat);
-              return ChoiceChip(
-                label: Text(cat,
-                    style: TextStyle(
-                        color: selected ? Colors.white : AppColors.textSecondary,
-                        fontSize: 13)),
-                selected: selected,
-                selectedColor: color,
-                backgroundColor: AppColors.surface,
-                side: BorderSide(color: selected ? color : AppColors.divider),
-                onSelected: (_) => setState(() => _category = cat),
-              );
-            }).toList(),
+          CategoryPicker(
+            selected: _category,
+            onChanged: (c) => setState(
+                () => _category = c ?? CategoryService.fallbackKey),
           ),
           const SizedBox(height: 24),
           const Text('Jahres-Einträge',

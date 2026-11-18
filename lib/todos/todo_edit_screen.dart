@@ -1,6 +1,8 @@
 ﻿import 'package:flutter/material.dart';
 import 'package:uuid/uuid.dart';
 import '../app_colors.dart';
+import '../services/category_service.dart';
+import '../widgets/category_picker.dart';
 import '../models/todo.dart';
 import '../models/calendar_event.dart';
 import '../services/local_service.dart';
@@ -32,7 +34,7 @@ class _TodoEditScreenState extends State<TodoEditScreen> {
   int? _windowStartHour;
   int? _windowEndHour;
   late TodoContextMode _contextMode;
-  EventCategory? _requiredCategory;
+  String? _requiredCategory;
   late List<int> _allowedWeekdays;
   late DaylightMode _daylightMode;
   late List<SubTask> _subTasks;
@@ -49,7 +51,7 @@ class _TodoEditScreenState extends State<TodoEditScreen> {
     _estimatedMinutes = t?.estimatedMinutes ?? 30;
     _repeatType = t?.repeatType ?? RepeatType.none;
     _isFixed = t?.isFixed ?? false;
-    _category = t?.category ?? 'personal';
+    _category = t?.category ?? CategoryService.fallbackKey;
     _travelBefore = t?.travelMinutesBefore ?? 0;
     _travelAfter = t?.travelMinutesAfter ?? 0;
     _windowStartHour = t?.dueWindowStartHour;
@@ -250,9 +252,10 @@ class _TodoEditScreenState extends State<TodoEditScreen> {
 
           // Kategorie
           _SectionLabel('Kategorie'),
-          _CategorySelector(
+          CategoryPicker(
             selected: _category,
-            onChanged: (c) => setState(() => _category = c),
+            onChanged: (c) => setState(
+                () => _category = c ?? CategoryService.fallbackKey),
           ),
           const SizedBox(height: 16),
 
@@ -296,8 +299,9 @@ class _TodoEditScreenState extends State<TodoEditScreen> {
           if (_contextMode == TodoContextMode.categoryEvent ||
               _contextMode == TodoContextMode.opportunistic) ...[
             const SizedBox(height: 8),
-            _CategoryEventPicker(
+            CategoryPicker(
               selected: _requiredCategory,
+              allowNone: true,
               onChanged: (c) => setState(() => _requiredCategory = c),
             ),
           ],
@@ -609,43 +613,6 @@ class _DurationPickerState extends State<_DurationPicker> {
   }
 }
 
-class _CategorySelector extends StatelessWidget {
-  final String selected;
-  final ValueChanged<String> onChanged;
-
-  const _CategorySelector(
-      {required this.selected, required this.onChanged});
-
-  static const _options = {
-    'personal': 'Persönlich',
-    'work': 'Arbeit',
-    'sport': 'Sport',
-    'vacation': 'Urlaub',
-  };
-
-  @override
-  Widget build(BuildContext context) {
-    return Wrap(
-      spacing: 8,
-      children: _options.entries.map((e) {
-        final color = AppColors.forCategory(e.key);
-        final isSelected = selected == e.key;
-        return ChoiceChip(
-          label: Text(e.value),
-          selected: isSelected,
-          onSelected: (_) => onChanged(e.key),
-          selectedColor: color.withValues(alpha: 0.3),
-          backgroundColor: AppColors.card,
-          labelStyle: TextStyle(
-              color: isSelected ? color : AppColors.textSecondary,
-              fontSize: 13),
-          side: BorderSide(
-              color: isSelected ? color : AppColors.divider, width: 1),
-        );
-      }).toList(),
-    );
-  }
-}
 
 class _WindowPicker extends StatelessWidget {
   final int? startHour;
@@ -828,42 +795,6 @@ class _ContextModePicker extends StatelessWidget {
   }
 }
 
-class _CategoryEventPicker extends StatelessWidget {
-  final EventCategory? selected;
-  final ValueChanged<EventCategory?> onChanged;
-
-  const _CategoryEventPicker({required this.selected, required this.onChanged});
-
-  static const _labels = {
-    EventCategory.work: 'Arbeit',
-    EventCategory.sport: 'Sport',
-    EventCategory.vacation: 'Urlaub',
-    EventCategory.personal: 'Persönlich',
-  };
-
-  @override
-  Widget build(BuildContext context) {
-    return Wrap(
-      spacing: 8,
-      children: EventCategory.values.map((c) {
-        final isSelected = selected == c;
-        return ChoiceChip(
-          label: Text(_labels[c] ?? c.name),
-          selected: isSelected,
-          onSelected: (_) => onChanged(isSelected ? null : c),
-          selectedColor: AppColors.primary.withValues(alpha: 0.3),
-          backgroundColor: AppColors.card,
-          labelStyle: TextStyle(
-            color: isSelected ? AppColors.primary : AppColors.textSecondary,
-            fontSize: 13,
-          ),
-          side: BorderSide(
-              color: isSelected ? AppColors.primary : AppColors.divider),
-        );
-      }).toList(),
-    );
-  }
-}
 
 class _WeekdayPicker extends StatelessWidget {
   final List<int> selected;

@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:home_widget/home_widget.dart';
 import '../models/todo.dart';
+import 'category_service.dart';
 
 class WidgetService {
   static const _appGroupId = 'group.com.example.kalender';
@@ -23,7 +24,10 @@ class WidgetService {
     final grouped = <String, List<Map<String, dynamic>>>{};
     for (final t in todayTodos) {
       if (t.isCompleted) continue;
-      grouped.putIfAbsent(t.category, () => []).add({
+      // Gruppiert wird nach dem NAMEN der Kategorie: das Widget zeigt den
+      // Schluessel der Gruppe unveraendert als Ueberschrift an, und der ist
+      // fuer Augen nicht gemacht ('vacation', 'haus_garten').
+      grouped.putIfAbsent(CategoryService.labelOf(t.category), () => []).add({
         'id': t.id,
         'title': t.title,
         'isDone': t.status == TodoStatus.done,

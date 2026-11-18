@@ -1,6 +1,8 @@
 ﻿import 'package:flutter/material.dart';
 import 'package:uuid/uuid.dart';
 import '../app_colors.dart';
+import '../services/category_service.dart';
+import '../widgets/category_picker.dart';
 import '../models/calendar_event.dart';
 import '../services/local_service.dart';
 import '../services/travel_service.dart';
@@ -26,7 +28,7 @@ class _EventEditScreenState extends State<EventEditScreen> {
   late TextEditingController _addressCtrl;
   late DateTime _startTime;
   late DateTime _endTime;
-  late EventCategory _category;
+  late String _category;
   late bool _isFixed;
   late RepeatType _repeatType;
   // null = die Vorgabe des Kalenders gilt. 0 ist etwas anderes: ausdruecklich
@@ -47,7 +49,7 @@ class _EventEditScreenState extends State<EventEditScreen> {
     _addressCtrl = TextEditingController(text: e?.address ?? '');
     _startTime = e?.startTime ?? _roundToNext30();
     _endTime = e?.endTime ?? _startTime.add(const Duration(hours: 1));
-    _category = e?.category ?? EventCategory.personal;
+    _category = e?.category ?? CategoryService.fallbackKey;
     _isFixed = e?.isFixed ?? false;
     _repeatType = e?.repeatType ?? RepeatType.none;
     _travelBefore = e?.travelBeforeOverride;
@@ -236,9 +238,10 @@ class _EventEditScreenState extends State<EventEditScreen> {
           ),
           const SizedBox(height: 16),
           _SectionLabel('Kategorie'),
-          _CategorySelector(
+          CategoryPicker(
             selected: _category,
-            onChanged: (c) => setState(() => _category = c),
+            onChanged: (c) => setState(
+                () => _category = c ?? CategoryService.fallbackKey),
           ),
           const SizedBox(height: 16),
           _SectionLabel('Wiederholung'),
@@ -385,43 +388,6 @@ class _TimeRow extends StatelessWidget {
   }
 }
 
-class _CategorySelector extends StatelessWidget {
-  final EventCategory selected;
-  final ValueChanged<EventCategory> onChanged;
-
-  const _CategorySelector(
-      {required this.selected, required this.onChanged});
-
-  static const _labels = {
-    EventCategory.work: 'Arbeit',
-    EventCategory.sport: 'Sport',
-    EventCategory.vacation: 'Urlaub',
-    EventCategory.personal: 'Persönlich',
-  };
-
-  @override
-  Widget build(BuildContext context) {
-    return Wrap(
-      spacing: 8,
-      children: EventCategory.values.map((c) {
-        final color = AppColors.forCategory(c.name);
-        final isSelected = selected == c;
-        return ChoiceChip(
-          label: Text(_labels[c] ?? c.name),
-          selected: isSelected,
-          onSelected: (_) => onChanged(c),
-          selectedColor: color.withValues(alpha: 0.3),
-          backgroundColor: AppColors.card,
-          labelStyle: TextStyle(
-              color: isSelected ? color : AppColors.textSecondary,
-              fontSize: 13),
-          side: BorderSide(
-              color: isSelected ? color : AppColors.divider, width: 1),
-        );
-      }).toList(),
-    );
-  }
-}
 
 class _RepeatSelector extends StatelessWidget {
   final RepeatType selected;

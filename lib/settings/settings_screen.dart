@@ -3,7 +3,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show PlatformException;
 import 'package:shared_preferences/shared_preferences.dart';
 import '../app_colors.dart';
-import '../models/calendar_event.dart';
+import '../services/category_service.dart';
+import 'categories_screen.dart';
 import '../models/ics_source.dart';
 import '../services/auth_service.dart';
 import '../services/daylight_service.dart';
@@ -106,6 +107,18 @@ class _SettingsScreenState extends State<SettingsScreen> {
         ],
       ),
     );
+  }
+
+  Future<void> _openCategories() async {
+    await Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => const CategoriesScreen()),
+    );
+    if (!mounted) return;
+    // Eine geloeschte Kategorie kann die blockierenden Ganztags-Kategorien
+    // veraendert haben.
+    await _loadConstraintSettings();
+    if (mounted) setState(() {});
   }
 
   Future<void> _loadConstraintSettings() async {
@@ -707,6 +720,23 @@ class _SettingsScreenState extends State<SettingsScreen> {
           ),
           const SizedBox(height: 16),
 
+          // Kategorien
+          _Section(
+            title: 'Kategorien',
+            children: [
+              _ActionTile(
+                icon: Icons.label_outline,
+                iconColor: AppColors.primary,
+                title: 'Kategorien bearbeiten',
+                subtitle: CategoryService.all.map((c) => c.label).join(', '),
+                actionLabel: 'Öffnen',
+                actionColor: AppColors.primary,
+                onAction: _openCategories,
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+
           // Feedback
           _Section(
             title: 'Support',
@@ -749,17 +779,17 @@ class _SettingsScreenState extends State<SettingsScreen> {
               ),
             ),
           ),
-          ...EventCategory.values.map((cat) {
-            final name = cat.name;
-            final label = switch (cat) {
-              EventCategory.work     => 'Arbeit',
-              EventCategory.sport    => 'Sport',
-              EventCategory.vacation => 'Urlaub',
-              EventCategory.personal => 'Persönlich',
-            };
+          ...CategoryService.all.map((cat) {
+            final name = cat.key;
             return CheckboxListTile(
-              title: Text(label,
+              title: Text(cat.label,
                   style: const TextStyle(color: AppColors.textPrimary)),
+              secondary: Container(
+                width: 12,
+                height: 12,
+                decoration: BoxDecoration(
+                    shape: BoxShape.circle, color: cat.color),
+              ),
               value: _blockingAllDayCats.contains(name),
               activeColor: AppColors.primary,
               tileColor: AppColors.card,

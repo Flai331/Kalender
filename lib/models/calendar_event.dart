@@ -2,8 +2,6 @@ import 'package:flutter/material.dart';
 
 enum RepeatType { none, daily, weekly, monthly, yearly }
 
-enum EventCategory { work, sport, vacation, personal }
-
 enum EventStatus { pending, started, paused, done }
 
 class CalendarEvent {
@@ -16,7 +14,10 @@ class CalendarEvent {
   final bool isAllDay;
   final RepeatType repeatType;
   final String? repeatNote;
-  final EventCategory category;
+  /// Schluessel der Kategorie. Name und Farbe kommen aus dem
+  /// CategoryService — frueher war das ein enum, die Kategorien sind jetzt
+  /// vom Benutzer bestimmt.
+  final String category;
   final String source; // 'app' | 'outlook'
   final String? outlookEventId; // Graph API event ID für PATCH-Calls
   final EventStatus status;
@@ -54,7 +55,7 @@ class CalendarEvent {
     this.isAllDay = false,
     this.repeatType = RepeatType.none,
     this.repeatNote,
-    this.category = EventCategory.personal,
+    this.category = 'personal',
     this.source = 'app',
     this.outlookEventId,
     this.status = EventStatus.pending,
@@ -98,7 +99,7 @@ class CalendarEvent {
     bool? isAllDay,
     RepeatType? repeatType,
     String? repeatNote,
-    EventCategory? category,
+    String? category,
     String? source,
     String? outlookEventId,
     EventStatus? status,
@@ -156,7 +157,7 @@ class CalendarEvent {
         'isAllDay': isAllDay,
         'repeatType': repeatType.name,
         'repeatNote': repeatNote,
-        'category': category.name,
+        'category': category,
         'source': source,
         'outlookEventId': outlookEventId,
         'status': status.name,
@@ -185,10 +186,7 @@ class CalendarEvent {
           orElse: () => RepeatType.none,
         ),
         repeatNote: json['repeatNote'] as String?,
-        category: EventCategory.values.firstWhere(
-          (e) => e.name == json['category'],
-          orElse: () => EventCategory.personal,
-        ),
+        category: json['category'] as String? ?? 'personal',
         source: json['source'] as String? ?? 'app',
         outlookEventId: json['outlookEventId'] as String?,
         status: EventStatus.values.firstWhere(
