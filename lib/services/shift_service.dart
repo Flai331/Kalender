@@ -26,6 +26,7 @@ class ShiftService {
       afterMinute: afterMinute,
       shiftMinutes: deltaMinutes, // positiv = todos nach hinten, negativ = nach vorne
       onlyFlexible: true,
+      skipTodoId: completedTodo.id,
     );
   }
 
@@ -61,7 +62,8 @@ class ShiftService {
 
       final todoMinutes =
           todo.scheduledStartHour! * 60 + (todo.scheduledStartMinute ?? 0);
-      if (todoMinutes <= afterMinutes) return todo;
+      // Grenze inklusive — wie in LocalService.shiftTodosAfter.
+      if (todoMinutes < afterMinutes) return todo;
 
       final newTotalMinutes = todoMinutes - savedMinutes;
       final newHour = (newTotalMinutes ~/ 60).clamp(0, 23);

@@ -316,27 +316,36 @@ class LocalService {
       });
   }
 
-  /// Verschiebt die Todos eines Tages, die nach [afterHour]:[afterMinute]
+  /// Verschiebt die Todos eines Tages, die ab [afterHour]:[afterMinute]
   /// beginnen, um [shiftMinutes]. Gleiche Logik wie vorher in
   /// SupabaseService.shiftTodosAfter, nur gegen den lokalen Cache — damit
   /// Auto-Shift auch ohne Netz greift.
+  ///
+  /// [skipTodoId] bleibt in jedem Fall liegen — gedacht fuer das gerade
+  /// abgeschlossene To-do, das seine eigene Verschiebung ausloest.
   static Future<void> shiftTodosAfter({
     required DateTime day,
     required int afterHour,
     required int afterMinute,
     required int shiftMinutes,
     required bool onlyFlexible,
+    String? skipTodoId,
   }) async {
     final todos = await getTodosForDate(day);
     final afterMinutes = afterHour * 60 + afterMinute;
 
     for (final todo in todos) {
+      if (skipTodoId != null && todo.id == skipTodoId) continue;
       if (onlyFlexible && todo.isFixed) continue;
       if (todo.scheduledStartHour == null) continue;
 
       final todoMinutes =
           todo.scheduledStartHour! * 60 + (todo.scheduledStartMinute ?? 0);
-      if (todoMinutes <= afterMinutes) continue;
+      // Die Grenze gehoert dazu: der Auto-Shift legt Todos lueckenlos
+      // hintereinander, das naechste beginnt also genau zur Soll-Endzeit
+      // [afterHour]:[afterMinute]. Mit "<=" blieb genau dieses eine stehen,
+      // waehrend alle spaeteren wanderten.
+      if (todoMinutes < afterMinutes) continue;
 
       final totalMinutes = todoMinutes + shiftMinutes;
       final newHour = (totalMinutes ~/ 60).clamp(0, 23);
