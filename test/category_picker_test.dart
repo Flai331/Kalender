@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:kalender/db/app_database.dart';
 import 'package:kalender/services/category_service.dart';
+import 'package:kalender/services/local_service.dart';
 import 'package:kalender/widgets/category_picker.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -11,11 +14,16 @@ import 'package:shared_preferences/shared_preferences.dart';
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
+  late AppDatabase db;
+
   setUp(() async {
     SharedPreferences.setMockInitialValues({});
+    db = AppDatabase.forTesting(NativeDatabase.memory());
+    await LocalService.init(db);
     CategoryService.resetForTesting();
     await CategoryService.load();
   });
+  tearDown(() async => db.close());
 
   Future<void> zeige(
     WidgetTester tester, {

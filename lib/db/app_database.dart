@@ -67,6 +67,21 @@ class WeekNotesCache extends Table {
   Set<Column> get primaryKey => {weekKey, userId};
 }
 
+/// Die Kategorien des Benutzers — EINE Zeile je Benutzer, die die ganze
+/// geordnete Liste traegt.
+///
+/// Nicht eine Zeile je Kategorie: die Reihenfolge gehoert zur Liste, und
+/// Anlegen, Umbenennen und Loeschen sind damit ein einziger Schreibvorgang,
+/// der nicht halb ankommen kann.
+class CategoriesCache extends Table {
+  TextColumn get userId => text()();
+  TextColumn get data => text()();
+  IntColumn get updatedAt => integer()();
+
+  @override
+  Set<Column> get primaryKey => {userId};
+}
+
 class SyncQueue extends Table {
   IntColumn get id => integer().autoIncrement()();
   TextColumn get entityId => text()();
@@ -83,6 +98,7 @@ class SyncQueue extends Table {
   SeriesRemindersCache,
   YearlyChecklistsCache,
   WeekNotesCache,
+  CategoriesCache,
   SyncQueue,
 ])
 class AppDatabase extends _$AppDatabase {
@@ -92,7 +108,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase.forTesting(super.executor);
 
   @override
-  int get schemaVersion => 4;
+  int get schemaVersion => 5;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -113,6 +129,12 @@ class AppDatabase extends _$AppDatabase {
           // gar keine Tabelle, sie liefen ausschliesslich ueber Supabase.
           if (from < 4) {
             await m.createTable(weekNotesCache);
+          }
+          // v5: Kategorien lokal — sie lagen in den Geraete-Einstellungen und
+          // waren nach einer Neuinstallation weg, waehrend die Daten ihre
+          // Schluessel behielten.
+          if (from < 5) {
+            await m.createTable(categoriesCache);
           }
         },
       );

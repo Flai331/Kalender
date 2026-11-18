@@ -6,6 +6,7 @@ import '../models/week_note.dart';
 import '../models/series_reminder.dart';
 import '../models/yearly_checklist.dart';
 import '../models/annual_event.dart';
+import '../models/app_category.dart';
 import 'auth_service.dart';
 
 class SupabaseService {
@@ -172,6 +173,23 @@ class SupabaseService {
       'week_key': note.weekKey,
       'user_id': _uid,
       'data': note.toJson(),
+    });
+  }
+
+  // ── Kategorien ─────────────────────────────────────────────────────────────
+
+  /// Null, wenn der Benutzer noch keine Liste hochgeladen hat.
+  static Future<List<AppCategory>?> getCategories() async {
+    final rows =
+        await _db.from('categories').select().eq('user_id', _uid).limit(1);
+    if ((rows as List).isEmpty) return null;
+    return AppCategory.listFromJson(rows.first['data']);
+  }
+
+  static Future<void> saveCategories(List<AppCategory> items) async {
+    await _db.from('categories').upsert({
+      'user_id': _uid,
+      'data': AppCategory.listToJson(items),
     });
   }
 

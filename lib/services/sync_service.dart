@@ -9,6 +9,7 @@ import '../models/annual_event.dart';
 import '../models/series_reminder.dart';
 import '../models/yearly_checklist.dart';
 import '../models/week_note.dart';
+import '../models/app_category.dart';
 import '../widgets/conflict_dialog.dart';
 import 'local_service.dart';
 import 'supabase_service.dart';
@@ -66,6 +67,7 @@ class SyncService {
       'series_reminders',
       'yearly_checklists',
       'week_notes',
+      'categories',
     };
     if (!known.contains(table)) return;
 
@@ -81,6 +83,9 @@ class SyncService {
           await SupabaseService.deleteYearlyChecklist(entry.entityId);
         case 'week_notes':
           // Notizen werden nie geloescht, nur geleert — nichts zu tun.
+          break;
+        case 'categories':
+          // Die Liste wird immer ganz geschrieben, nie geloescht.
           break;
         default:
           await SupabaseService.deleteTodo(entry.entityId);
@@ -104,6 +109,11 @@ class SyncService {
         return;
       case 'week_notes':
         await SupabaseService.saveWeekNote(WeekNote.fromJson(payload));
+        return;
+      case 'categories':
+        final items = AppCategory.listFromJson(payload);
+        // Unlesbar: Auftrag verwerfen statt ewig wiederholen.
+        if (items != null) await SupabaseService.saveCategories(items);
         return;
     }
 

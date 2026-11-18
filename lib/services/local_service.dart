@@ -10,6 +10,7 @@ import '../models/annual_event.dart';
 import '../models/series_reminder.dart';
 import '../models/yearly_checklist.dart';
 import '../models/week_note.dart';
+import '../models/app_category.dart';
 import 'auth_service.dart';
 
 class LocalService {
@@ -72,6 +73,20 @@ class LocalService {
     await move('series_reminders_cache');
     await move('yearly_checklists_cache');
     await move('week_notes_cache');
+
+    // Kategorien: user_id ist hier der Primaerschluessel. Liegt schon eine
+    // Zeile der echten Sitzung vor, wuerde ein Verschieben sie verletzen —
+    // dann gilt die der Sitzung, und die Geraete-Zeile fliegt weg.
+    final ownRow = await (_db.select(_db.categoriesCache)
+          ..where((c) => c.userId.equals(realUid)))
+        .get();
+    if (ownRow.isEmpty) {
+      await move('categories_cache');
+    } else {
+      await (_db.delete(_db.categoriesCache)
+            ..where((c) => c.userId.equals(from)))
+          .go();
+    }
     return count;
   }
 
@@ -369,6 +384,34 @@ class LocalService {
     return Todo.fromJson(jsonDecode(rows.first.data) as Map<String, dynamic>);
   }
 
+  /// Offene To-dos, die auf einen Tag VOR [day] eingeplant sind.
+  ///
+  /// Gedacht fuer das Nachholen: der Auto-Shift sieht nur den heutigen Tag an,
+  /// also bleibt alles liegen, was an einem vergangenen Tag offen geblieben
+  /// ist. Feste To-dos sind ausgenommen — "fest" heisst, dass die App sie
+  /// nicht verschiebt.
+  static Future<List<Todo>> getOpenTodosBefore(DateTime day) async {
+    final start = DateTime(day.year, day.month, day.day);
+    final todos = await _allTodos();
+    return todos
+        .where((t) =>
+            t.scheduledDate != null &&
+            t.scheduledDate!.isBefore(start) &&
+            !t.isCompleted &&
+            t.status != TodoStatus.done &&
+            !t.isFixed)
+        .toList()
+      ..sort((a, b) {
+        final byDay = a.scheduledDate!.compareTo(b.scheduledDate!);
+        if (byDay != 0) return byDay;
+        final am =
+            (a.scheduledStartHour ?? 0) * 60 + (a.scheduledStartMinute ?? 0);
+        final bm =
+            (b.scheduledStartHour ?? 0) * 60 + (b.scheduledStartMinute ?? 0);
+        return am.compareTo(bm);
+      });
+  }
+
   static Future<List<Todo>> getTodosForDate(DateTime date) async {
     final start = DateTime(date.year, date.month, date.day);
     final end = start.add(const Duration(days: 1));
@@ -457,10 +500,72 @@ class LocalService {
     await _enqueue('week_notes', 'upsert', note.weekKey, note.toJson());
   }
 
+  // ── Kategorien ────────────────────────────────────────────────────────────
+
+  /// Die gespeicherte Liste, oder null, wenn fuer diesen Benutzer noch keine
+  /// Zeile existiert.
+  static Future<List<AppCategory>?> getCategories() async {
+    final rows = await (_db.select(_db.categoriesCache)
+          ..where((c) => c.userId.equals(_uid)))
+        .get();
+    if (rows.isEmpty) return null;
+    return AppCategory.listFromJson(jsonDecode(rows.first.data));
+  }
+
+  /// Schreibt die Liste und meldet sie zum Hochladen an.
+  static Future<void> saveCategories(List<AppCategory> items) async {
+    await _writeCategories(items);
+    // entityId ist die Benutzerkennung — sie identifiziert die Zeile, denn es
+    // gibt genau eine je Benutzer. Dadurch fasst _enqueue mehrere Aenderungen
+    // zu einem Auftrag zusammen.
+    await _enqueue('categories', 'upsert', _uid, AppCategory.listToJson(items));
+  }
+
+  /// Wie [saveCategories], aber ohne Sync-Auftrag — fuer eine Liste, die
+  /// gerade vom Server kam, und fuer die mitgelieferten Vorgaben.
+  static Future<void> seedCategories(List<AppCategory> items) async {
+    await _writeCategories(items);
+  }
+
+  static Future<void> _writeCategories(List<AppCategory> items) async {
+    await _db.into(_db.categoriesCache).insertOnConflictUpdate(
+          CategoriesCacheCompanion(
+            userId: Value(_uid),
+            data: Value(jsonEncode(AppCategory.listToJson(items))),
+            updatedAt: Value(DateTime.now().millisecondsSinceEpoch),
+          ),
+        );
+  }
+
   // ── Sync queue ────────────────────────────────────────────────────────────
 
   static Future<void> _enqueue(
       String table, String operation, String entityId, Map<String, dynamic> payload) async {
+    // Offene Auftraege desselben Eintrags zusammenfassen. Ein ueberfaelliges
+    // To-do wird jede Minute neu auf "jetzt" geschrieben; ohne das staende
+    // eine Stunde spaeter sechzigmal derselbe Datensatz in der Schlange und
+    // ginge sechzigmal an Supabase. Jeder upsert traegt den vollstaendigen
+    // Datensatz, der aelteste ist also nichts wert.
+    //
+    // Geloescht und neu eingestellt, nicht ueberschrieben: der SyncService
+    // kann gerade dabei sein, genau diese Zeile zu verschicken, und raeumt sie
+    // danach anhand ihrer id weg. Eine ueberschriebene Zeile waere damit samt
+    // der neuen Aenderung verschwunden — eine neue Zeile bleibt stehen und
+    // geht beim naechsten Durchgang raus.
+    await (_db.delete(_db.syncQueue)
+          ..where((q) {
+            final sameEntity =
+                q.targetTable.equals(table) & q.entityId.equals(entityId);
+            // Vor einem delete faellt alles Offene weg. Ein upsert raeumt nur
+            // andere upserts ab und laesst ein wartendes delete stehen, sonst
+            // kippte die Reihenfolge der beiden und der Eintrag verschwaende
+            // auf dem Server.
+            return operation == 'delete'
+                ? sameEntity
+                : sameEntity & q.operation.equals('upsert');
+          }))
+        .go();
+
     await _db.into(_db.syncQueue).insert(SyncQueueCompanion(
           entityId: Value(entityId),
           targetTable: Value(table), // NOTE: targetTable, not tableName
@@ -591,4 +696,7 @@ class LocalService {
   /// Unter dieser Kennung wird gespeichert und gelesen: die Sitzung, wenn es
   /// eine gibt, sonst die Geraete-Kennung.
   static String get _uid => sessionUid ?? _deviceUid ?? '';
+
+  /// Die Kennung, unter der gerade gespeichert wird. Fuer Tests und Diagnose.
+  static String get currentUid => _uid;
 }

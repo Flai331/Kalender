@@ -4,16 +4,21 @@ import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../models/app_category.dart';
+import 'local_service.dart';
 
 /// Die Kategorien der App — welche es gibt, wie sie heissen, welche Farbe sie
 /// haben. Frueher stand diese Liste viermal im Code, auf Englisch und fest
 /// verdrahtet; hier steht sie einmal und gehoert dem Benutzer.
 ///
-/// Gespeichert wird in den Einstellungen des Geraets, wie bei den ICS-Quellen
-/// und den An-/Abfahrtszeiten. Die Daten selbst (Todos, Termine, Jahres-Events)
-/// tragen nur den Schluessel; Name und Farbe kommen von hier.
+/// Gespeichert wird in der lokalen Datenbank und von dort aus synchronisiert,
+/// wie Termine und Todos: eine umbenannte Kategorie heisst damit auf jedem
+/// Geraet gleich, und eine Neuinstallation holt die Liste zurueck. Die Daten
+/// selbst (Todos, Termine, Jahres-Events) tragen nur den Schluessel; Name und
+/// Farbe kommen von hier.
 class CategoryService {
-  static const String _storageKey = 'app_categories';
+  /// Nur noch fuer die einmalige Uebernahme: bis zur Synchronisierung stand
+  /// die Liste unter diesem Schluessel in den Einstellungen des Geraets.
+  static const String _legacyStorageKey = 'app_categories';
 
   /// Farbe fuer einen Schluessel, den es nicht mehr gibt. Bewusst neutral:
   /// so sieht man, dass die Kategorie fehlt, statt sie mit einer fremden zu
@@ -61,11 +66,44 @@ class CategoryService {
   static String get fallbackKey =>
       _items.isEmpty ? 'personal' : _items.first.key;
 
+  /// Reihenfolge der Quellen: lokale Datenbank, dann die alte Liste aus den
+  /// Geraete-Einstellungen, dann die Vorgaben. Was auf dem Server liegt, legt
+  /// `main` vor diesem Aufruf in die lokale Datenbank — von hier aus ist das
+  /// dann einfach der lokale Stand.
   static Future<void> load() async {
-    final prefs = await SharedPreferences.getInstance();
-    _items = _decode(prefs.getString(_storageKey));
+    _items = await _loadItems();
     _loaded = true;
     revision.value++;
+  }
+
+  static Future<List<AppCategory>> _loadItems() async {
+    final List<AppCategory>? stored;
+    try {
+      stored = await LocalService.getCategories();
+    } catch (_) {
+      // Ohne lokale Datenbank bleibt es bei den Vorgaben, statt dass der
+      // Start scheitert.
+      return List.of(defaults);
+    }
+    if (stored != null && stored.isNotEmpty) return _dedupe(stored);
+
+    final prefs = await SharedPreferences.getInstance();
+    final legacy = prefs.getString(_legacyStorageKey);
+    if (legacy != null && legacy.isNotEmpty) {
+      final items = _decode(legacy);
+      // Mit Sync-Auftrag: die eigenen Kategorien dieses Geraets sollen auf
+      // den Server, nicht nur in die lokale Datenbank.
+      await LocalService.saveCategories(items);
+      await prefs.remove(_legacyStorageKey);
+      return items;
+    }
+
+    // Nichts gespeichert. Die Vorgaben werden lokal festgeschrieben, aber
+    // bewusst NICHT hochgeladen: ein neues Geraet, das beim ersten Start
+    // offline ist, wuerde damit sonst die Liste auf dem Server ueberschreiben.
+    final items = List.of(defaults);
+    await LocalService.seedCategories(items);
+    return items;
   }
 
   static AppCategory? byKey(String? key) {
@@ -91,9 +129,7 @@ class CategoryService {
   // ── Aendern ───────────────────────────────────────────────────────────────
 
   static Future<void> _persist() async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(
-        _storageKey, jsonEncode(_items.map((c) => c.toJson()).toList()));
+    await LocalService.saveCategories(_items);
     revision.value++;
   }
 
@@ -146,24 +182,31 @@ class CategoryService {
 
   // ── Intern ────────────────────────────────────────────────────────────────
 
+  /// Liest das alte Format aus den Geraete-Einstellungen: ein nacktes Array.
   static List<AppCategory> _decode(String? raw) {
     if (raw == null || raw.isEmpty) return List.of(defaults);
     try {
       final data = jsonDecode(raw);
       if (data is! List) return List.of(defaults);
       final out = <AppCategory>[];
-      final seen = <String>{};
       for (final entry in data) {
         if (entry is! Map) continue;
         final cat = AppCategory.fromJson(Map<String, dynamic>.from(entry));
-        if (cat == null || !seen.add(cat.key)) continue;
-        out.add(cat);
+        if (cat != null) out.add(cat);
       }
-      return out.isEmpty ? List.of(defaults) : out;
+      final unique = _dedupe(out);
+      return unique.isEmpty ? List.of(defaults) : unique;
     } catch (_) {
-      // Unlesbare Einstellung darf den Start nicht blockieren.
+      // Unlesbares Gespeichertes darf den Start nicht blockieren.
       return List.of(defaults);
     }
+  }
+
+  /// Ein Schluessel darf nur einmal vorkommen — sonst zeigt die Auswahl
+  /// denselben Eintrag zweimal und labelOf waere nicht eindeutig.
+  static List<AppCategory> _dedupe(List<AppCategory> items) {
+    final seen = <String>{};
+    return items.where((c) => seen.add(c.key)).toList();
   }
 
   /// Bildet aus dem Namen einen Schluessel, der noch frei ist.

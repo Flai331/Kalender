@@ -48,6 +48,8 @@ class WeekScreenState extends State<WeekScreen> {
   List<CalendarEvent> _events = [];
   List<CalendarEvent> _icsEvents = [];
   List<Todo> _todos = [];
+  /// Tag, fuer den zuletzt Liegengebliebenes nachgeholt wurde.
+  DateTime? _carriedOverFor;
   List<Todo> _unscheduled = [];
   List<YearlyChecklist> _pendingChecklists = [];
   List<IcsSource> _icsSources = [];
@@ -1437,17 +1439,50 @@ class WeekScreenState extends State<WeekScreen> {
 
   // ── Auto-Shift ─────────────────────────────────────────────────────────────
 
+  /// Holt offene To-dos aus vergangenen Tagen auf heute.
+  ///
+  /// Ohne das bleiben sie liegen, wo sie waren: der Auto-Shift unten sieht nur
+  /// den heutigen Tag an, und um Mitternacht ist ein unerledigtes To-do nicht
+  /// mehr "heute". Gerade das, was man liegen laesst, verschwaende damit nach
+  /// hinten aus dem Blick.
+  ///
+  /// Laeuft einmal beim Oeffnen und danach einmal je Tageswechsel — oefter
+  /// waere es eine Abfrage ohne Ergebnis.
+  Future<void> _carryOverOpenTodos(DateTime today) async {
+    if (_carriedOverFor == today) return;
+    _carriedOverFor = today; // vor dem await: der Timer ruft jede Minute
+    final stale = await LocalService.getOpenTodosBefore(today);
+    if (stale.isEmpty) return;
+
+    for (final todo in stale) {
+      // Die Uhrzeit bleibt. Ist sie heute schon vorbei, raeumt der Shift
+      // unten das To-do ohnehin nach vorne.
+      await LocalService.saveTodo(todo.copyWith(scheduledDate: today));
+    }
+
+    if (!mounted) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text(stale.length == 1
+            ? 'Ein liegengebliebenes To-do auf heute geholt.'
+            : '${stale.length} liegengebliebene To-dos auf heute geholt.'),
+      ));
+    });
+  }
+
   Future<void> _autoShiftOverdueTodos() async {
     final now = DateTime.now();
     final today = DateTime(now.year, now.month, now.day);
     final nowMinutes = now.hour * 60 + now.minute;
 
-    final todayTodos = _todos
+    await _carryOverOpenTodos(today);
+
+    // Aus der Datenbank, nicht aus _todos: _todos haelt die ANGEZEIGTE Woche.
+    // Blaettert man eine Woche weiter, waeren die heutigen To-dos nicht darin
+    // und der Shift liefe ins Leere.
+    final todayTodos = (await LocalService.getTodosForDate(today))
         .where((t) =>
-            t.scheduledDate != null &&
-            t.scheduledDate!.year == today.year &&
-            t.scheduledDate!.month == today.month &&
-            t.scheduledDate!.day == today.day &&
             t.scheduledStartHour != null &&
             !t.isFixed &&
             (t.status == TodoStatus.pending ||

@@ -1861,6 +1861,272 @@ class WeekNotesCacheCompanion extends UpdateCompanion<WeekNotesCacheData> {
   }
 }
 
+class $CategoriesCacheTable extends CategoriesCache
+    with TableInfo<$CategoriesCacheTable, CategoriesCacheData> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $CategoriesCacheTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _userIdMeta = const VerificationMeta('userId');
+  @override
+  late final GeneratedColumn<String> userId = GeneratedColumn<String>(
+    'user_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _dataMeta = const VerificationMeta('data');
+  @override
+  late final GeneratedColumn<String> data = GeneratedColumn<String>(
+    'data',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _updatedAtMeta = const VerificationMeta(
+    'updatedAt',
+  );
+  @override
+  late final GeneratedColumn<int> updatedAt = GeneratedColumn<int>(
+    'updated_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [userId, data, updatedAt];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'categories_cache';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<CategoriesCacheData> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('user_id')) {
+      context.handle(
+        _userIdMeta,
+        userId.isAcceptableOrUnknown(data['user_id']!, _userIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_userIdMeta);
+    }
+    if (data.containsKey('data')) {
+      context.handle(
+        _dataMeta,
+        this.data.isAcceptableOrUnknown(data['data']!, _dataMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_dataMeta);
+    }
+    if (data.containsKey('updated_at')) {
+      context.handle(
+        _updatedAtMeta,
+        updatedAt.isAcceptableOrUnknown(data['updated_at']!, _updatedAtMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_updatedAtMeta);
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {userId};
+  @override
+  CategoriesCacheData map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return CategoriesCacheData(
+      userId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}user_id'],
+      )!,
+      data: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}data'],
+      )!,
+      updatedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}updated_at'],
+      )!,
+    );
+  }
+
+  @override
+  $CategoriesCacheTable createAlias(String alias) {
+    return $CategoriesCacheTable(attachedDatabase, alias);
+  }
+}
+
+class CategoriesCacheData extends DataClass
+    implements Insertable<CategoriesCacheData> {
+  final String userId;
+  final String data;
+  final int updatedAt;
+  const CategoriesCacheData({
+    required this.userId,
+    required this.data,
+    required this.updatedAt,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['user_id'] = Variable<String>(userId);
+    map['data'] = Variable<String>(data);
+    map['updated_at'] = Variable<int>(updatedAt);
+    return map;
+  }
+
+  CategoriesCacheCompanion toCompanion(bool nullToAbsent) {
+    return CategoriesCacheCompanion(
+      userId: Value(userId),
+      data: Value(data),
+      updatedAt: Value(updatedAt),
+    );
+  }
+
+  factory CategoriesCacheData.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return CategoriesCacheData(
+      userId: serializer.fromJson<String>(json['userId']),
+      data: serializer.fromJson<String>(json['data']),
+      updatedAt: serializer.fromJson<int>(json['updatedAt']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'userId': serializer.toJson<String>(userId),
+      'data': serializer.toJson<String>(data),
+      'updatedAt': serializer.toJson<int>(updatedAt),
+    };
+  }
+
+  CategoriesCacheData copyWith({
+    String? userId,
+    String? data,
+    int? updatedAt,
+  }) => CategoriesCacheData(
+    userId: userId ?? this.userId,
+    data: data ?? this.data,
+    updatedAt: updatedAt ?? this.updatedAt,
+  );
+  CategoriesCacheData copyWithCompanion(CategoriesCacheCompanion data) {
+    return CategoriesCacheData(
+      userId: data.userId.present ? data.userId.value : this.userId,
+      data: data.data.present ? data.data.value : this.data,
+      updatedAt: data.updatedAt.present ? data.updatedAt.value : this.updatedAt,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('CategoriesCacheData(')
+          ..write('userId: $userId, ')
+          ..write('data: $data, ')
+          ..write('updatedAt: $updatedAt')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(userId, data, updatedAt);
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is CategoriesCacheData &&
+          other.userId == this.userId &&
+          other.data == this.data &&
+          other.updatedAt == this.updatedAt);
+}
+
+class CategoriesCacheCompanion extends UpdateCompanion<CategoriesCacheData> {
+  final Value<String> userId;
+  final Value<String> data;
+  final Value<int> updatedAt;
+  final Value<int> rowid;
+  const CategoriesCacheCompanion({
+    this.userId = const Value.absent(),
+    this.data = const Value.absent(),
+    this.updatedAt = const Value.absent(),
+    this.rowid = const Value.absent(),
+  });
+  CategoriesCacheCompanion.insert({
+    required String userId,
+    required String data,
+    required int updatedAt,
+    this.rowid = const Value.absent(),
+  }) : userId = Value(userId),
+       data = Value(data),
+       updatedAt = Value(updatedAt);
+  static Insertable<CategoriesCacheData> custom({
+    Expression<String>? userId,
+    Expression<String>? data,
+    Expression<int>? updatedAt,
+    Expression<int>? rowid,
+  }) {
+    return RawValuesInsertable({
+      if (userId != null) 'user_id': userId,
+      if (data != null) 'data': data,
+      if (updatedAt != null) 'updated_at': updatedAt,
+      if (rowid != null) 'rowid': rowid,
+    });
+  }
+
+  CategoriesCacheCompanion copyWith({
+    Value<String>? userId,
+    Value<String>? data,
+    Value<int>? updatedAt,
+    Value<int>? rowid,
+  }) {
+    return CategoriesCacheCompanion(
+      userId: userId ?? this.userId,
+      data: data ?? this.data,
+      updatedAt: updatedAt ?? this.updatedAt,
+      rowid: rowid ?? this.rowid,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (userId.present) {
+      map['user_id'] = Variable<String>(userId.value);
+    }
+    if (data.present) {
+      map['data'] = Variable<String>(data.value);
+    }
+    if (updatedAt.present) {
+      map['updated_at'] = Variable<int>(updatedAt.value);
+    }
+    if (rowid.present) {
+      map['rowid'] = Variable<int>(rowid.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('CategoriesCacheCompanion(')
+          ..write('userId: $userId, ')
+          ..write('data: $data, ')
+          ..write('updatedAt: $updatedAt, ')
+          ..write('rowid: $rowid')
+          ..write(')'))
+        .toString();
+  }
+}
+
 class $SyncQueueTable extends SyncQueue
     with TableInfo<$SyncQueueTable, SyncQueueData> {
   @override
@@ -2278,6 +2544,9 @@ abstract class _$AppDatabase extends GeneratedDatabase {
   late final $YearlyChecklistsCacheTable yearlyChecklistsCache =
       $YearlyChecklistsCacheTable(this);
   late final $WeekNotesCacheTable weekNotesCache = $WeekNotesCacheTable(this);
+  late final $CategoriesCacheTable categoriesCache = $CategoriesCacheTable(
+    this,
+  );
   late final $SyncQueueTable syncQueue = $SyncQueueTable(this);
   @override
   Iterable<TableInfo<Table, Object?>> get allTables =>
@@ -2290,6 +2559,7 @@ abstract class _$AppDatabase extends GeneratedDatabase {
     seriesRemindersCache,
     yearlyChecklistsCache,
     weekNotesCache,
+    categoriesCache,
     syncQueue,
   ];
 }
@@ -3434,6 +3704,178 @@ typedef $$WeekNotesCacheTableProcessedTableManager =
       WeekNotesCacheData,
       PrefetchHooks Function()
     >;
+typedef $$CategoriesCacheTableCreateCompanionBuilder =
+    CategoriesCacheCompanion Function({
+      required String userId,
+      required String data,
+      required int updatedAt,
+      Value<int> rowid,
+    });
+typedef $$CategoriesCacheTableUpdateCompanionBuilder =
+    CategoriesCacheCompanion Function({
+      Value<String> userId,
+      Value<String> data,
+      Value<int> updatedAt,
+      Value<int> rowid,
+    });
+
+class $$CategoriesCacheTableFilterComposer
+    extends Composer<_$AppDatabase, $CategoriesCacheTable> {
+  $$CategoriesCacheTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<String> get userId => $composableBuilder(
+    column: $table.userId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get data => $composableBuilder(
+    column: $table.data,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get updatedAt => $composableBuilder(
+    column: $table.updatedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+}
+
+class $$CategoriesCacheTableOrderingComposer
+    extends Composer<_$AppDatabase, $CategoriesCacheTable> {
+  $$CategoriesCacheTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<String> get userId => $composableBuilder(
+    column: $table.userId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get data => $composableBuilder(
+    column: $table.data,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get updatedAt => $composableBuilder(
+    column: $table.updatedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+}
+
+class $$CategoriesCacheTableAnnotationComposer
+    extends Composer<_$AppDatabase, $CategoriesCacheTable> {
+  $$CategoriesCacheTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<String> get userId =>
+      $composableBuilder(column: $table.userId, builder: (column) => column);
+
+  GeneratedColumn<String> get data =>
+      $composableBuilder(column: $table.data, builder: (column) => column);
+
+  GeneratedColumn<int> get updatedAt =>
+      $composableBuilder(column: $table.updatedAt, builder: (column) => column);
+}
+
+class $$CategoriesCacheTableTableManager
+    extends
+        RootTableManager<
+          _$AppDatabase,
+          $CategoriesCacheTable,
+          CategoriesCacheData,
+          $$CategoriesCacheTableFilterComposer,
+          $$CategoriesCacheTableOrderingComposer,
+          $$CategoriesCacheTableAnnotationComposer,
+          $$CategoriesCacheTableCreateCompanionBuilder,
+          $$CategoriesCacheTableUpdateCompanionBuilder,
+          (
+            CategoriesCacheData,
+            BaseReferences<
+              _$AppDatabase,
+              $CategoriesCacheTable,
+              CategoriesCacheData
+            >,
+          ),
+          CategoriesCacheData,
+          PrefetchHooks Function()
+        > {
+  $$CategoriesCacheTableTableManager(
+    _$AppDatabase db,
+    $CategoriesCacheTable table,
+  ) : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$CategoriesCacheTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$CategoriesCacheTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$CategoriesCacheTableAnnotationComposer($db: db, $table: table),
+          updateCompanionCallback:
+              ({
+                Value<String> userId = const Value.absent(),
+                Value<String> data = const Value.absent(),
+                Value<int> updatedAt = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => CategoriesCacheCompanion(
+                userId: userId,
+                data: data,
+                updatedAt: updatedAt,
+                rowid: rowid,
+              ),
+          createCompanionCallback:
+              ({
+                required String userId,
+                required String data,
+                required int updatedAt,
+                Value<int> rowid = const Value.absent(),
+              }) => CategoriesCacheCompanion.insert(
+                userId: userId,
+                data: data,
+                updatedAt: updatedAt,
+                rowid: rowid,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
+              .toList(),
+          prefetchHooksCallback: null,
+        ),
+      );
+}
+
+typedef $$CategoriesCacheTableProcessedTableManager =
+    ProcessedTableManager<
+      _$AppDatabase,
+      $CategoriesCacheTable,
+      CategoriesCacheData,
+      $$CategoriesCacheTableFilterComposer,
+      $$CategoriesCacheTableOrderingComposer,
+      $$CategoriesCacheTableAnnotationComposer,
+      $$CategoriesCacheTableCreateCompanionBuilder,
+      $$CategoriesCacheTableUpdateCompanionBuilder,
+      (
+        CategoriesCacheData,
+        BaseReferences<
+          _$AppDatabase,
+          $CategoriesCacheTable,
+          CategoriesCacheData
+        >,
+      ),
+      CategoriesCacheData,
+      PrefetchHooks Function()
+    >;
 typedef $$SyncQueueTableCreateCompanionBuilder =
     SyncQueueCompanion Function({
       Value<int> id,
@@ -3665,6 +4107,8 @@ class $AppDatabaseManager {
       $$YearlyChecklistsCacheTableTableManager(_db, _db.yearlyChecklistsCache);
   $$WeekNotesCacheTableTableManager get weekNotesCache =>
       $$WeekNotesCacheTableTableManager(_db, _db.weekNotesCache);
+  $$CategoriesCacheTableTableManager get categoriesCache =>
+      $$CategoriesCacheTableTableManager(_db, _db.categoriesCache);
   $$SyncQueueTableTableManager get syncQueue =>
       $$SyncQueueTableTableManager(_db, _db.syncQueue);
 }

@@ -70,6 +70,22 @@ Database _openV3Database() {
   return raw;
 }
 
+/// Datenbank im Schema-Stand v4 — der Stand vor dem Synchronisieren der
+/// Kategorien, als sie noch in den Einstellungen des Geraets lagen.
+Database _openV4Database() {
+  final raw = _openV3Database();
+  raw.execute('''
+    CREATE TABLE week_notes_cache (
+      week_key TEXT NOT NULL,
+      user_id TEXT NOT NULL,
+      data TEXT NOT NULL,
+      updated_at INTEGER NOT NULL,
+      PRIMARY KEY (week_key, user_id));
+  ''');
+  raw.execute('PRAGMA user_version = 4;');
+  return raw;
+}
+
 void main() {
   late AppDatabase db;
 
@@ -89,7 +105,7 @@ void main() {
           .toList();
 
       expect(tables, contains('annual_events_cache'));
-      expect(raw.userVersion, 4);
+      expect(raw.userVersion, db.schemaVersion);
       // Bestandsdaten-Tabellen bleiben erhalten.
       expect(tables, contains('events_cache'));
       expect(tables, contains('todos_cache'));
@@ -126,7 +142,7 @@ void main() {
       expect(tables, contains('yearly_checklists_cache'));
       expect(tables, contains('annual_events_cache'));
       expect(tables, contains('week_notes_cache'));
-      expect(raw.userVersion, 4);
+      expect(raw.userVersion, db.schemaVersion);
     });
 
     test('v1 springt direkt auf v3 durch', () async {
@@ -147,7 +163,7 @@ void main() {
       expect(tables, contains('series_reminders_cache'));
       expect(tables, contains('yearly_checklists_cache'));
       expect(tables, contains('week_notes_cache'));
-      expect(raw.userVersion, 4);
+      expect(raw.userVersion, db.schemaVersion);
       // Bestandsdaten überleben den Sprung über zwei Versionen.
       expect(raw.select('SELECT id FROM events_cache').length, 1);
     });
@@ -169,8 +185,43 @@ void main() {
           .toList();
 
       expect(tables, contains('week_notes_cache'));
-      expect(raw.userVersion, 4);
+      expect(raw.userVersion, db.schemaVersion);
       expect(raw.select('SELECT id FROM series_reminders_cache').length, 1);
+    });
+  });
+
+  group('Schema-Migration v4 → v5', () {
+    test('legt categories_cache an und behaelt die Bestandsdaten', () async {
+      final raw = _openV4Database();
+      raw.execute(
+        "INSERT INTO week_notes_cache (week_key, user_id, data, updated_at) "
+        "VALUES ('2026-W47', 'u1', '{}', 1)",
+      );
+      db = AppDatabase.forTesting(NativeDatabase.opened(raw));
+      await db.customSelect('SELECT 1').get();
+
+      final tables = raw
+          .select("SELECT name FROM sqlite_master WHERE type = 'table'")
+          .map((r) => r['name'] as String)
+          .toList();
+
+      expect(tables, contains('categories_cache'));
+      expect(raw.userVersion, db.schemaVersion);
+      expect(raw.select('SELECT week_key FROM week_notes_cache').length, 1);
+    });
+
+    test('eine v1-DB kommt in einem Lauf bis v5 durch', () async {
+      final raw = _openV1Database();
+      db = AppDatabase.forTesting(NativeDatabase.opened(raw));
+      await db.customSelect('SELECT 1').get();
+
+      final tables = raw
+          .select("SELECT name FROM sqlite_master WHERE type = 'table'")
+          .map((r) => r['name'] as String)
+          .toList();
+
+      expect(tables, contains('week_notes_cache'));
+      expect(tables, contains('categories_cache'));
     });
   });
 

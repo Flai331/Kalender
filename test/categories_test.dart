@@ -20,10 +20,17 @@ import 'package:shared_preferences/shared_preferences.dart';
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
-  setUp(() {
+  // Die Liste liegt in der lokalen Datenbank, damit sie mitsynchronisiert
+  // wird — jeder Test braucht daher eine eigene, leere.
+  late AppDatabase db;
+
+  setUp(() async {
     SharedPreferences.setMockInitialValues({});
+    db = AppDatabase.forTesting(NativeDatabase.memory());
+    await LocalService.init(db);
     CategoryService.resetForTesting();
   });
+  tearDown(() async => db.close());
 
   group('Vorgaben', () {
     test('ohne Einstellung gelten vier Kategorien auf Deutsch', () async {
@@ -141,20 +148,20 @@ void main() {
       expect(CategoryService.labelOf('ehrenamt'), 'Ehrenamt');
     });
 
-    test('eine unlesbare Einstellung kostet nicht den Start', () async {
+    test('eine unlesbare alte Einstellung kostet nicht den Start', () async {
       SharedPreferences.setMockInitialValues(
           {'app_categories': 'kein json {{{'});
       await CategoryService.load();
       expect(CategoryService.keys, ['personal', 'work', 'sport', 'vacation']);
     });
 
-    test('eine leere Liste faellt auf die Vorgaben zurueck', () async {
+    test('eine leere alte Liste faellt auf die Vorgaben zurueck', () async {
       SharedPreferences.setMockInitialValues({'app_categories': '[]'});
       await CategoryService.load();
       expect(CategoryService.all, isNotEmpty);
     });
 
-    test('doppelte Schluessel in der Einstellung werden zusammengelegt',
+    test('doppelte Schluessel werden zusammengelegt',
         () async {
       SharedPreferences.setMockInitialValues({
         'app_categories': jsonEncode([
@@ -217,14 +224,7 @@ void main() {
   });
 
   group('Umhaengen beim Loeschen', () {
-    late AppDatabase db;
-
-    setUp(() async {
-      db = AppDatabase.forTesting(NativeDatabase.memory());
-      await LocalService.init(db);
-      await CategoryService.load();
-    });
-    tearDown(() async => db.close());
+    setUp(() async => CategoryService.load());
 
     Future<void> bestand() async {
       await LocalService.saveTodo(Todo(

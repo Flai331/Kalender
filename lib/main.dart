@@ -69,9 +69,6 @@ void main() async {
   // An-/Abfahrtszeiten in den Speicher holen, damit TravelService.resolve
   // ohne await auskommt und in build aufgerufen werden kann.
   await TravelService.load();
-  // Namen und Farben der Kategorien; ohne sie zeigen Termine und Todos nur
-  // ihren Schluessel.
-  await CategoryService.load();
   SyncService.init(navigatorKey);
 
   // Offline angelegte Daten der echten Sitzung zuschlagen. Muss nach
@@ -117,10 +114,27 @@ void main() async {
             await SupabaseService.getAllWeekNotes());
         await prefs.setBool('local_seeded_notes', true);
       }
+      // Kategorien: nur holen, wenn lokal noch keine Liste steht. Sonst
+      // ueberschriebe der Server-Stand gerade erst offline angelegte
+      // Kategorien, deren Sync-Auftrag noch in der Warteschlange liegt.
+      if (prefs.getBool('local_seeded_categories') != true) {
+        if (await LocalService.getCategories() == null) {
+          final remote = await SupabaseService.getCategories();
+          if (remote != null && remote.isNotEmpty) {
+            await LocalService.seedCategories(remote);
+          }
+        }
+        await prefs.setBool('local_seeded_categories', true);
+      }
     } catch (e) {
       debugPrint('Local seed failed: $e');
     }
   }
+
+  // Namen und Farben der Kategorien; ohne sie zeigen Termine und Todos nur
+  // ihren Schluessel. Nach dem Seeding, damit eine Neuinstallation die Liste
+  // der anderen Geraete liest und nicht die Vorgaben.
+  await CategoryService.load();
 
   // Serien-Erinnerungen einplanen. Muss nach LocalService.init + Seeding
   // laufen. Bewusst nicht awaited: die Fallback-Regel fragt Outlook ab, und
