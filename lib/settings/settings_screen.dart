@@ -10,9 +10,12 @@ import '../services/daylight_service.dart';
 import '../services/feedback_service.dart';
 import '../services/ics_service.dart';
 import '../services/reminder_service.dart';
+import '../services/travel_service.dart';
+import '../models/travel_times.dart';
 import '../services/update_service.dart';
 import '../widgets/save_feedback.dart';
 import '../widgets/feedback_button.dart';
+import '../widgets/travel_time_picker.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -53,6 +56,56 @@ class _SettingsScreenState extends State<SettingsScreen> {
         _outlookAllowTodoDrop = outlook;
       });
     }
+  }
+
+  Future<void> _setCalendarTravel(String calendarId, TravelTimes times) async {
+    await TravelService.setCalendarTimes(calendarId, times);
+    if (mounted) setState(() {});
+  }
+
+  /// Eine Zeile je Kalender: Name und die beiden Vorgaben.
+  ///
+  /// Über einer Kalender-Vorgabe steht nichts mehr, deshalb heißt der leere
+  /// Zustand hier „Keine Vorgabe" und nicht „Vorgabe".
+  Widget _travelTile(String calendarId, String name, IconData icon) {
+    final t = TravelService.calendarTimes(calendarId);
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 10, 16, 10),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(icon, size: 16, color: AppColors.primary),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(name,
+                    style: const TextStyle(
+                        color: AppColors.textPrimary,
+                        fontSize: 14,
+                        fontWeight: FontWeight.w600)),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          TravelTimePicker(
+            label: 'Anfahrt',
+            minutes: t.before,
+            inheritLabel: 'Keine Vorgabe',
+            onChanged: (v) =>
+                _setCalendarTravel(calendarId, t.copyWith(before: v)),
+          ),
+          const SizedBox(height: 6),
+          TravelTimePicker(
+            label: 'Abfahrt',
+            minutes: t.after,
+            inheritLabel: 'Keine Vorgabe',
+            onChanged: (v) =>
+                _setCalendarTravel(calendarId, t.copyWith(after: v)),
+          ),
+        ],
+      ),
+    );
   }
 
   Future<void> _loadConstraintSettings() async {
@@ -555,6 +608,35 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   ],
                 ),
               ),
+            ],
+          ),
+          const SizedBox(height: 16),
+
+          // An-/Abfahrtszeiten je Kalender
+          _Section(
+            title: 'An- und Abfahrtszeiten',
+            children: [
+              const Padding(
+                padding: EdgeInsets.fromLTRB(16, 12, 16, 4),
+                child: Text(
+                    'Gilt für alle Termine des jeweiligen Kalenders. '
+                    'Einzelne Termine und ganze Serien können davon abweichen '
+                    '— das stellt man am Termin selbst ein.',
+                    style: TextStyle(
+                        color: AppColors.textSecondary, fontSize: 12)),
+              ),
+              _travelTile(TravelService.ownCalendarId, 'Eigene Termine',
+                  Icons.phone_android),
+              if (_sourcesLoading)
+                const Padding(
+                  padding: EdgeInsets.all(16),
+                  child: Center(
+                      child: CircularProgressIndicator(
+                          color: AppColors.primary, strokeWidth: 2)),
+                )
+              else
+                ..._sources.map((src) =>
+                    _travelTile(src.id, src.name, Icons.cloud_outlined)),
             ],
           ),
           const SizedBox(height: 16),

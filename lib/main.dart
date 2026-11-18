@@ -15,6 +15,7 @@ import 'services/local_service.dart';
 import 'services/reminder_service.dart';
 import 'services/supabase_service.dart';
 import 'services/sync_service.dart';
+import 'services/travel_service.dart';
 import 'services/widget_service.dart';
 import 'week/week_screen.dart' show WeekScreen, WeekScreenState;
 import 'todos/todo_edit_screen.dart';
@@ -64,6 +65,9 @@ void main() async {
 
   final db = AppDatabase();
   await LocalService.init(db);
+  // An-/Abfahrtszeiten in den Speicher holen, damit TravelService.resolve
+  // ohne await auskommt und in build aufgerufen werden kann.
+  await TravelService.load();
   SyncService.init(navigatorKey);
 
   // Offline angelegte Daten der echten Sitzung zuschlagen. Muss nach

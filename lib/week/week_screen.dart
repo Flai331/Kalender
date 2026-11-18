@@ -12,6 +12,7 @@ import '../models/yearly_checklist.dart';
 import '../services/daylight_service.dart';
 import '../services/local_service.dart';
 import '../services/shift_service.dart';
+import '../services/travel_service.dart';
 import '../services/widget_service.dart';
 import '../services/ics_service.dart';
 import '../models/ics_source.dart';
@@ -20,6 +21,7 @@ import '../todos/todo_status_dialog.dart';
 import '../widgets/feedback_button.dart';
 import '../week/event_status_dialog.dart';
 import '../week/event_edit_screen.dart';
+import '../week/travel_override_dialog.dart';
 import '../todos/todo_edit_screen.dart';
 
 const _uuid = Uuid();
@@ -141,6 +143,9 @@ class WeekScreenState extends State<WeekScreen> {
     _loadBlockingCats();
     SnapState.snapNotifier.addListener(_onSnapChanged);
     SnapState.isDraggingNotifier.addListener(_onSnapChanged);
+    // Neue An-/Abfahrtsvorgabe: sofort neu zeichnen. Die Termine selbst haben
+    // sich nicht geaendert, der Stream meldet also nichts.
+    TravelService.revision.addListener(_onTravelChanged);
     HardwareKeyboard.instance.addHandler(_onKey);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _scrollToNow();
@@ -157,6 +162,10 @@ class WeekScreenState extends State<WeekScreen> {
 
   DateTime _getWeekStart(DateTime date) {
     return date.subtract(Duration(days: date.weekday - 1));
+  }
+
+  void _onTravelChanged() {
+    if (mounted) setState(() {});
   }
 
   void _initStreams() {
@@ -201,6 +210,16 @@ class WeekScreenState extends State<WeekScreen> {
   }
 
   CalendarEvent _convertIcsToApp(CalendarEvent ics) {
+    // Beim Übernehmen verliert der Termin seine Herkunft: neue Kennung, keine
+    // Quelle, keine Serie. Eine eingestellte An-/Abfahrt hinge damit in der
+    // Luft — sie wird als eigener Wert mitgenommen, damit "Bearbeiten" nicht
+    // heimlich das Aussehen ändert. War nichts eingestellt, erbt der Termin
+    // ab jetzt die Vorgabe des eigenen Kalenders.
+    final resolved = TravelService.resolve(ics);
+    final before =
+        resolved.travelMinutesBefore > 0 ? resolved.travelMinutesBefore : null;
+    final after =
+        resolved.travelMinutesAfter > 0 ? resolved.travelMinutesAfter : null;
     return CalendarEvent(
       id: _uuid.v4(),
       title: ics.title,
@@ -211,6 +230,8 @@ class WeekScreenState extends State<WeekScreen> {
       source: 'app',
       category: ics.category,
       address: ics.address,
+      travelBeforeOverride: before,
+      travelAfterOverride: after,
     );
   }
 
@@ -228,6 +249,10 @@ class WeekScreenState extends State<WeekScreen> {
     });
     _saveOverrides(); // fire-and-forget
     await LocalService.saveEvent(appEvent);
+    // Der alte ICS-Termin ist ab jetzt ausgeblendet; seine eigene Einstellung
+    // ist damit toter Ballast. Die Serien-Einstellung bleibt — die anderen
+    // Vorkommen hängen noch daran.
+    await TravelService.setEventTimes(icsEvent.id, null);
     return appEvent;
   }
 
@@ -285,11 +310,14 @@ class WeekScreenState extends State<WeekScreen> {
     final all = [..._events, ...icsFiltered]
         .where((e) => seen.add(e.id))
         .toList();
-    return all.where((e) {
+    // Hier werden die An-/Abfahrtszeiten eingesetzt: eigener Wert, sonst
+    // Serie, sonst Kalender-Vorgabe. Alles dahinter — Zeichnen, Kollisionen,
+    // Auto-Shift — rechnet unveraendert mit travelMinutesBefore/After.
+    return TravelService.resolveAll(all.where((e) {
       return !e.isAllDay &&
           e.startTime.isBefore(dayEnd) &&
           e.endTime.isAfter(dayStart);
-    }).toList()
+    }))
       ..sort((a, b) => a.startTime.compareTo(b.startTime));
   }
 
@@ -416,6 +444,11 @@ class WeekScreenState extends State<WeekScreen> {
                   style: TextStyle(color: Colors.redAccent)),
             ),
             TextButton(
+              onPressed: () => Navigator.pop(ctx, 'travel'),
+              child: const Text('An-/Abfahrt',
+                  style: TextStyle(color: AppColors.primary)),
+            ),
+            TextButton(
               onPressed: () => Navigator.pop(ctx, 'edit'),
               child: const Text('Bearbeiten',
                   style: TextStyle(color: AppColors.primary)),
@@ -430,6 +463,16 @@ class WeekScreenState extends State<WeekScreen> {
         if (mounted) setState(() {
           _icsEvents = _icsEvents.where((e) => e.id != event.id).toList();
         });
+        return;
+      }
+      // An-/Abfahrt ohne Übernahme: der Termin bleibt am Abonnement.
+      if (action == 'travel') {
+        final match =
+            _icsSources.where((s) => s.id == event.icsSourceId).toList();
+        final name =
+            match.isNotEmpty ? match.first.name : 'Importierter Kalender';
+        if (!mounted) return;
+        await TravelOverrideDialog.show(context, event, name);
         return;
       }
       if (action == 'edit') {
@@ -1223,6 +1266,7 @@ class WeekScreenState extends State<WeekScreen> {
     _nowTimer?.cancel();
     SnapState.snapNotifier.removeListener(_onSnapChanged);
     SnapState.isDraggingNotifier.removeListener(_onSnapChanged);
+    TravelService.revision.removeListener(_onTravelChanged);
     HardwareKeyboard.instance.removeHandler(_onKey);
     _scrollController.dispose();
     super.dispose();
@@ -1281,14 +1325,13 @@ class WeekScreenState extends State<WeekScreen> {
   List<CalendarEvent> _timedEventsOnDay(DateTime day) {
     final icsFiltered = _icsEvents.where((e) => !_overriddenIcsIds.contains(e.id));
     final seen = <String>{};
-    return [..._events, ...icsFiltered]
+    return TravelService.resolveAll([..._events, ...icsFiltered]
         .where((e) => seen.add(e.id))
         .where((e) =>
             !e.isAllDay &&
             e.startTime.year == day.year &&
             e.startTime.month == day.month &&
-            e.startTime.day == day.day)
-        .toList()
+            e.startTime.day == day.day))
       ..sort((a, b) => a.startTime.compareTo(b.startTime));
   }
 

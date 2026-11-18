@@ -26,6 +26,20 @@ class CalendarEvent {
   final DateTime? pauseStart;
   final int? calendarColor; // ARGB int für ICS-Events, null = Kategorie-Farbe
   final String? address;
+
+  /// Eigene An-/Abfahrtszeit dieses Termins in Minuten, `null` = es gilt die
+  /// Vorgabe des Kalenders (siehe TravelService). Ein gesetztes `0` ist eine
+  /// Aussage: hier ausdruecklich keine Zeit, auch wenn der Kalender eine
+  /// vorgibt. Importierte Termine tragen hier nichts — ihre Zeiten liegen im
+  /// TravelService, weil sie bei jedem Abruf neu gelesen werden.
+  final int? travelBeforeOverride;
+  final int? travelAfterOverride;
+
+  /// Die tatsaechlich geltenden Zeiten — aus eigenem Wert, Serie und Kalender
+  /// aufgeloest. ABGELEITET: TravelService.resolve setzt sie beim Anzeigen,
+  /// [toJson] speichert sie nicht. Wuerden sie gespeichert, fror der erste
+  /// Abruf die damalige Kalender-Vorgabe am Termin ein und eine spaetere
+  /// Aenderung der Vorgabe wuerde ihn nicht mehr erreichen.
   final int travelMinutesBefore;
   final int travelMinutesAfter;
   final String? icsSourceId;
@@ -50,10 +64,17 @@ class CalendarEvent {
     this.pauseStart,
     this.calendarColor,
     this.address,
-    this.travelMinutesBefore = 0,
-    this.travelMinutesAfter = 0,
+    int? travelBeforeOverride,
+    int? travelAfterOverride,
+    int? travelMinutesBefore,
+    int? travelMinutesAfter,
     this.icsSourceId,
-  });
+  })  : travelBeforeOverride = travelBeforeOverride,
+        travelAfterOverride = travelAfterOverride,
+        // Ohne Auflösung gilt der eigene Wert; ohne eigenen Wert nichts.
+        travelMinutesBefore =
+            travelMinutesBefore ?? travelBeforeOverride ?? 0,
+        travelMinutesAfter = travelMinutesAfter ?? travelAfterOverride ?? 0;
 
   Duration get scheduledDuration => endTime.difference(startTime);
 
@@ -87,6 +108,8 @@ class CalendarEvent {
     DateTime? pauseStart,
     int? calendarColor,
     Object? address = _unset,
+    Object? travelBeforeOverride = _unset,
+    Object? travelAfterOverride = _unset,
     int? travelMinutesBefore,
     int? travelMinutesAfter,
     Object? icsSourceId = _unset,
@@ -111,6 +134,12 @@ class CalendarEvent {
       pauseStart: pauseStart ?? this.pauseStart,
       calendarColor: calendarColor ?? this.calendarColor,
       address: address == _unset ? this.address : address as String?,
+      travelBeforeOverride: travelBeforeOverride == _unset
+          ? this.travelBeforeOverride
+          : travelBeforeOverride as int?,
+      travelAfterOverride: travelAfterOverride == _unset
+          ? this.travelAfterOverride
+          : travelAfterOverride as int?,
       travelMinutesBefore: travelMinutesBefore ?? this.travelMinutesBefore,
       travelMinutesAfter: travelMinutesAfter ?? this.travelMinutesAfter,
       icsSourceId: icsSourceId == _unset ? this.icsSourceId : icsSourceId as String?,
@@ -136,8 +165,10 @@ class CalendarEvent {
         'pausedMinutes': pausedMinutes,
         'pauseStart': pauseStart?.toUtc().toIso8601String(),
         'address': address,
-        'travelMinutesBefore': travelMinutesBefore,
-        'travelMinutesAfter': travelMinutesAfter,
+        // Bewusst nur die eigenen Werte: travelMinutesBefore/After sind
+        // abgeleitet und haben in der Datenbank nichts zu suchen.
+        'travelBeforeOverride': travelBeforeOverride,
+        'travelAfterOverride': travelAfterOverride,
         'icsSourceId': icsSourceId,
       };
 
@@ -175,8 +206,16 @@ class CalendarEvent {
             ? DateTime.parse(json['pauseStart'] as String).toLocal()
             : null,
         address: json['address'] as String?,
-        travelMinutesBefore: json['travelMinutesBefore'] as int? ?? 0,
-        travelMinutesAfter: json['travelMinutesAfter'] as int? ?? 0,
+        // Altbestand: vor der Vererbung war travelMinutesBefore/After der
+        // eigene Wert des Termins. Er wird als solcher uebernommen, damit sich
+        // fuer bestehende Termine nichts aendert — auch nicht bei 0, das
+        // damals „keine Anfahrt" hiess und das weiter heissen soll.
+        travelBeforeOverride: json.containsKey('travelBeforeOverride')
+            ? (json['travelBeforeOverride'] as num?)?.toInt()
+            : (json['travelMinutesBefore'] as num?)?.toInt(),
+        travelAfterOverride: json.containsKey('travelAfterOverride')
+            ? (json['travelAfterOverride'] as num?)?.toInt()
+            : (json['travelMinutesAfter'] as num?)?.toInt(),
         icsSourceId: json['icsSourceId'] as String?,
       );
 

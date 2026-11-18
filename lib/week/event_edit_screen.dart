@@ -3,8 +3,11 @@ import 'package:uuid/uuid.dart';
 import '../app_colors.dart';
 import '../models/calendar_event.dart';
 import '../services/local_service.dart';
+import '../services/travel_service.dart';
+import '../models/travel_times.dart';
 import '../widgets/feedback_button.dart';
 import '../widgets/save_feedback.dart';
+import '../widgets/travel_time_picker.dart';
 
 const _uuid = Uuid();
 
@@ -26,8 +29,11 @@ class _EventEditScreenState extends State<EventEditScreen> {
   late EventCategory _category;
   late bool _isFixed;
   late RepeatType _repeatType;
-  late int _travelBefore;
-  late int _travelAfter;
+  // null = die Vorgabe des Kalenders gilt. 0 ist etwas anderes: ausdruecklich
+  // keine Zeit, auch wenn der Kalender eine vorgibt.
+  late int? _travelBefore;
+  late int? _travelAfter;
+  late TravelTimes _inherited;
   bool _saving = false;
 
   bool get _isNew => widget.event == null;
@@ -44,8 +50,13 @@ class _EventEditScreenState extends State<EventEditScreen> {
     _category = e?.category ?? EventCategory.personal;
     _isFixed = e?.isFixed ?? false;
     _repeatType = e?.repeatType ?? RepeatType.none;
-    _travelBefore = e?.travelMinutesBefore ?? 0;
-    _travelAfter = e?.travelMinutesAfter ?? 0;
+    _travelBefore = e?.travelBeforeOverride;
+    _travelAfter = e?.travelAfterOverride;
+    // Was ohne eigene Angabe gelten wuerde — fuer die Beschriftung der
+    // Vorgabe-Schaltflaeche. Ein neuer Termin landet im eigenen Kalender.
+    _inherited = e != null
+        ? TravelService.inheritedFor(e)
+        : TravelService.calendarTimes(TravelService.ownCalendarId);
   }
 
   DateTime _roundToNext30() {
@@ -108,8 +119,8 @@ class _EventEditScreenState extends State<EventEditScreen> {
         repeatType: _repeatType,
         source: 'app',
         address: address,
-        travelMinutesBefore: _travelBefore,
-        travelMinutesAfter: _travelAfter,
+        travelBeforeOverride: _travelBefore,
+        travelAfterOverride: _travelAfter,
       );
     } else {
       event = CalendarEvent(
@@ -123,8 +134,8 @@ class _EventEditScreenState extends State<EventEditScreen> {
         repeatType: _repeatType,
         source: 'app',
         address: address,
-        travelMinutesBefore: _travelBefore,
-        travelMinutesAfter: _travelAfter,
+        travelBeforeOverride: _travelBefore,
+        travelAfterOverride: _travelAfter,
       );
     }
     // Lokal speichern + Sync-Queue (wie week_screen.dart) — funktioniert
@@ -198,15 +209,17 @@ class _EventEditScreenState extends State<EventEditScreen> {
             prefixIcon: Icons.location_on_outlined,
           ),
           const SizedBox(height: 12),
-          _TravelTimePicker(
+          TravelTimePicker(
             label: 'Anfahrt',
             minutes: _travelBefore,
+            inherited: _inherited.before,
             onChanged: (v) => setState(() => _travelBefore = v),
           ),
           const SizedBox(height: 8),
-          _TravelTimePicker(
+          TravelTimePicker(
             label: 'Abfahrt',
             minutes: _travelAfter,
+            inherited: _inherited.after,
             onChanged: (v) => setState(() => _travelAfter = v),
           ),
           const SizedBox(height: 16),
@@ -312,167 +325,6 @@ class _Field extends StatelessWidget {
           borderSide: BorderSide.none,
         ),
       ),
-    );
-  }
-}
-
-class _TravelTimePicker extends StatefulWidget {
-  final String label;
-  final int minutes;
-  final ValueChanged<int> onChanged;
-
-  const _TravelTimePicker({
-    required this.label,
-    required this.minutes,
-    required this.onChanged,
-  });
-
-  @override
-  State<_TravelTimePicker> createState() => _TravelTimePickerState();
-}
-
-class _TravelTimePickerState extends State<_TravelTimePicker> {
-  static const _options = [0, 5, 10, 15, 20, 30, 45, 60];
-  late final TextEditingController _ctrl;
-
-  @override
-  void initState() {
-    super.initState();
-    _ctrl = TextEditingController(
-      text: widget.minutes == 0 ? '' : '${widget.minutes}',
-    );
-  }
-
-  @override
-  void didUpdateWidget(_TravelTimePicker old) {
-    super.didUpdateWidget(old);
-    if (old.minutes != widget.minutes) {
-      final txt = widget.minutes == 0 ? '' : '${widget.minutes}';
-      if (_ctrl.text != txt) {
-        _ctrl.text = txt;
-        _ctrl.selection = TextSelection.collapsed(offset: txt.length);
-      }
-    }
-  }
-
-  @override
-  void dispose() {
-    _ctrl.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      children: [
-        Icon(
-          widget.label == 'Anfahrt'
-              ? Icons.directions_car_outlined
-              : Icons.directions_car,
-          size: 16,
-          color: AppColors.textSecondary,
-        ),
-        const SizedBox(width: 8),
-        Text(widget.label,
-            style: const TextStyle(color: AppColors.textSecondary, fontSize: 13)),
-        const SizedBox(width: 12),
-        Expanded(
-          child: SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
-            child: Row(
-              children: [
-                ..._options.map((m) {
-                  final isSelected = widget.minutes == m;
-                  final lbl = m == 0 ? 'Keine' : '${m}min';
-                  return Padding(
-                    padding: const EdgeInsets.only(right: 6),
-                    child: GestureDetector(
-                      onTap: () => widget.onChanged(m),
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                        decoration: BoxDecoration(
-                          color: isSelected
-                              ? AppColors.primary.withValues(alpha: 0.2)
-                              : AppColors.card,
-                          borderRadius: BorderRadius.circular(8),
-                          border: Border.all(
-                            color: isSelected ? AppColors.primary : AppColors.divider,
-                            width: 1,
-                          ),
-                        ),
-                        child: Text(
-                          lbl,
-                          style: TextStyle(
-                            fontSize: 12,
-                            color: isSelected ? AppColors.primary : AppColors.textSecondary,
-                            fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
-                          ),
-                        ),
-                      ),
-                    ),
-                  );
-                }),
-                // Custom freetext input
-                SizedBox(
-                  width: 64,
-                  height: 30,
-                  child: TextField(
-                    controller: _ctrl,
-                    keyboardType: TextInputType.number,
-                    textAlign: TextAlign.center,
-                    style: TextStyle(
-                      fontSize: 12,
-                      color: !_options.contains(widget.minutes) && widget.minutes > 0
-                          ? AppColors.primary
-                          : AppColors.textSecondary,
-                    ),
-                    decoration: InputDecoration(
-                      hintText: 'min',
-                      hintStyle: const TextStyle(
-                          fontSize: 12, color: AppColors.textDisabled),
-                      contentPadding:
-                          const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                      filled: true,
-                      fillColor: !_options.contains(widget.minutes) && widget.minutes > 0
-                          ? AppColors.primary.withValues(alpha: 0.2)
-                          : AppColors.card,
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(8),
-                        borderSide: BorderSide(
-                          color: !_options.contains(widget.minutes) && widget.minutes > 0
-                              ? AppColors.primary
-                              : AppColors.divider,
-                        ),
-                      ),
-                      enabledBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(8),
-                        borderSide: BorderSide(
-                          color: !_options.contains(widget.minutes) && widget.minutes > 0
-                              ? AppColors.primary
-                              : AppColors.divider,
-                        ),
-                      ),
-                      focusedBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(8),
-                        borderSide:
-                            const BorderSide(color: AppColors.primary, width: 1.5),
-                      ),
-                    ),
-                    onChanged: (val) {
-                      final parsed = int.tryParse(val);
-                      if (parsed != null && parsed >= 0) {
-                        widget.onChanged(parsed);
-                      } else if (val.isEmpty) {
-                        widget.onChanged(0);
-                      }
-                    },
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-      ],
     );
   }
 }
