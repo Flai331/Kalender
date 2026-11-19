@@ -3,7 +3,6 @@ import 'dart:io';
 import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:home_widget/home_widget.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'supabase_config.dart';
 import 'app_colors.dart';
@@ -13,7 +12,6 @@ import 'services/auth_service.dart';
 import 'services/feedback_service.dart';
 import 'services/local_service.dart';
 import 'services/reminder_service.dart';
-import 'services/supabase_service.dart';
 import 'services/sync_service.dart';
 import 'services/category_service.dart';
 import 'services/travel_service.dart';
@@ -85,50 +83,12 @@ void main() async {
     }
   }
 
-  // Seed local DB on first launch
-  if (SupabaseConfig.isConfigured) {
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      if (prefs.getBool('local_seeded') != true) {
-        final events = await SupabaseService.getAllEvents();
-        final todos = await SupabaseService.getAllTodos();
-        await LocalService.seedEvents(events);
-        await LocalService.seedTodos(todos);
-        await prefs.setBool('local_seeded', true);
-      }
-      // Eigener Flag: bestehende Installationen haben 'local_seeded' bereits
-      // gesetzt und würden ihre Jahres-Events sonst nie lokal bekommen.
-      if (prefs.getBool('local_seeded_annual') != true) {
-        final annual = await SupabaseService.getAllAnnualEvents();
-        await LocalService.seedAnnualEvents(annual);
-        await prefs.setBool('local_seeded_annual', true);
-      }
-      if (prefs.getBool('local_seeded_reminders') != true) {
-        await LocalService.seedReminders(await SupabaseService.getReminders());
-        await LocalService.seedYearlyChecklists(
-            await SupabaseService.getYearlyChecklists());
-        await prefs.setBool('local_seeded_reminders', true);
-      }
-      if (prefs.getBool('local_seeded_notes') != true) {
-        await LocalService.seedWeekNotes(
-            await SupabaseService.getAllWeekNotes());
-        await prefs.setBool('local_seeded_notes', true);
-      }
-      // Kategorien: nur holen, wenn lokal noch keine Liste steht. Sonst
-      // ueberschriebe der Server-Stand gerade erst offline angelegte
-      // Kategorien, deren Sync-Auftrag noch in der Warteschlange liegt.
-      if (prefs.getBool('local_seeded_categories') != true) {
-        if (await LocalService.getCategories() == null) {
-          final remote = await SupabaseService.getCategories();
-          if (remote != null && remote.isNotEmpty) {
-            await LocalService.seedCategories(remote);
-          }
-        }
-        await prefs.setBool('local_seeded_categories', true);
-      }
-    } catch (e) {
-      debugPrint('Local seed failed: $e');
-    }
+  // Serverstand in den lokalen Zwischenspeicher holen. Darf den Start nicht
+  // kippen: ohne Netz arbeitet die App mit dem, was lokal liegt.
+  try {
+    await SyncService.seedFromServer();
+  } catch (e) {
+    debugPrint('Local seed failed: $e');
   }
 
   // Namen und Farben der Kategorien; ohne sie zeigen Termine und Todos nur

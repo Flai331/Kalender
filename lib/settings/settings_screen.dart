@@ -4,6 +4,7 @@ import 'package:flutter/services.dart' show PlatformException;
 import 'package:shared_preferences/shared_preferences.dart';
 import '../app_colors.dart';
 import '../services/category_service.dart';
+import 'account_screen.dart';
 import 'categories_screen.dart';
 import '../models/ics_source.dart';
 import '../services/auth_service.dart';
@@ -107,6 +108,15 @@ class _SettingsScreenState extends State<SettingsScreen> {
         ],
       ),
     );
+  }
+
+  Future<void> _openAccount() async {
+    await Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => const AccountScreen()),
+    );
+    // Die hinterlegte Adresse kann sich geaendert haben.
+    if (mounted) setState(() {});
   }
 
   Future<void> _openCategories() async {
@@ -490,11 +500,25 @@ class _SettingsScreenState extends State<SettingsScreen> {
           _Section(
             title: 'Konto',
             children: [
-              _InfoTile(
-                icon: Icons.fingerprint,
-                title: 'Anonyme ID',
-                subtitle: AuthService.userId ?? 'Nicht angemeldet',
-                color: AppColors.primary,
+              _ActionTile(
+                icon: AuthService.hasEmail
+                    ? Icons.verified_user_outlined
+                    : Icons.warning_amber_rounded,
+                iconColor: AuthService.hasEmail
+                    ? AppColors.started
+                    : AppColors.personal,
+                title: AuthService.hasEmail
+                    ? 'Gesichert'
+                    : 'Nur auf diesem Gerät',
+                subtitle: AuthService.hasEmail
+                    ? AuthService.email!
+                    : AuthService.pendingEmail != null
+                        ? 'Bestätigung offen: ${AuthService.pendingEmail}'
+                        : 'Ohne E-Mail sind die Daten nach einer '
+                            'Neuinstallation nicht mehr erreichbar',
+                actionLabel: 'Öffnen',
+                actionColor: AppColors.primary,
+                onAction: _openAccount,
               ),
               _InfoTile(
                 icon: Icons.cloud_outlined,

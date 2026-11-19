@@ -2,6 +2,8 @@ import 'dart:async';
 import 'dart:convert';
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import '../supabase_config.dart';
 import '../db/app_database.dart';
 import '../models/calendar_event.dart';
 import '../models/todo.dart';
@@ -47,6 +49,55 @@ class SyncService {
     } finally {
       _syncing = false;
     }
+  }
+
+  /// Holt den Serverstand in den lokalen Zwischenspeicher.
+  ///
+  /// Je Tabelle einmal, gemerkt in den Einstellungen des Geraets. Je Tabelle
+  /// ein eigenes Merkmal, weil sie zu verschiedenen Zeiten dazukamen: eine
+  /// bestehende Installation hat 'local_seeded' schon gesetzt und bekaeme die
+  /// spaeteren sonst nie.
+  ///
+  /// [force] laedt alles erneut. Nach einer Anmeldung an einem anderen Konto
+  /// gilt dessen Kennung, und der Zwischenspeicher ist fuer sie leer — ohne
+  /// dieses erneute Laden stuende die App nach dem Kontowechsel vor nichts.
+  static Future<void> seedFromServer({bool force = false}) async {
+    if (!SupabaseConfig.isConfigured) return;
+    final prefs = await SharedPreferences.getInstance();
+
+    Future<void> step(String flag, Future<void> Function() load) async {
+      if (!force && prefs.getBool(flag) == true) return;
+      await load();
+      await prefs.setBool(flag, true);
+    }
+
+    await step('local_seeded', () async {
+      await LocalService.seedEvents(await SupabaseService.getAllEvents());
+      await LocalService.seedTodos(await SupabaseService.getAllTodos());
+    });
+    await step('local_seeded_annual', () async {
+      await LocalService.seedAnnualEvents(
+          await SupabaseService.getAllAnnualEvents());
+    });
+    await step('local_seeded_reminders', () async {
+      await LocalService.seedReminders(await SupabaseService.getReminders());
+      await LocalService.seedYearlyChecklists(
+          await SupabaseService.getYearlyChecklists());
+    });
+    await step('local_seeded_notes', () async {
+      await LocalService.seedWeekNotes(await SupabaseService.getAllWeekNotes());
+    });
+    await step('local_seeded_categories', () async {
+      // Ohne force nur holen, wenn lokal noch keine Liste steht: sonst
+      // ueberschriebe der Serverstand gerade erst offline angelegte
+      // Kategorien, deren Sync-Auftrag noch wartet. Nach einem Kontowechsel
+      // gilt dagegen die Liste des angemeldeten Kontos.
+      if (!force && await LocalService.getCategories() != null) return;
+      final remote = await SupabaseService.getCategories();
+      if (remote != null && remote.isNotEmpty) {
+        await LocalService.seedCategories(remote);
+      }
+    });
   }
 
   static Future<void> _processEntry(SyncQueueData entry) async {
