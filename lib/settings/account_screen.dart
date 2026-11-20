@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../app_colors.dart';
 import '../services/auth_service.dart';
@@ -162,6 +163,46 @@ class _AccountScreenState extends State<AccountScreen> {
     }
   }
 
+  /// Holt den Serverstand erneut in den lokalen Zwischenspeicher.
+  ///
+  /// Gebraucht, wenn die Daten in Supabase von aussen auf diese Kennung
+  /// umgeschrieben wurden — etwa nachdem eine Neuinstallation eine neue
+  /// anonyme Kennung bekommen hat und die alten Zeilen per SQL herueberkamen.
+  /// Von sich aus holt die App den Serverstand nur einmal.
+  Future<void> _reload() async {
+    // Der Serverstand ueberschreibt den lokalen. Was noch nicht hochgeladen
+    // ist, waere damit weg.
+    final pending = await LocalService.getPendingQueue();
+    if (!mounted) return;
+    if (pending.isNotEmpty) {
+      showInfoSnack(
+          context,
+          '${pending.length} Änderungen sind noch nicht hochgeladen. '
+          'Erst online gehen und synchronisieren.');
+      return;
+    }
+
+    setState(() => _busy = true);
+    try {
+      await SyncService.seedFromServer(force: true);
+      if (!mounted) return;
+      showInfoSnack(context, 'Vom Server geladen.');
+    } catch (e) {
+      if (!mounted) return;
+      showErrorSnack(context, 'Laden fehlgeschlagen: $e');
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  Future<void> _copyUid() async {
+    final uid = AuthService.userId;
+    if (uid == null) return;
+    await Clipboard.setData(ClipboardData(text: uid));
+    if (!mounted) return;
+    showInfoSnack(context, 'Kennung kopiert.');
+  }
+
   Future<bool?> _confirmSwitch() {
     return showDialog<bool>(
       context: context,
@@ -233,6 +274,8 @@ class _AccountScreenState extends State<AccountScreen> {
                 if (AuthService.hasEmail) _passwortAendern(),
                 const SizedBox(height: 16),
                 _anmelden(),
+                const SizedBox(height: 16),
+                _neuLaden(),
                 const SizedBox(height: 24),
                 _kennung(),
               ],
@@ -343,11 +386,47 @@ class _AccountScreenState extends State<AccountScreen> {
     ]);
   }
 
+  Widget _neuLaden() {
+    return _Karte(children: [
+      const _Kopf(
+          icon: Icons.cloud_download_outlined,
+          color: AppColors.textSecondary,
+          title: 'Daten neu vom Server laden'),
+      const Padding(
+        padding: EdgeInsets.fromLTRB(16, 0, 16, 12),
+        child: Text(
+            'Holt alles aus der Cloud in den Zwischenspeicher dieses Geräts. '
+            'Nötig, wenn die Daten dort von außen auf diese Kennung '
+            'umgeschrieben wurden — von sich aus holt die App sie nur einmal. '
+            'Was noch nicht hochgeladen ist, würde dabei überschrieben; '
+            'deshalb geht es nur mit leerer Warteschlange.',
+            style: TextStyle(color: AppColors.textSecondary, fontSize: 13)),
+      ),
+      _knopf('Neu laden', _reload, color: AppColors.card),
+    ]);
+  }
+
+  /// Die Kennung, unter der die Daten in Supabase liegen. Antippen kopiert
+  /// sie — ohne sie findet man seine Zeilen dort nicht wieder.
   Widget _kennung() {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 4),
-      child: Text('Kennung: ${AuthService.userId ?? 'nicht angemeldet'}',
-          style: const TextStyle(color: AppColors.textDisabled, fontSize: 11)),
+    final uid = AuthService.userId;
+    return InkWell(
+      onTap: uid == null ? null : _copyUid,
+      borderRadius: BorderRadius.circular(8),
+      child: Padding(
+        padding: const EdgeInsets.all(8),
+        child: Row(
+          children: [
+            Expanded(
+              child: Text('Kennung: ${uid ?? 'nicht angemeldet'}',
+                  style: const TextStyle(
+                      color: AppColors.textDisabled, fontSize: 11)),
+            ),
+            if (uid != null)
+              const Icon(Icons.copy, color: AppColors.textDisabled, size: 14),
+          ],
+        ),
+      ),
     );
   }
 
