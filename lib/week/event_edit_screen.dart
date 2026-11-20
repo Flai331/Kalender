@@ -140,8 +140,7 @@ class _EventEditScreenState extends State<EventEditScreen> {
         travelAfterOverride: _travelAfter,
       );
     }
-    // Lokal speichern + Sync-Queue (wie week_screen.dart) — funktioniert
-    // auch offline, statt direkt gegen Supabase zu schreiben.
+    // Speichert in die lokale Datenbank, aus der die Ansichten lesen.
     bool ok = false;
     try {
       ok = await guardedAction(

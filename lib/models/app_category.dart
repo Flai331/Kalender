@@ -46,9 +46,8 @@ class AppCategory {
 
   /// Die ganze Liste als ein JSON-Objekt.
   ///
-  /// Ein Objekt mit 'items' und nicht ein nacktes Array: der Sync-Auftrag
-  /// traegt immer ein Objekt, und so kann spaeter ein Feld dazukommen, ohne
-  /// dass das Gespeicherte unlesbar wird.
+  /// Ein Objekt mit 'items' und nicht ein nacktes Array: so kann spaeter ein
+  /// Feld dazukommen, ohne dass das Gespeicherte unlesbar wird.
   static Map<String, dynamic> listToJson(List<AppCategory> items) =>
       {'items': items.map((c) => c.toJson()).toList()};
 

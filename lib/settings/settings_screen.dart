@@ -4,10 +4,8 @@ import 'package:flutter/services.dart' show PlatformException;
 import 'package:shared_preferences/shared_preferences.dart';
 import '../app_colors.dart';
 import '../services/category_service.dart';
-import 'account_screen.dart';
 import 'categories_screen.dart';
 import '../models/ics_source.dart';
-import '../services/auth_service.dart';
 import '../services/backup_service.dart';
 import '../services/daylight_service.dart';
 import '../services/feedback_service.dart';
@@ -215,15 +213,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
         ],
       ),
     );
-  }
-
-  Future<void> _openAccount() async {
-    await Navigator.push(
-      context,
-      MaterialPageRoute(builder: (_) => const AccountScreen()),
-    );
-    // Die hinterlegte Adresse kann sich geaendert haben.
-    if (mounted) setState(() {});
   }
 
   Future<void> _openCategories() async {
@@ -603,42 +592,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
-          // Konto
-          _Section(
-            title: 'Konto',
-            children: [
-              _ActionTile(
-                icon: AuthService.hasEmail
-                    ? Icons.verified_user_outlined
-                    : Icons.warning_amber_rounded,
-                iconColor: AuthService.hasEmail
-                    ? AppColors.started
-                    : AppColors.personal,
-                title: AuthService.hasEmail
-                    ? 'Gesichert'
-                    : 'Nur auf diesem Gerät',
-                subtitle: AuthService.hasEmail
-                    ? AuthService.email!
-                    : AuthService.pendingEmail != null
-                        ? 'Bestätigung offen: ${AuthService.pendingEmail}'
-                        : 'Ohne E-Mail sind die Daten nach einer '
-                            'Neuinstallation nicht mehr erreichbar',
-                actionLabel: 'Öffnen',
-                actionColor: AppColors.primary,
-                onAction: _openAccount,
-              ),
-              _InfoTile(
-                icon: Icons.cloud_outlined,
-                title: 'Cloud Sync',
-                subtitle: AuthService.userId != null
-                    ? 'Verbunden – Daten in Supabase gespeichert'
-                    : 'Nicht verbunden',
-                color: AppColors.started,
-              ),
-            ],
-          ),
-          const SizedBox(height: 16),
-
           // ICS Kalender
           _Section(
             title: 'Kalender (ICS)',
@@ -1088,36 +1041,6 @@ class _Section extends StatelessWidget {
           child: Column(children: children),
         ),
       ],
-    );
-  }
-}
-
-class _InfoTile extends StatelessWidget {
-  final IconData icon;
-  final String title;
-  final String subtitle;
-  final Color color;
-
-  const _InfoTile({
-    required this.icon,
-    required this.title,
-    required this.subtitle,
-    required this.color,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return ListTile(
-      leading: Icon(icon, color: color, size: 22),
-      title: Text(title,
-          style: const TextStyle(color: AppColors.textPrimary, fontSize: 14)),
-      subtitle: Text(
-        subtitle,
-        style:
-            const TextStyle(color: AppColors.textSecondary, fontSize: 11),
-        maxLines: 2,
-        overflow: TextOverflow.ellipsis,
-      ),
     );
   }
 }

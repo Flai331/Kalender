@@ -200,15 +200,6 @@ void main() {
       expect(events, hasLength(1));
       expect(events.single.id, 'e1');
     });
-
-    test('danach wartet kein Sync-Auftrag', () async {
-      await bestand();
-      final text = await BackupService.build();
-      await BackupService.restore(BackupService.parse(text));
-
-      // Das Einspielen ist kein Bearbeiten: es stellt einen Stand her.
-      expect(await LocalService.getPendingQueue(), isEmpty);
-    });
   });
 
   group('Fremde oder kaputte Dateien', () {

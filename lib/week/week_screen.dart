@@ -242,13 +242,13 @@ class WeekScreenState extends State<WeekScreen> {
 
   Future<CalendarEvent> _adoptIcsEvent(
       CalendarEvent icsEvent, CalendarEvent Function(CalendarEvent) transform) async {
-    // Guard: already adopted → skip to prevent duplicate Supabase entries
+    // Guard: already adopted → skip to prevent duplicate entries
     if (_overriddenIcsIds.contains(icsEvent.id)) {
       return _convertIcsToApp(icsEvent);
     }
     final appEvent = transform(_convertIcsToApp(icsEvent));
     _overriddenIcsIds.add(icsEvent.id);
-    // Remove from local list BEFORE any async — prevents race with Realtime
+    // Remove from local list BEFORE any async — prevents a double entry
     if (mounted) setState(() {
       _icsEvents = _icsEvents.where((e) => e.id != icsEvent.id).toList();
     });

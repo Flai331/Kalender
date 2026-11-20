@@ -86,6 +86,20 @@ Database _openV4Database() {
   return raw;
 }
 
+/// Datenbank im Schema-Stand v5 — der Stand mit Supabase: alle Tabellen samt
+/// der Warteschlange, die die Aenderungen zum Hochladen gesammelt hat.
+Database _openV5Database() {
+  final raw = _openV4Database();
+  raw.execute('''
+    CREATE TABLE categories_cache (
+      user_id TEXT NOT NULL PRIMARY KEY,
+      data TEXT NOT NULL,
+      updated_at INTEGER NOT NULL);
+  ''');
+  raw.execute('PRAGMA user_version = 5;');
+  return raw;
+}
+
 void main() {
   late AppDatabase db;
 
@@ -109,7 +123,6 @@ void main() {
       // Bestandsdaten-Tabellen bleiben erhalten.
       expect(tables, contains('events_cache'));
       expect(tables, contains('todos_cache'));
-      expect(tables, contains('sync_queue'));
     });
 
     test('erhält vorhandene Todos beim Upgrade', () async {
@@ -210,7 +223,36 @@ void main() {
       expect(raw.select('SELECT week_key FROM week_notes_cache').length, 1);
     });
 
-    test('eine v1-DB kommt in einem Lauf bis v5 durch', () async {
+  });
+
+  group('Schema-Migration v5 → v6', () {
+    test('wirft sync_queue weg und behaelt die Bestandsdaten', () async {
+      final raw = _openV5Database();
+      raw.execute(
+        "INSERT INTO week_notes_cache (week_key, user_id, data, updated_at) "
+        "VALUES ('2026-W47', 'u1', '{}', 1)",
+      );
+      raw.execute(
+        "INSERT INTO sync_queue "
+        "(entity_id, target_table, operation, payload, created_at) "
+        "VALUES ('t1', 'todos', 'upsert', '{}', 1)",
+      );
+      db = AppDatabase.forTesting(NativeDatabase.opened(raw));
+      await db.customSelect('SELECT 1').get();
+
+      final tables = raw
+          .select("SELECT name FROM sqlite_master WHERE type = 'table'")
+          .map((r) => r['name'] as String)
+          .toList();
+
+      // Ohne Server gibt es nichts hochzuladen. Die Auftraege, die noch in
+      // der Schlange standen, fallen mit der Tabelle weg.
+      expect(tables, isNot(contains('sync_queue')));
+      expect(raw.userVersion, db.schemaVersion);
+      expect(raw.select('SELECT week_key FROM week_notes_cache').length, 1);
+    });
+
+    test('eine v1-DB kommt in einem Lauf bis v6 durch', () async {
       final raw = _openV1Database();
       db = AppDatabase.forTesting(NativeDatabase.opened(raw));
       await db.customSelect('SELECT 1').get();
@@ -222,6 +264,7 @@ void main() {
 
       expect(tables, contains('week_notes_cache'));
       expect(tables, contains('categories_cache'));
+      expect(tables, isNot(contains('sync_queue')));
     });
   });
 
@@ -230,7 +273,7 @@ void main() {
       db = AppDatabase.forTesting(NativeDatabase.memory());
     });
 
-    test('schreibt in den Cache und stellt einen Sync-Auftrag ein', () async {
+    test('schreibt in den Cache', () async {
       final event = AnnualEvent(
         id: 'a1',
         name: 'Urlaub Teneriffa',
@@ -240,8 +283,7 @@ void main() {
         ],
       );
 
-      // Entspricht LocalService.saveAnnualEvent — ohne Supabase-Auth,
-      // die im Test nicht initialisiert werden kann.
+      // Entspricht LocalService.saveAnnualEvent, nur mit fester Kennung.
       await db.into(db.annualEventsCache).insertOnConflictUpdate(
             AnnualEventsCacheCompanion(
               id: Value(event.id),
@@ -250,13 +292,6 @@ void main() {
               updatedAt: const Value(1),
             ),
           );
-      await db.into(db.syncQueue).insert(SyncQueueCompanion(
-            entityId: Value(event.id),
-            targetTable: const Value('annual_events'),
-            operation: const Value('upsert'),
-            payload: Value(jsonEncode(event.toJson())),
-            createdAt: const Value(1),
-          ));
 
       final cached = await db.select(db.annualEventsCache).get();
       expect(cached.length, 1);
@@ -266,10 +301,6 @@ void main() {
       expect(restored.name, 'Urlaub Teneriffa');
       expect(restored.occurrences.single.year, 2027);
       expect(restored.occurrences.single.startDate, DateTime(2027, 6, 1));
-
-      final queue = await db.select(db.syncQueue).get();
-      expect(queue.single.targetTable, 'annual_events');
-      expect(queue.single.operation, 'upsert');
     });
   });
 }

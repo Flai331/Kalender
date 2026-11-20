@@ -102,8 +102,7 @@ class _TodoEditScreenState extends State<TodoEditScreen> {
       repeatConfig: widget.todo?.repeatConfig,
       subTasks: _subTasks,
     );
-    // Lokal speichern + Sync-Queue (wie week_screen.dart) — funktioniert
-    // auch offline, statt direkt gegen Supabase zu schreiben.
+    // Speichert in die lokale Datenbank, aus der die Ansichten lesen.
     bool ok = false;
     try {
       ok = await guardedAction(

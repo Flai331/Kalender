@@ -60,7 +60,7 @@ class _AnnualEventEditScreenState extends State<AnnualEventEditScreen> {
       colorHex: widget.event?.colorHex,
       occurrences: _occurrences,
     );
-    // Lokal speichern + Sync-Queue — funktioniert auch offline.
+    // Speichert in die lokale Datenbank, aus der die Ansichten lesen.
     bool ok = false;
     try {
       ok = await guardedAction(

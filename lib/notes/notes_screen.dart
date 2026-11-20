@@ -48,7 +48,7 @@ class _NotesScreenState extends State<NotesScreen> {
       content: _contentCtrl.text,
       goals: goals,
     );
-    // Lokal speichern + Sync-Queue — funktioniert auch offline.
+    // Speichert in die lokale Datenbank, aus der die Ansichten lesen.
     final ok = await guardedAction(
       context,
       () => LocalService.saveWeekNote(updated),

@@ -11,7 +11,8 @@
 
 ## Architektur
 
-Flutter-App mit Supabase-Backend. Hauptbereiche:
+Flutter-App, rein lokal: alle Daten liegen in einer SQLite-Datei auf dem
+Gerät (drift). Kein Server, kein Konto. Hauptbereiche:
 - `lib/week/` – Wochenansicht (week_screen.dart, week_day_column.dart, event_block.dart)
 - `lib/todos/` – Todo-Verwaltung (todo_list_screen, todo_edit_screen, todo_status_dialog)
 - `lib/models/` – Datenmodelle (todo.dart, calendar_event.dart, ics_source.dart)
@@ -72,61 +73,53 @@ Verschiebt überfällige pending Todos automatisch nach vorne:
 | BOTTOM OVERFLOWED | EventBlock Column overflows | `clipBehavior: Clip.hardEdge` |
 | IcsSource not found | Fehlender Import | `import '../models/ics_source.dart'` |
 | Speichern-Knopf reagiert nicht mehr | `_saving = true` vor dem `await`, Exception (z.B. offline) → Flag wird nie zurückgesetzt | `try/finally` + `guardedAction()` aus `widgets/save_feedback.dart` |
-| Speichern schlägt still fehl | `await SupabaseService.save…()` ohne try/catch — Nutzer sieht keine Meldung | `guardedAction()` zeigt SnackBar + schreibt ins Protokoll |
-| Termin/Todo offline nicht speicherbar | Edit-Screen schrieb direkt gegen Supabase statt über die Sync-Queue | `LocalService.saveEvent/saveTodo` (wie in `week_screen.dart`) |
+| Speichern schlägt still fehl | `await …save…()` ohne try/catch — Nutzer sieht keine Meldung | `guardedAction()` zeigt SnackBar + schreibt ins Protokoll |
+| Termin/Todo landet nicht in der Ansicht | Screen schreibt nicht über `LocalService` | `LocalService.saveEvent/saveTodo` (wie in `week_screen.dart`) |
 
-## Offline-Architektur (drift + Sync-Queue)
+## Datenhaltung (drift/SQLite)
 
-Schreibende Screens gehen **immer** über `LocalService`, nie direkt über
-`SupabaseService` — sonst schlägt das Speichern ohne Netz fehl.
+Alle Daten liegen in `kalender.sqlite` im Dokumentenverzeichnis der App. Es
+gibt **keinen Server**: schreibende Screens gehen über `LocalService`, lesende
+über dessen Streams (`.watch()`), damit Gespeichertes sofort sichtbar ist.
 
-- `LocalService.save*/delete*` schreibt in den drift-Cache **und** stellt einen
-  Auftrag in `sync_queue` ein
-- `SyncService` arbeitet die Queue ab, sobald `connectivity_plus` online meldet
-- `_processEntry` kennt nur `calendar_events`, `todos`, `annual_events` —
-  unbekannte Tabellen werden verworfen (früher landeten sie im Todo-Zweig!)
-- Screens lesen über `LocalService`-Streams (`.watch()`), damit lokal
-  gespeicherte Daten sofort sichtbar sind
+Früher lag hinter der App ein Supabase-Projekt, mit `sync_queue`,
+`SyncService`, `AuthService` und einem Konto-Bildschirm. Das ist alles raus
+(Schema v6 wirft die Tabelle weg). Die App wird auf einem Gerät benutzt; was
+gesichert werden soll, geht über `BackupService` in eine Datei.
 
-**Neue Entität offline-fähig machen:**
+**Neue Entität anlegen:**
 1. Tabelle in `db/app_database.dart` anlegen, `schemaVersion` erhöhen und in
    `MigrationStrategy.onUpgrade` per `m.createTable(...)` ergänzen
 2. `dart run build_runner build` (regeneriert `app_database.g.dart`)
 3. `LocalService`: Stream + save/delete + seed ergänzen
-4. `SyncService._processEntry`: Tabelle in der Whitelist und im switch ergänzen
-5. `main.dart`: eigenen Seed-Flag verwenden — bestehende Installationen haben
-   `local_seeded` schon auf `true` und würden sonst nie seeden
-6. Screens auf `LocalService` umstellen
+   (`seed*` ist das Einspielen einer Sicherung, kein Serverabgleich)
+4. `BackupService`: Feld in `build()` und `restore()` ergänzen, sonst fehlt die
+   Entität in der Sicherung
+5. Screens auf `LocalService` umstellen
 
 Migrationen sind in `test/annual_events_offline_test.dart` getestet
-(v1-DB per rohem sqlite3 anlegen, dann `AppDatabase.forTesting(...)` öffnen).
-Getestet werden v1→v2, v2→v3 und der Direktsprung v1→v3.
+(alte DB per rohem sqlite3 anlegen, dann `AppDatabase.forTesting(...)` öffnen).
+Getestet werden v1→v2, v2→v3, v3→v4, v4→v5, v5→v6 und der Sprung v1→v6.
 
-Aktueller Stand (Schema v4): `calendar_events`, `todos`, `annual_events`,
-`series_reminders`, `yearly_checklists`, `week_notes` laufen **alle** über den
-lokalen Cache. `SupabaseService` wird außerhalb von `SyncService` (Queue
-abarbeiten) und `main.dart` (einmaliges Seeding) **nirgends** mehr aufgerufen.
+Aktueller Stand (Schema v6): `events_cache`, `todos_cache`,
+`annual_events_cache`, `series_reminders_cache`, `yearly_checklists_cache`,
+`week_notes_cache`, `categories_cache`.
 
-Auch die früheren Ausnahmen sind umgestellt:
-- Teilaufgaben-Haken (`todos/todo_status_dialog.dart`)
-- Auto-Shift — `LocalService.shiftTodosAfter` statt der Supabase-Variante
-- Wochennotizen und Wochenziele (`notes/notes_screen.dart`)
-- Homescreen-Widget (`LocalService.getTodoById` / `getTodosForDate`)
+Netz braucht die App nur für drei Dinge, alle ohne Konto:
+- ICS-Abos (`IcsService`) und Outlook (`OutlookService`)
+- Update-Prüfung über die GitHub-Releases (`UpdateService`)
 
-## Benutzer-Kennung ohne Sitzung
+## Benutzer-Kennung
 
-`LocalService._uid` ist **nicht** mehr `AuthService.userId ?? ''`. Der leere
-Wert ließ offline angelegte Daten nach einer späteren Anmeldung verwaisen.
+Jede Zeile trägt eine `user_id`. Sie ist ein Überrest aus der Supabase-Zeit,
+bleibt aber: ohne sie müssten alle sieben Tabellen migriert werden.
 
 - `LocalService.init(db)` ist **async** und muss abgewartet werden: es legt
   eine Geräte-Kennung (`local-<uuid>`) in SharedPreferences an
-- `_uid` nimmt die Sitzung, wenn es eine gibt, sonst die Geräte-Kennung
-- `sessionUid` kapselt `AuthService.userId` in try/catch — der Zugriff wirft,
-  wenn Supabase nie initialisiert wurde, und die lokale Schicht muss das
-  überleben
-- `adoptLocalRows(realUid)` schreibt die Zeilen aller sechs Tabellen von der
-  Geräte-Kennung auf die echte user_id um; `main.dart` ruft es nach dem Start
-  auf, wenn eine Sitzung besteht. Mehrfach ausführbar.
+- `_uid` ist diese Kennung. Ein leerer Wert wäre schlecht: er ließe die Daten
+  nach einem Wechsel verwaisen
+- Die Kennung steckt in der Sicherung **nicht** mit drin — beim Einspielen
+  schreibt `restore()` alles auf die Kennung des Geräts, auf dem es landet
 
 ## Serien-Erinnerungen
 

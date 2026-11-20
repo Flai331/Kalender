@@ -72,8 +72,8 @@ class BackupService {
   static const String _kennung = 'kalender';
 
   /// Einstellungen, die zum Geraet gehoeren und nicht zum Benutzer. Sie
-  /// wandern bewusst nicht mit: die Kennung des Geraets und die Merkmale,
-  /// welche Tabellen schon einmal vom Server geholt wurden.
+  /// wandern bewusst nicht mit: die Kennung des Geraets und die alten
+  /// Merkmale aus der Zeit mit Server, welche Tabellen schon geladen waren.
   static const Set<String> _internal = {
     'local_device_user_id',
     'local_seeded',

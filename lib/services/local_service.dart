@@ -11,14 +11,12 @@ import '../models/series_reminder.dart';
 import '../models/yearly_checklist.dart';
 import '../models/week_note.dart';
 import '../models/app_category.dart';
-import 'auth_service.dart';
 
 class LocalService {
   static late AppDatabase _db;
 
-  /// Kennung, unter der gespeichert wird, solange keine Supabase-Sitzung
-  /// besteht. Ohne sie landete alles unter '' und war nach einer spaeteren
-  /// Anmeldung unerreichbar.
+  /// Kennung, unter der gespeichert wird. Einmalig je Installation; ohne sie
+  /// landete alles unter '' .
   static String? _deviceUid;
 
   static const String _deviceUidKey = 'local_device_user_id';
@@ -34,60 +32,6 @@ class LocalService {
       await prefs.setString(_deviceUidKey, id);
     }
     _deviceUid = id;
-  }
-
-  /// Die Kennung der aktuellen Sitzung, oder null.
-  ///
-  /// Gekapselt, weil `AuthService.userId` auf `Supabase.instance` zugreift und
-  /// das wirft, wenn Supabase nie initialisiert wurde (nicht konfiguriert oder
-  /// initialize ist gescheitert). Die lokale Schicht muss das ueberleben.
-  static String? get sessionUid {
-    try {
-      return AuthService.userId;
-    } catch (_) {
-      return null;
-    }
-  }
-
-  /// Schreibt alle unter der Geraete-Kennung gespeicherten Zeilen auf
-  /// [realUid] um. Aufzurufen, sobald eine Sitzung zustande kommt — sonst
-  /// bleiben offline angelegte Daten unsichtbar.
-  ///
-  /// Gibt die Anzahl der umgeschriebenen Zeilen zurueck.
-  static Future<int> adoptLocalRows(String realUid) async {
-    final from = _deviceUid;
-    if (from == null || from == realUid || realUid.isEmpty) return 0;
-
-    var count = 0;
-    Future<void> move(String table) async {
-      count += await _db.customUpdate(
-        'UPDATE $table SET user_id = ? WHERE user_id = ?',
-        variables: [Variable<String>(realUid), Variable<String>(from)],
-        updates: const {},
-      );
-    }
-
-    await move('events_cache');
-    await move('todos_cache');
-    await move('annual_events_cache');
-    await move('series_reminders_cache');
-    await move('yearly_checklists_cache');
-    await move('week_notes_cache');
-
-    // Kategorien: user_id ist hier der Primaerschluessel. Liegt schon eine
-    // Zeile der echten Sitzung vor, wuerde ein Verschieben sie verletzen —
-    // dann gilt die der Sitzung, und die Geraete-Zeile fliegt weg.
-    final ownRow = await (_db.select(_db.categoriesCache)
-          ..where((c) => c.userId.equals(realUid)))
-        .get();
-    if (ownRow.isEmpty) {
-      await move('categories_cache');
-    } else {
-      await (_db.delete(_db.categoriesCache)
-            ..where((c) => c.userId.equals(from)))
-          .go();
-    }
-    return count;
   }
 
   // ── CalendarEvents ────────────────────────────────────────────────────────
@@ -117,14 +61,12 @@ class LocalService {
             updatedAt: Value(now),
           ),
         );
-    await _enqueue('calendar_events', 'upsert', event.id, event.toJson());
   }
 
   static Future<void> deleteEvent(String id) async {
     await (_db.delete(_db.eventsCache)
           ..where((e) => e.id.equals(id)))
         .go();
-    await _enqueue('calendar_events', 'delete', id, {'id': id});
   }
 
   // ── Todos ────────────────────────────────────────────────────────────────
@@ -167,12 +109,10 @@ class LocalService {
             updatedAt: Value(now),
           ),
         );
-    await _enqueue('todos', 'upsert', todo.id, todo.toJson());
   }
 
   static Future<void> deleteTodo(String id) async {
     await (_db.delete(_db.todosCache)..where((t) => t.id.equals(id))).go();
-    await _enqueue('todos', 'delete', id, {'id': id});
   }
 
   // ── AnnualEvents ─────────────────────────────────────────────────────────
@@ -198,13 +138,11 @@ class LocalService {
             updatedAt: Value(now),
           ),
         );
-    await _enqueue('annual_events', 'upsert', event.id, event.toJson());
   }
 
   static Future<void> deleteAnnualEvent(String id) async {
     await (_db.delete(_db.annualEventsCache)..where((e) => e.id.equals(id)))
         .go();
-    await _enqueue('annual_events', 'delete', id, {'id': id});
   }
 
   // ── SeriesReminders ──────────────────────────────────────────────────────
@@ -242,13 +180,11 @@ class LocalService {
             updatedAt: Value(now),
           ),
         );
-    await _enqueue('series_reminders', 'upsert', reminder.id, reminder.toJson());
   }
 
   static Future<void> deleteReminder(String id) async {
     await (_db.delete(_db.seriesRemindersCache)..where((r) => r.id.equals(id)))
         .go();
-    await _enqueue('series_reminders', 'delete', id, {'id': id});
   }
 
   // ── YearlyChecklists ─────────────────────────────────────────────────────
@@ -284,14 +220,11 @@ class LocalService {
             updatedAt: Value(now),
           ),
         );
-    await _enqueue(
-        'yearly_checklists', 'upsert', checklist.id, checklist.toJson());
   }
 
   static Future<void> deleteYearlyChecklist(String id) async {
     await (_db.delete(_db.yearlyChecklistsCache)..where((c) => c.id.equals(id)))
         .go();
-    await _enqueue('yearly_checklists', 'delete', id, {'id': id});
   }
 
   /// Alle Todos des angemeldeten Benutzers aus dem Cache.
@@ -432,9 +365,7 @@ class LocalService {
   }
 
   /// Verschiebt die Todos eines Tages, die ab [afterHour]:[afterMinute]
-  /// beginnen, um [shiftMinutes]. Gleiche Logik wie vorher in
-  /// SupabaseService.shiftTodosAfter, nur gegen den lokalen Cache — damit
-  /// Auto-Shift auch ohne Netz greift.
+  /// beginnen, um [shiftMinutes].
   ///
   /// [skipTodoId] bleibt in jedem Fall liegen — gedacht fuer das gerade
   /// abgeschlossene To-do, das seine eigene Verschiebung ausloest.
@@ -475,8 +406,7 @@ class LocalService {
 
   // ── WeekNotes ────────────────────────────────────────────────────────────
 
-  /// Gibt eine leere Notiz zurueck, wenn fuer die Woche nichts gespeichert ist
-  /// — genauso wie die Supabase-Variante vorher.
+  /// Gibt eine leere Notiz zurueck, wenn fuer die Woche nichts gespeichert ist.
   static Future<WeekNote> getWeekNote(String weekKey) async {
     final rows = await (_db.select(_db.weekNotesCache)
           ..where((n) => n.weekKey.equals(weekKey) & n.userId.equals(_uid)))
@@ -505,8 +435,6 @@ class LocalService {
             updatedAt: Value(now),
           ),
         );
-    // entityId ist hier der Wochenschluessel — er identifiziert die Zeile.
-    await _enqueue('week_notes', 'upsert', note.weekKey, note.toJson());
   }
 
   // ── Kategorien ────────────────────────────────────────────────────────────
@@ -521,17 +449,14 @@ class LocalService {
     return AppCategory.listFromJson(jsonDecode(rows.first.data));
   }
 
-  /// Schreibt die Liste und meldet sie zum Hochladen an.
+  /// Schreibt die Liste. Eine Zeile je Benutzer, die ganze Liste in einem
+  /// Rutsch — die Reihenfolge gehoert zur Liste, nicht zum einzelnen Eintrag.
   static Future<void> saveCategories(List<AppCategory> items) async {
     await _writeCategories(items);
-    // entityId ist die Benutzerkennung — sie identifiziert die Zeile, denn es
-    // gibt genau eine je Benutzer. Dadurch fasst _enqueue mehrere Aenderungen
-    // zu einem Auftrag zusammen.
-    await _enqueue('categories', 'upsert', _uid, AppCategory.listToJson(items));
   }
 
-  /// Wie [saveCategories], aber ohne Sync-Auftrag — fuer eine Liste, die
-  /// gerade vom Server kam, und fuer die mitgelieferten Vorgaben.
+  /// Wie [saveCategories]; eigener Name fuer das Einspielen einer Sicherung,
+  /// passend zu [seedEvents] und den uebrigen seed-Methoden.
   static Future<void> seedCategories(List<AppCategory> items) async {
     await _writeCategories(items);
   }
@@ -548,11 +473,10 @@ class LocalService {
 
   // ── Alles loeschen ────────────────────────────────────────────────────────
 
-  /// Raeumt alle Daten dieses Benutzers weg, samt wartender Sync-Auftraege.
+  /// Raeumt alle Daten dieses Benutzers weg.
   ///
   /// Fuer das Einspielen einer Sicherung: danach steht genau das da, was in
-  /// der Datei stand, und nicht eine Mischung aus beidem. Die Auftraege
-  /// muessen mit weg — sie gehoeren zu Zeilen, die es nicht mehr gibt.
+  /// der Datei stand, und nicht eine Mischung aus beidem.
   static Future<void> clearAll() async {
     await _db.transaction(() async {
       await (_db.delete(_db.eventsCache)..where((t) => t.userId.equals(_uid)))
@@ -572,57 +496,10 @@ class LocalService {
           .go();
       await (_db.delete(_db.categoriesCache)..where((t) => t.userId.equals(_uid)))
           .go();
-      await _db.delete(_db.syncQueue).go();
     });
   }
 
-  // ── Sync queue ────────────────────────────────────────────────────────────
-
-  static Future<void> _enqueue(
-      String table, String operation, String entityId, Map<String, dynamic> payload) async {
-    // Offene Auftraege desselben Eintrags zusammenfassen. Ein ueberfaelliges
-    // To-do wird jede Minute neu auf "jetzt" geschrieben; ohne das staende
-    // eine Stunde spaeter sechzigmal derselbe Datensatz in der Schlange und
-    // ginge sechzigmal an Supabase. Jeder upsert traegt den vollstaendigen
-    // Datensatz, der aelteste ist also nichts wert.
-    //
-    // Geloescht und neu eingestellt, nicht ueberschrieben: der SyncService
-    // kann gerade dabei sein, genau diese Zeile zu verschicken, und raeumt sie
-    // danach anhand ihrer id weg. Eine ueberschriebene Zeile waere damit samt
-    // der neuen Aenderung verschwunden — eine neue Zeile bleibt stehen und
-    // geht beim naechsten Durchgang raus.
-    await (_db.delete(_db.syncQueue)
-          ..where((q) {
-            final sameEntity =
-                q.targetTable.equals(table) & q.entityId.equals(entityId);
-            // Vor einem delete faellt alles Offene weg. Ein upsert raeumt nur
-            // andere upserts ab und laesst ein wartendes delete stehen, sonst
-            // kippte die Reihenfolge der beiden und der Eintrag verschwaende
-            // auf dem Server.
-            return operation == 'delete'
-                ? sameEntity
-                : sameEntity & q.operation.equals('upsert');
-          }))
-        .go();
-
-    await _db.into(_db.syncQueue).insert(SyncQueueCompanion(
-          entityId: Value(entityId),
-          targetTable: Value(table), // NOTE: targetTable, not tableName
-          operation: Value(operation),
-          payload: Value(jsonEncode(payload)),
-          createdAt: Value(DateTime.now().millisecondsSinceEpoch),
-        ));
-  }
-
-  static Future<List<SyncQueueData>> getPendingQueue() =>
-      (_db.select(_db.syncQueue)
-            ..orderBy([(q) => OrderingTerm.asc(q.createdAt)]))
-          .get();
-
-  static Future<void> removeFromQueue(int id) =>
-      (_db.delete(_db.syncQueue)..where((q) => q.id.equals(id))).go();
-
-  /// Seed local cache from Supabase rows (called on first launch / full refresh).
+  /// Fuellt den Zwischenspeicher aus einer Sicherung.
   static Future<void> seedEvents(List<CalendarEvent> events) async {
     final now = DateTime.now().millisecondsSinceEpoch;
     await _db.batch((batch) {
@@ -732,9 +609,8 @@ class LocalService {
     });
   }
 
-  /// Unter dieser Kennung wird gespeichert und gelesen: die Sitzung, wenn es
-  /// eine gibt, sonst die Geraete-Kennung.
-  static String get _uid => sessionUid ?? _deviceUid ?? '';
+  /// Unter dieser Kennung wird gespeichert und gelesen.
+  static String get _uid => _deviceUid ?? '';
 
   /// Die Kennung, unter der gerade gespeichert wird. Fuer Tests und Diagnose.
   static String get currentUid => _uid;

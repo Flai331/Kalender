@@ -20,8 +20,7 @@ import '../models/travel_times.dart';
 /// Wo die Werte liegen, haengt an der Art des Termins:
 ///
 /// * Eigene Termine tragen ihre Zeit selbst (`travelBeforeOverride` am
-///   CalendarEvent). Sie gehoert zum Termin, wird mitgespeichert und
-///   mitsynchronisiert.
+///   CalendarEvent). Sie gehoert zum Termin und wird mitgespeichert.
 /// * Importierte Termine koennen das nicht: sie werden bei jedem Abruf neu
 ///   aus dem Abonnement gelesen, ein Schreiben daran waere beim naechsten
 ///   Abruf weg. Ihre Zeiten liegen deshalb hier, unter der Termin-Kennung

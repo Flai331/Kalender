@@ -3,7 +3,7 @@ import 'package:kalender/services/offline_error.dart';
 
 void main() {
   group('isOfflineError', () {
-    test('erkennt den Supabase-Fehler aus dem Fehlerbericht vom 22.08.', () {
+    test('erkennt den Fehler aus dem Fehlerbericht vom 22.08.', () {
       // Original-Meldung aus dem Protokoll: Speichern schlug fehl, weil das
       // Handy offline war — der Speichern-Knopf reagierte danach nicht mehr.
       const msg =
@@ -22,7 +22,7 @@ void main() {
     });
 
     test('meldet echte Fehler nicht als Offline-Fehler', () {
-      expect(isOfflineError('PostgrestException: row-level security'), isFalse);
+      expect(isOfflineError('HttpException: Invalid statusCode: 404'), isFalse);
       expect(isOfflineError(const FormatException('bad json')), isFalse);
     });
   });

@@ -10,14 +10,14 @@ import 'local_service.dart';
 /// haben. Frueher stand diese Liste viermal im Code, auf Englisch und fest
 /// verdrahtet; hier steht sie einmal und gehoert dem Benutzer.
 ///
-/// Gespeichert wird in der lokalen Datenbank und von dort aus synchronisiert,
-/// wie Termine und Todos: eine umbenannte Kategorie heisst damit auf jedem
-/// Geraet gleich, und eine Neuinstallation holt die Liste zurueck. Die Daten
-/// selbst (Todos, Termine, Jahres-Events) tragen nur den Schluessel; Name und
-/// Farbe kommen von hier.
+/// Gespeichert wird in der lokalen Datenbank, wie Termine und Todos — eine
+/// Zeile je Benutzer mit der ganzen Liste, denn die Reihenfolge gehoert zur
+/// Liste. Damit steckt sie auch in der Sicherung. Die Daten selbst (Todos,
+/// Termine, Jahres-Events) tragen nur den Schluessel; Name und Farbe kommen
+/// von hier.
 class CategoryService {
-  /// Nur noch fuer die einmalige Uebernahme: bis zur Synchronisierung stand
-  /// die Liste unter diesem Schluessel in den Einstellungen des Geraets.
+  /// Nur noch fuer die einmalige Uebernahme: vor dem Umzug in die Datenbank
+  /// stand die Liste unter diesem Schluessel in den Geraete-Einstellungen.
   static const String _legacyStorageKey = 'app_categories';
 
   /// Farbe fuer einen Schluessel, den es nicht mehr gibt. Bewusst neutral:
@@ -67,9 +67,7 @@ class CategoryService {
       _items.isEmpty ? 'personal' : _items.first.key;
 
   /// Reihenfolge der Quellen: lokale Datenbank, dann die alte Liste aus den
-  /// Geraete-Einstellungen, dann die Vorgaben. Was auf dem Server liegt, legt
-  /// `main` vor diesem Aufruf in die lokale Datenbank — von hier aus ist das
-  /// dann einfach der lokale Stand.
+  /// Geraete-Einstellungen, dann die Vorgaben.
   static Future<void> load() async {
     _items = await _loadItems();
     _loaded = true;
@@ -91,16 +89,12 @@ class CategoryService {
     final legacy = prefs.getString(_legacyStorageKey);
     if (legacy != null && legacy.isNotEmpty) {
       final items = _decode(legacy);
-      // Mit Sync-Auftrag: die eigenen Kategorien dieses Geraets sollen auf
-      // den Server, nicht nur in die lokale Datenbank.
       await LocalService.saveCategories(items);
       await prefs.remove(_legacyStorageKey);
       return items;
     }
 
-    // Nichts gespeichert. Die Vorgaben werden lokal festgeschrieben, aber
-    // bewusst NICHT hochgeladen: ein neues Geraet, das beim ersten Start
-    // offline ist, wuerde damit sonst die Liste auf dem Server ueberschreiben.
+    // Nichts gespeichert: die Vorgaben werden festgeschrieben.
     final items = List.of(defaults);
     await LocalService.seedCategories(items);
     return items;

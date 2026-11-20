@@ -82,15 +82,6 @@ class CategoriesCache extends Table {
   Set<Column> get primaryKey => {userId};
 }
 
-class SyncQueue extends Table {
-  IntColumn get id => integer().autoIncrement()();
-  TextColumn get entityId => text()();
-  TextColumn get targetTable => text()();
-  TextColumn get operation => text()(); // 'upsert' | 'delete'
-  TextColumn get payload => text()();
-  IntColumn get createdAt => integer()();
-}
-
 @DriftDatabase(tables: [
   EventsCache,
   TodosCache,
@@ -99,7 +90,6 @@ class SyncQueue extends Table {
   YearlyChecklistsCache,
   WeekNotesCache,
   CategoriesCache,
-  SyncQueue,
 ])
 class AppDatabase extends _$AppDatabase {
   AppDatabase() : super(_openConnection());
@@ -108,7 +98,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase.forTesting(super.executor);
 
   @override
-  int get schemaVersion => 5;
+  int get schemaVersion => 6;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -126,7 +116,7 @@ class AppDatabase extends _$AppDatabase {
             await m.createTable(yearlyChecklistsCache);
           }
           // v4: Wochennotizen und Wochenziele lokal — vorher gab es dafuer
-          // gar keine Tabelle, sie liefen ausschliesslich ueber Supabase.
+          // gar keine Tabelle, sie liefen ausschliesslich ueber den Server.
           if (from < 4) {
             await m.createTable(weekNotesCache);
           }
@@ -135,6 +125,11 @@ class AppDatabase extends _$AppDatabase {
           // Schluessel behielten.
           if (from < 5) {
             await m.createTable(categoriesCache);
+          }
+          // v6: die Sync-Warteschlange faellt weg. Ohne Server gibt es nichts
+          // hochzuladen; die Tabelle stand nur noch da und sammelte Zeilen.
+          if (from < 6) {
+            await m.deleteTable('sync_queue');
           }
         },
       );

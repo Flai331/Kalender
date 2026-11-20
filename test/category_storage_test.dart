@@ -14,8 +14,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 /// Neuinstallation war die Liste weg, waehrend die Termine ihre Schluessel
 /// behielten — sie zeigten dann 'work' statt 'Arbeit'.
 ///
-/// Jetzt liegt die Liste in der lokalen Datenbank und geht denselben Weg wie
-/// Termine und Todos: eine Zeile je Benutzer, ein Sync-Auftrag je Aenderung.
+/// Jetzt liegt die Liste in der lokalen Datenbank: eine Zeile je Benutzer,
+/// die ganze Liste als ein Datensatz — die Reihenfolge gehoert zur Liste.
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
@@ -29,10 +29,12 @@ void main() {
   });
   tearDown(() async => db.close());
 
-  Future<List<SyncQueueData>> auftraege() =>
-      LocalService.getPendingQueue();
-
   group('Speichern in der Datenbank', () {
+    test('die Vorgaben landen in der Datenbank', () async {
+      await CategoryService.load();
+      expect(await LocalService.getCategories(), CategoryService.defaults);
+    });
+
     test('eine Aenderung landet in der lokalen Zeile', () async {
       await CategoryService.load();
       await CategoryService.update('work', label: 'Dienst');
@@ -65,52 +67,8 @@ void main() {
     });
   });
 
-  group('Sync-Auftraege', () {
-    test('die blossen Vorgaben werden nicht hochgeladen', () async {
-      await CategoryService.load();
-      // Sonst ueberschriebe ein neues Geraet, das beim ersten Start offline
-      // ist, die Liste auf dem Server mit den Vorgaben.
-      expect(await auftraege(), isEmpty);
-      expect(await LocalService.getCategories(), CategoryService.defaults);
-    });
-
-    test('eine Aenderung erzeugt einen Auftrag', () async {
-      await CategoryService.load();
-      await CategoryService.update('work', label: 'Dienst');
-
-      final q = await auftraege();
-      expect(q.length, 1);
-      expect(q.first.targetTable, 'categories');
-      expect(q.first.operation, 'upsert');
-    });
-
-    test('mehrere Aenderungen bleiben ein einziger Auftrag', () async {
-      await CategoryService.load();
-      await CategoryService.update('work', label: 'Dienst');
-      await CategoryService.add('Ehrenamt', 0xFF00BCD4);
-      await CategoryService.remove('sport');
-      await CategoryService.move(0, 2);
-
-      final q = await auftraege();
-      expect(q.length, 1);
-      // Der Auftrag traegt den letzten Stand, nicht den ersten.
-      final items = AppCategory.listFromJson(jsonDecode(q.first.payload));
-      expect(items!.map((c) => c.key), CategoryService.keys);
-    });
-
-    test('der Auftrag traegt die ganze Liste', () async {
-      await CategoryService.load();
-      await CategoryService.add('Ehrenamt', 0xFF00BCD4);
-
-      final q = await auftraege();
-      final items = AppCategory.listFromJson(jsonDecode(q.first.payload));
-      expect(items!.length, 5);
-      expect(items.last.label, 'Ehrenamt');
-    });
-  });
-
   group('Uebernahme der alten Einstellung', () {
-    test('eine vorhandene Liste wird uebernommen und hochgeladen', () async {
+    test('eine vorhandene Liste wird uebernommen', () async {
       SharedPreferences.setMockInitialValues({
         'app_categories': jsonEncode([
           {'key': 'work', 'label': 'Dienst', 'color': 0xFF448AFF},
@@ -122,8 +80,6 @@ void main() {
 
       expect(CategoryService.keys, ['work', 'hobby']);
       expect(await LocalService.getCategories(), hasLength(2));
-      // Hochgeladen werden muss sie: der Server kennt sie noch nicht.
-      expect(await auftraege(), hasLength(1));
     });
 
     test('die alte Einstellung wird danach entfernt', () async {
@@ -192,8 +148,8 @@ void main() {
 
   group('Form des Gespeicherten', () {
     test('ein Objekt mit items, kein nacktes Array', () async {
-      // Der Sync-Auftrag traegt immer ein Objekt — ein Array wuerde beim
-      // Hochladen verworfen.
+      // Ein Objekt laesst sich spaeter um weitere Felder ergaenzen, ein
+      // nacktes Array nicht.
       final json = AppCategory.listToJson(CategoryService.defaults);
       expect(json.keys, ['items']);
       expect(json['items'], hasLength(4));
