@@ -486,6 +486,15 @@ class LocalService {
         jsonDecode(rows.first.data) as Map<String, dynamic>);
   }
 
+  static Future<List<WeekNote>> getAllWeekNotes() async {
+    final rows = await (_db.select(_db.weekNotesCache)
+          ..where((n) => n.userId.equals(_uid)))
+        .get();
+    return rows
+        .map((r) => WeekNote.fromJson(jsonDecode(r.data) as Map<String, dynamic>))
+        .toList();
+  }
+
   static Future<void> saveWeekNote(WeekNote note) async {
     final now = DateTime.now().millisecondsSinceEpoch;
     await _db.into(_db.weekNotesCache).insertOnConflictUpdate(
@@ -535,6 +544,36 @@ class LocalService {
             updatedAt: Value(DateTime.now().millisecondsSinceEpoch),
           ),
         );
+  }
+
+  // ── Alles loeschen ────────────────────────────────────────────────────────
+
+  /// Raeumt alle Daten dieses Benutzers weg, samt wartender Sync-Auftraege.
+  ///
+  /// Fuer das Einspielen einer Sicherung: danach steht genau das da, was in
+  /// der Datei stand, und nicht eine Mischung aus beidem. Die Auftraege
+  /// muessen mit weg — sie gehoeren zu Zeilen, die es nicht mehr gibt.
+  static Future<void> clearAll() async {
+    await _db.transaction(() async {
+      await (_db.delete(_db.eventsCache)..where((t) => t.userId.equals(_uid)))
+          .go();
+      await (_db.delete(_db.todosCache)..where((t) => t.userId.equals(_uid)))
+          .go();
+      await (_db.delete(_db.annualEventsCache)
+            ..where((t) => t.userId.equals(_uid)))
+          .go();
+      await (_db.delete(_db.seriesRemindersCache)
+            ..where((t) => t.userId.equals(_uid)))
+          .go();
+      await (_db.delete(_db.yearlyChecklistsCache)
+            ..where((t) => t.userId.equals(_uid)))
+          .go();
+      await (_db.delete(_db.weekNotesCache)..where((t) => t.userId.equals(_uid)))
+          .go();
+      await (_db.delete(_db.categoriesCache)..where((t) => t.userId.equals(_uid)))
+          .go();
+      await _db.delete(_db.syncQueue).go();
+    });
   }
 
   // ── Sync queue ────────────────────────────────────────────────────────────

@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Androids eigenes App-Backup (Android 11 und aelter).
+
+  Gesichert wird, was dem Benutzer gehoert: die Datenbank unter app_flutter
+  (samt ihrer -wal/-shm-Dateien, deshalb der ganze Ordner) und die
+  Einstellungen.
+
+  Ausgenommen ist der verschluesselte Speicher: sein Schluessel liegt im
+  Keystore des Geraets und wird nicht mitgesichert. Zurueckgespielt waeren
+  die Outlook-Zugangsdaten nur noch unlesbarer Zeichensalat.
+
+  Das ersetzt keine Sicherungsdatei: Android spielt so ein Backup nur beim
+  Einrichten zurueck, nur wenn das Geraete-Backup eingeschaltet ist, und
+  sagt einem nicht, ob es geklappt hat.
+-->
+<full-backup-content>
+    <include domain="root" path="app_flutter"/>
+    <include domain="sharedpref" path="."/>
+    <exclude domain="sharedpref" path="FlutterSecureStorage.xml"/>
+</full-backup-content>

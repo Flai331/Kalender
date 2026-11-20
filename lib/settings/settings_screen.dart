@@ -8,6 +8,7 @@ import 'account_screen.dart';
 import 'categories_screen.dart';
 import '../models/ics_source.dart';
 import '../services/auth_service.dart';
+import '../services/backup_service.dart';
 import '../services/daylight_service.dart';
 import '../services/feedback_service.dart';
 import '../services/ics_service.dart';
@@ -32,6 +33,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   List<IcsSource> _sources = [];
   bool _sourcesLoading = true;
   bool _outlookAllowTodoDrop = false;
+  bool _backupLaeuft = false;
 
   List<String> _blockingAllDayCats = ['vacation'];
   int _daylightSunrise = 6;
@@ -104,6 +106,111 @@ class _SettingsScreenState extends State<SettingsScreen> {
             inheritLabel: 'Keine Vorgabe',
             onChanged: (v) =>
                 _setCalendarTravel(calendarId, t.copyWith(after: v)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _createBackup() async {
+    setState(() => _backupLaeuft = true);
+    try {
+      final pfad = await BackupService.saveToFile();
+      if (!mounted) return;
+      showInfoSnack(
+          context,
+          pfad == null
+              ? 'Abgebrochen — es wurde nichts geschrieben.'
+              : 'Sicherung gespeichert.');
+    } catch (e) {
+      if (!mounted) return;
+      showErrorSnack(context, 'Sicherung fehlgeschlagen: $e');
+    } finally {
+      if (mounted) setState(() => _backupLaeuft = false);
+    }
+  }
+
+  Future<void> _restoreBackup() async {
+    Map<String, dynamic>? daten;
+    try {
+      daten = await BackupService.pickFile();
+    } on BackupFehler catch (e) {
+      if (!mounted) return;
+      showErrorSnack(context, e.nachricht);
+      return;
+    } catch (e) {
+      if (!mounted) return;
+      showErrorSnack(context, 'Die Datei liess sich nicht lesen: $e');
+      return;
+    }
+    if (daten == null || !mounted) return;
+
+    final inhalt = BackupService.summarize(daten);
+    final ok = await _confirmRestore(inhalt);
+    if (ok != true || !mounted) return;
+
+    setState(() => _backupLaeuft = true);
+    try {
+      await BackupService.restore(daten);
+      if (!mounted) return;
+      await _loadConstraintSettings();
+      await _loadSources();
+      if (!mounted) return;
+      showInfoSnack(
+          context,
+          'Eingespielt. Schließe die App einmal ganz und öffne sie neu, '
+          'damit überall der neue Stand steht.');
+    } catch (e) {
+      if (!mounted) return;
+      showErrorSnack(context, 'Einspielen fehlgeschlagen: $e');
+    } finally {
+      if (mounted) setState(() => _backupLaeuft = false);
+    }
+  }
+
+  Future<bool?> _confirmRestore(BackupSummary inhalt) {
+    final erstellt = inhalt.erstellt;
+    final wann = erstellt == null
+        ? 'ohne Datum'
+        : 'vom ${erstellt.day}.${erstellt.month}.${erstellt.year}';
+    final zeilen = inhalt.zeilen;
+    return showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppColors.surface,
+        title: const Text('Sicherung einspielen?',
+            style: TextStyle(color: AppColors.textPrimary)),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('Die Sicherung $wann enthält:',
+                style: const TextStyle(color: AppColors.textSecondary)),
+            const SizedBox(height: 8),
+            if (zeilen.isEmpty)
+              const Text('— nichts. Die Datei ist leer.',
+                  style: TextStyle(color: AppColors.fixedTag))
+            else
+              ...zeilen.map((z) => Text('• $z',
+                  style: const TextStyle(color: AppColors.textPrimary))),
+            const SizedBox(height: 12),
+            const Text(
+                'Alles, was jetzt auf diesem Gerät steht, wird dadurch '
+                'ersetzt — nicht ergänzt.',
+                style: TextStyle(color: AppColors.fixedTag, fontSize: 13)),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Abbrechen',
+                style: TextStyle(color: AppColors.textSecondary)),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Einspielen',
+                style: TextStyle(
+                    color: AppColors.fixedTag, fontWeight: FontWeight.bold)),
           ),
         ],
       ),
@@ -756,6 +863,43 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 actionLabel: 'Öffnen',
                 actionColor: AppColors.primary,
                 onAction: _openCategories,
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+
+          // Sicherung
+          _Section(
+            title: 'Sicherung',
+            children: [
+              const Padding(
+                padding: EdgeInsets.fromLTRB(16, 12, 16, 4),
+                child: Text(
+                    'Alles in einer Datei: Termine, To-dos, Jahres-Events, '
+                    'Erinnerungen, Notizen, Kategorien und Einstellungen. '
+                    'Leg sie auf den PC oder in deine Cloud — ohne eine '
+                    'solche Datei ist mit dem Gerät auch alles andere weg. '
+                    'Die Outlook-Zugangsdaten bleiben bewusst draußen.',
+                    style: TextStyle(
+                        color: AppColors.textSecondary, fontSize: 12)),
+              ),
+              _ActionTile(
+                icon: Icons.save_alt,
+                iconColor: AppColors.started,
+                title: 'Sicherung erstellen',
+                subtitle: 'Schreibt eine Datei, die du selbst weglegst',
+                actionLabel: _backupLaeuft ? '...' : 'Erstellen',
+                actionColor: AppColors.started,
+                onAction: _backupLaeuft ? () {} : _createBackup,
+              ),
+              _ActionTile(
+                icon: Icons.settings_backup_restore,
+                iconColor: AppColors.paused,
+                title: 'Sicherung einspielen',
+                subtitle: 'Ersetzt alles auf diesem Gerät durch die Datei',
+                actionLabel: _backupLaeuft ? '...' : 'Einspielen',
+                actionColor: AppColors.paused,
+                onAction: _backupLaeuft ? () {} : _restoreBackup,
               ),
             ],
           ),
