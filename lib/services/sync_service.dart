@@ -13,6 +13,7 @@ import '../models/yearly_checklist.dart';
 import '../models/week_note.dart';
 import '../models/app_category.dart';
 import '../widgets/conflict_dialog.dart';
+import 'category_service.dart';
 import 'local_service.dart';
 import 'supabase_service.dart';
 
@@ -98,6 +99,12 @@ class SyncService {
         await LocalService.seedCategories(remote);
       }
     });
+
+    // Die Kategorien stehen im Speicher des Dienstes, nicht nur in der
+    // Datenbank — ohne dieses Nachladen zeigte die App nach einem erneuten
+    // Laden weiter die alten Namen und Farben. Beim Start ist der Dienst
+    // noch nicht geladen; dort kommt load() ohnehin gleich danach.
+    if (CategoryService.isLoaded) await CategoryService.load();
   }
 
   static Future<void> _processEntry(SyncQueueData entry) async {
