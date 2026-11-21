@@ -818,12 +818,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     trailing: Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        IconButton(
-                          icon: const Icon(Icons.palette_outlined,
-                              color: AppColors.textSecondary, size: 20),
-                          onPressed: () => _pickColor(src),
-                          tooltip: 'Farbe',
-                        ),
+                        // Kein eigener Farb-Knopf mehr: zusammen mit
+                        // Schalter und Papierkorb lief die Zeile am Handy
+                        // ueber. Die beschriftete Zeile unter dem Namen ist
+                        // ohnehin deutlicher.
                         Tooltip(
                           message: 'Todo-Drop erlauben',
                           child: Switch(
