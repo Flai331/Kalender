@@ -249,9 +249,11 @@ class WeekScreenState extends State<WeekScreen> {
     final appEvent = transform(_convertIcsToApp(icsEvent));
     _overriddenIcsIds.add(icsEvent.id);
     // Remove from local list BEFORE any async — prevents a double entry
-    if (mounted) setState(() {
-      _icsEvents = _icsEvents.where((e) => e.id != icsEvent.id).toList();
-    });
+    if (mounted) {
+      setState(() {
+        _icsEvents = _icsEvents.where((e) => e.id != icsEvent.id).toList();
+      });
+    }
     _saveOverrides(); // fire-and-forget
     await LocalService.saveEvent(appEvent);
     // Der alte ICS-Termin ist ab jetzt ausgeblendet; seine eigene Einstellung
@@ -465,9 +467,11 @@ class WeekScreenState extends State<WeekScreen> {
       if (action == 'delete') {
         _overriddenIcsIds.add(event.id);
         _saveOverrides();
-        if (mounted) setState(() {
-          _icsEvents = _icsEvents.where((e) => e.id != event.id).toList();
-        });
+        if (mounted) {
+          setState(() {
+            _icsEvents = _icsEvents.where((e) => e.id != event.id).toList();
+          });
+        }
         return;
       }
       // An-/Abfahrt ohne Übernahme: der Termin bleibt am Abonnement.

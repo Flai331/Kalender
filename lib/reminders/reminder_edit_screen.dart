@@ -175,7 +175,7 @@ class _ReminderEditScreenState extends State<ReminderEditScreen> {
             )
           else
             DropdownButtonFormField<String>(
-              value: _selectedCalendarId,
+              initialValue: _selectedCalendarId,
               dropdownColor: AppColors.surface,
               decoration: InputDecoration(
                 filled: true,
