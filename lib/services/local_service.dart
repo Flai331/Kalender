@@ -36,8 +36,14 @@ class LocalService {
 
   // ── CalendarEvents ────────────────────────────────────────────────────────
 
-  static Stream<List<CalendarEvent>> eventsForWeek(DateTime weekStart) {
-    final weekEnd = weekStart.add(const Duration(days: 7));
+  /// Alle Termine eines Zeitraums: `start` gehoert dazu, `end` nicht mehr.
+  /// Wochen- und Monatsansicht lesen beide hierueber, nur mit anderer Spanne.
+  ///
+  /// Mitgenommen wird jeder Termin, der in den Zeitraum hineinreicht — nicht
+  /// nur die, die darin anfangen. Sonst fehlt eine Reise, die am Monatsende
+  /// beginnt, im Folgemonat.
+  static Stream<List<CalendarEvent>> eventsForRange(
+      DateTime start, DateTime end) {
     return (_db.select(_db.eventsCache)
           ..where((e) => e.userId.equals(_uid)))
         .watch()
@@ -45,8 +51,7 @@ class LocalService {
             .map((r) => CalendarEvent.fromJson(
                 jsonDecode(r.data) as Map<String, dynamic>))
             .where((e) =>
-                !e.startTime.isBefore(weekStart) &&
-                e.startTime.isBefore(weekEnd))
+                e.startTime.isBefore(end) && !e.endTime.isBefore(start))
             .toList()
           ..sort((a, b) => a.startTime.compareTo(b.startTime)));
   }
@@ -83,8 +88,8 @@ class LocalService {
           ..sort((a, b) => a.createdAt.compareTo(b.createdAt)));
   }
 
-  static Stream<List<Todo>> todosForWeek(DateTime weekStart) {
-    final weekEnd = weekStart.add(const Duration(days: 7));
+  /// Alle eingeplanten Todos eines Zeitraums, `end` nicht mehr enthalten.
+  static Stream<List<Todo>> todosForRange(DateTime start, DateTime end) {
     return (_db.select(_db.todosCache)
           ..where((t) => t.userId.equals(_uid)))
         .watch()
@@ -93,8 +98,8 @@ class LocalService {
                 Todo.fromJson(jsonDecode(r.data) as Map<String, dynamic>))
             .where((t) =>
                 t.scheduledDate != null &&
-                !t.scheduledDate!.isBefore(weekStart) &&
-                t.scheduledDate!.isBefore(weekEnd))
+                !t.scheduledDate!.isBefore(start) &&
+                t.scheduledDate!.isBefore(end))
             .toList()
           ..sort((a, b) => a.createdAt.compareTo(b.createdAt)));
   }

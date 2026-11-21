@@ -18,6 +18,7 @@ import '../services/widget_service.dart';
 import '../services/ics_service.dart';
 import '../models/ics_source.dart';
 import 'week_day_column.dart';
+import 'month_grid.dart';
 import '../todos/todo_status_dialog.dart';
 import '../widgets/feedback_button.dart';
 import '../week/event_status_dialog.dart';
@@ -26,6 +27,9 @@ import '../week/travel_override_dialog.dart';
 import '../todos/todo_edit_screen.dart';
 
 const _uuid = Uuid();
+
+/// Der Zeitraum, den die Ansicht zeigt.
+enum CalendarView { tag, woche, monat }
 
 class WeekScreen extends StatefulWidget {
   const WeekScreen({super.key});
@@ -37,7 +41,9 @@ class WeekScreen extends StatefulWidget {
 class WeekScreenState extends State<WeekScreen> {
   late DateTime _weekStart;
   late DateTime _selectedDay;
-  bool _isDayView = false;
+  /// Erster Tag des Monats, den die Monatsansicht zeigt.
+  late DateTime _month;
+  CalendarView _view = CalendarView.woche;
   final ScrollController _scrollController = ScrollController();
 
   // Daten-Streams
@@ -138,6 +144,7 @@ class WeekScreenState extends State<WeekScreen> {
     super.initState();
     _selectedDay = DateTime.now();
     _weekStart = _getWeekStart(DateTime.now());
+    _month = DateTime(_selectedDay.year, _selectedDay.month, 1);
     _initStreams();
     _loadOverrides().then((_) => _loadIcsEvents());
     _checkYearlyChecklists();
@@ -166,17 +173,41 @@ class WeekScreenState extends State<WeekScreen> {
   }
 
   DateTime _getWeekStart(DateTime date) {
-    return date.subtract(Duration(days: date.weekday - 1));
+    // Auf Mitternacht des Montags, sonst fehlen beim Oeffnen am Nachmittag
+    // die Termine von heute morgen.
+    return addDays(DateTime(date.year, date.month, date.day), -(date.weekday - 1));
   }
+
+  /// Erster Tag, den die aktuelle Ansicht zeigt.
+  DateTime get _visibleStart => _view == CalendarView.monat
+      ? monthGridDays(_month).first
+      : DateTime(_weekStart.year, _weekStart.month, _weekStart.day);
+
+  /// Erster Tag *nach* der aktuellen Ansicht.
+  DateTime get _visibleEnd => _view == CalendarView.monat
+      ? addDays(monthGridDays(_month).last, 1)
+      : addDays(_visibleStart, 7);
+
+  /// Der Tag, auf dem die Ansicht gerade steht. Beim Umschalten bleibt man
+  /// damit am selben Datum, statt auf heute zurueckzufallen.
+  DateTime get _anchorDay => switch (_view) {
+        CalendarView.tag => _selectedDay,
+        CalendarView.woche => _weekStart,
+        CalendarView.monat =>
+          (_selectedDay.year == _month.year && _selectedDay.month == _month.month)
+              ? _selectedDay
+              : _month,
+      };
 
   void _onTravelChanged() {
     if (mounted) setState(() {});
   }
 
   void _initStreams() {
-    final start = DateTime(_weekStart.year, _weekStart.month, _weekStart.day);
-    _eventsStream = LocalService.eventsForWeek(start);
-    _todosStream = LocalService.todosForWeek(start);
+    // Die Monatsansicht braucht den ganzen sichtbaren Monat, nicht nur eine
+    // Woche — deshalb hier der Zeitraum der Ansicht.
+    _eventsStream = LocalService.eventsForRange(_visibleStart, _visibleEnd);
+    _todosStream = LocalService.todosForRange(_visibleStart, _visibleEnd);
     _unscheduledStream = LocalService.unscheduledTodos();
   }
 
@@ -190,13 +221,16 @@ class WeekScreenState extends State<WeekScreen> {
 
   Future<void> _loadIcsEvents() async {
     final all = await IcsService.fetchEvents();
-    final weekEnd = _weekStart.add(const Duration(days: 7));
+    final start = _visibleStart;
+    final end = _visibleEnd;
     if (mounted) {
       setState(() {
+        // Mitgenommen wird alles, was in den Zeitraum hineinreicht: eine
+        // Reise ueber den Monatswechsel soll in beiden Monaten stehen.
         _icsEvents = all
             .where((e) =>
-                !e.startTime.isBefore(_weekStart) &&
-                e.startTime.isBefore(weekEnd) &&
+                e.startTime.isBefore(end) &&
+                !e.endTime.isBefore(start) &&
                 !_overriddenIcsIds.contains(e.id))
             .toList();
       });
@@ -286,9 +320,39 @@ class WeekScreenState extends State<WeekScreen> {
     }
   }
 
+  /// Ein Schritt vor (+1) oder zurueck (-1) — je nach Ansicht ein Tag, eine
+  /// Woche oder ein Monat.
+  void _navigate(int direction) {
+    switch (_view) {
+      case CalendarView.tag:
+        _navigateDay(direction);
+      case CalendarView.woche:
+        _navigateWeek(direction);
+      case CalendarView.monat:
+        _navigateMonth(direction);
+    }
+  }
+
+  /// Wischen nach links blaettert vor, nach rechts zurueck. Die Pfeile oben
+  /// in der Titelzeile tun dasselbe, nur findet die am Handy niemand.
+  void _onSwipe(DragEndDetails details) {
+    final velocity = details.primaryVelocity ?? 0;
+    // Darunter war es kein Wischen, sondern ein Verrutschen beim Tippen.
+    if (velocity.abs() < 120) return;
+    _navigate(velocity < 0 ? 1 : -1);
+  }
+
+  void _navigateMonth(int direction) {
+    setState(() {
+      _month = DateTime(_month.year, _month.month + direction, 1);
+      _initStreams();
+    });
+    _loadIcsEvents();
+  }
+
   void _navigateWeek(int direction) {
     setState(() {
-      _weekStart = _weekStart.add(Duration(days: 7 * direction));
+      _weekStart = addDays(_weekStart, 7 * direction);
       _selectedDay = _weekStart;
       _initStreams();
     });
@@ -296,7 +360,7 @@ class WeekScreenState extends State<WeekScreen> {
   }
 
   void _navigateDay(int direction) {
-    final next = _selectedDay.add(Duration(days: direction));
+    final next = addDays(_selectedDay, direction);
     final newWeekStart = _getWeekStart(next);
     final weekChanged = !_isSameDay(newWeekStart, _weekStart);
     setState(() {
@@ -307,6 +371,43 @@ class WeekScreenState extends State<WeekScreen> {
       }
     });
     if (weekChanged) _loadIcsEvents();
+  }
+
+  /// Umschalten zwischen Tag, Woche und Monat, ohne das Datum zu verlieren.
+  void _setView(CalendarView view) {
+    if (view == _view) return;
+    final anchor = _anchorDay;
+    setState(() {
+      _view = view;
+      _selectedDay = anchor;
+      _weekStart = _getWeekStart(anchor);
+      _month = DateTime(anchor.year, anchor.month, 1);
+      _initStreams();
+    });
+    _loadIcsEvents();
+  }
+
+  /// Tippen auf den Titel springt in jeder Ansicht zurueck auf heute.
+  void _goToToday() {
+    final today = DateTime.now();
+    setState(() {
+      _selectedDay = today;
+      _weekStart = _getWeekStart(today);
+      _month = DateTime(today.year, today.month, 1);
+      _initStreams();
+    });
+    _loadIcsEvents();
+  }
+
+  /// Tippen auf einen Tag im Monatsraster oeffnet ihn als Tagesansicht.
+  void _openDay(DateTime day) {
+    setState(() {
+      _view = CalendarView.tag;
+      _selectedDay = day;
+      _weekStart = _getWeekStart(day);
+      _initStreams();
+    });
+    _loadIcsEvents();
   }
 
   List<CalendarEvent> _eventsForDay(DateTime day) {
@@ -643,7 +744,16 @@ class WeekScreenState extends State<WeekScreen> {
           Column(
             children: [
               if (_pendingChecklists.isNotEmpty) _buildChecklistBanner(),
-              Expanded(child: _isDayView ? _buildDayView() : _buildWeekView()),
+              Expanded(
+                child: GestureDetector(
+                  onHorizontalDragEnd: _onSwipe,
+                  child: switch (_view) {
+                    CalendarView.tag => _buildDayView(),
+                    CalendarView.woche => _buildWeekView(),
+                    CalendarView.monat => _buildMonthView(),
+                  },
+                ),
+              ),
               _buildTodoPool(),
             ],
           ),
@@ -713,35 +823,69 @@ class WeekScreenState extends State<WeekScreen> {
     );
   }
 
+  String _dayLabel() {
+    const weekdays = ['Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So'];
+    final wd = weekdays[_selectedDay.weekday - 1];
+    return '$wd, ${_selectedDay.day}.${_selectedDay.month}.${_selectedDay.year}';
+  }
+
+  String _weekLabel() {
+    final weekEnd = addDays(_weekStart, 6);
+    return '${_weekStart.day}.${_weekStart.month} – '
+        '${weekEnd.day}.${weekEnd.month}.${weekEnd.year}';
+  }
+
+  IconData _viewIcon(CalendarView view) => switch (view) {
+        CalendarView.tag => Icons.view_day_outlined,
+        CalendarView.woche => Icons.view_week_outlined,
+        CalendarView.monat => Icons.calendar_month_outlined,
+      };
+
+  String _viewName(CalendarView view) => switch (view) {
+        CalendarView.tag => 'Tag',
+        CalendarView.woche => 'Woche',
+        CalendarView.monat => 'Monat',
+      };
+
+  /// Monatsraster. Die Termine kommen aus demselben Stream wie in der Woche,
+  /// nur ueber den ganzen Monat.
+  Widget _buildMonthView() {
+    return StreamBuilder<List<CalendarEvent>>(
+      stream: _eventsStream,
+      builder: (ctx, evSnap) {
+        _events = evSnap.data ?? [];
+        return MonthGrid(
+          month: _month,
+          selectedDay: _selectedDay,
+          days: monthGridDays(_month),
+          entriesForDay: _monthEntriesForDay,
+          onDayTap: _openDay,
+        );
+      },
+    );
+  }
+
+  /// Was an einem Tag im Monatsraster steht: erst die ganztaegigen Termine,
+  /// dann die mit Uhrzeit in zeitlicher Reihenfolge.
+  List<CalendarEvent> _monthEntriesForDay(DateTime day) =>
+      [..._allDayEventsForDay(day), ..._eventsForDay(day)];
+
   AppBar _buildAppBar() {
-    final String label;
-    if (_isDayView) {
-      const weekdays = ['Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So'];
-      final wd = weekdays[_selectedDay.weekday - 1];
-      label = '$wd, ${_selectedDay.day}.${_selectedDay.month}.${_selectedDay.year}';
-    } else {
-      final weekEnd = _weekStart.add(const Duration(days: 6));
-      label =
-          '${_weekStart.day}.${_weekStart.month} – ${weekEnd.day}.${weekEnd.month}.${weekEnd.year}';
-    }
+    final label = switch (_view) {
+      CalendarView.tag => _dayLabel(),
+      CalendarView.woche => _weekLabel(),
+      CalendarView.monat => '${monthNames[_month.month - 1]} ${_month.year}',
+    };
 
     return AppBar(
       backgroundColor: AppColors.surface,
       elevation: 0,
       leading: IconButton(
         icon: const Icon(Icons.chevron_left, color: AppColors.textPrimary),
-        onPressed: () => _isDayView ? _navigateDay(-1) : _navigateWeek(-1),
+        onPressed: () => _navigate(-1),
       ),
       title: GestureDetector(
-        onTap: () {
-          final today = DateTime.now();
-          setState(() {
-            _selectedDay = today;
-            _weekStart = _getWeekStart(today);
-            _initStreams();
-          });
-          _loadIcsEvents();
-        },
+        onTap: _goToToday,
         child: Text(
           label,
           style: const TextStyle(
@@ -754,22 +898,39 @@ class WeekScreenState extends State<WeekScreen> {
       actions: [
         IconButton(
           icon: const Icon(Icons.chevron_right, color: AppColors.textPrimary),
-          onPressed: () => _isDayView ? _navigateDay(1) : _navigateWeek(1),
+          onPressed: () => _navigate(1),
         ),
-        IconButton(
-          icon: Icon(
-            _isDayView ? Icons.view_week_outlined : Icons.today_outlined,
-            color: AppColors.textPrimary,
-          ),
-          tooltip: _isDayView ? 'Wochenansicht' : 'Tagesansicht',
-          onPressed: () {
-            setState(() {
-              _isDayView = !_isDayView;
-              if (_isDayView) {
-                _selectedDay = DateTime.now();
-              }
-            });
-          },
+        PopupMenuButton<CalendarView>(
+          icon: Icon(_viewIcon(_view), color: AppColors.textPrimary),
+          tooltip: 'Ansicht',
+          color: AppColors.surface,
+          onSelected: _setView,
+          itemBuilder: (ctx) => [
+            for (final view in CalendarView.values)
+              PopupMenuItem<CalendarView>(
+                value: view,
+                height: 42,
+                child: Row(
+                  children: [
+                    Icon(_viewIcon(view),
+                        size: 18,
+                        color: view == _view
+                            ? AppColors.primary
+                            : AppColors.textSecondary),
+                    const SizedBox(width: 10),
+                    Text(_viewName(view),
+                        style: TextStyle(
+                            fontSize: 14,
+                            fontWeight: view == _view
+                                ? FontWeight.w600
+                                : FontWeight.w400,
+                            color: view == _view
+                                ? AppColors.primary
+                                : AppColors.textPrimary)),
+                  ],
+                ),
+              ),
+          ],
         ),
         const FeedbackIconButton(),
       ],
