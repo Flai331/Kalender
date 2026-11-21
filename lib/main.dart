@@ -6,6 +6,7 @@ import 'package:home_widget/home_widget.dart';
 import 'app_colors.dart';
 import 'db/app_database.dart';
 import 'models/todo.dart';
+import 'services/backup_service.dart';
 import 'services/feedback_service.dart';
 import 'services/local_service.dart';
 import 'services/reminder_service.dart';
@@ -61,6 +62,11 @@ void main() async {
   unawaited(ReminderService.evaluateAll());
 
   await WidgetService.init();
+
+  // Einmal am Tag einen Stand wegschreiben, bevor etwas passiert. Bewusst
+  // nicht awaited: der Start soll nicht darauf warten, und autoSichern
+  // meldet Fehler nach innen statt nach oben.
+  unawaited(BackupService.autoSichern());
 
   runApp(const KalenderApp());
 }

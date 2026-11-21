@@ -1,7 +1,9 @@
 import 'dart:convert';
+import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:file_picker/file_picker.dart';
+import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../models/annual_event.dart';
@@ -50,6 +52,29 @@ class BackupSummary {
         if (kategorien > 0) '$kategorien Kategorien',
         if (einstellungen > 0) '$einstellungen Einstellungen',
       ];
+}
+
+/// Ein automatisch geschriebener Stand, wie er im App-Ordner liegt.
+class AutoSicherung {
+  final String pfad;
+  final DateTime datum;
+  final int bytes;
+
+  const AutoSicherung({
+    required this.pfad,
+    required this.datum,
+    required this.bytes,
+  });
+
+  String get datumKurz =>
+      '${datum.day.toString().padLeft(2, '0')}.'
+      '${datum.month.toString().padLeft(2, '0')}.${datum.year}';
+
+  String get groesseKurz => bytes < 1024
+      ? '$bytes B'
+      : (bytes < 1024 * 1024
+          ? '${(bytes / 1024).round()} KB'
+          : '${(bytes / (1024 * 1024)).toStringAsFixed(1)} MB');
 }
 
 /// Eine Sicherung ist eine einzige Datei mit allem drin.
@@ -130,11 +155,158 @@ class BackupService {
   /// Gibt den Pfad zurueck, oder null, wenn abgebrochen wurde.
   static Future<String?> saveToFile() async {
     final text = await build();
-    return FilePicker.platform.saveFile(
+    final pfad = await FilePicker.platform.saveFile(
       dialogTitle: 'Sicherung speichern',
       fileName: dateiname(),
       bytes: Uint8List.fromList(utf8.encode(text)),
     );
+    if (pfad != null) await _merkeZeitpunkt(_manuellKey);
+    return pfad;
+  }
+
+  // ── Automatische Sicherung ────────────────────────────────────────────────
+  //
+  // Die App speichert nur auf dem Geraet. Bisher entstand eine Sicherung nur,
+  // wenn man selbst daran dachte — und wer daran denkt, verliert auch nichts.
+  // Deshalb schreibt die App ab jetzt selbst einmal am Tag einen Stand in
+  // ihren eigenen Ordner und haelt die letzten paar vor.
+  //
+  // Das faengt den haeufigen Fall: aus Versehen geloescht, ein Import
+  // daneben, eine Datenbank, die nicht mehr aufgeht. Es faengt NICHT das
+  // verlorene Handy — dafuer braucht es weiter eine Datei, die woanders
+  // liegt. Android nimmt den Ordner allerdings in seine eigene Sicherung
+  // mit, wenn die eingeschaltet ist.
+
+  static const String _autoKey = 'backup_auto_last';
+  static const String _manuellKey = 'backup_manual_last';
+
+  /// So viele automatische Staende bleiben liegen.
+  static const int behalten = 5;
+
+  static const String _ordnerName = 'sicherungen';
+
+  /// Setzt den Ordner fuer Tests. Im Betrieb bleibt das null.
+  static Directory? autoOrdnerFuerTests;
+
+  static Future<Directory> _autoOrdner() async {
+    final vorgabe = autoOrdnerFuerTests;
+    if (vorgabe != null) {
+      if (!await vorgabe.exists()) await vorgabe.create(recursive: true);
+      return vorgabe;
+    }
+    final basis = await getApplicationDocumentsDirectory();
+    final ordner = Directory('${basis.path}/$_ordnerName');
+    if (!await ordner.exists()) await ordner.create(recursive: true);
+    return ordner;
+  }
+
+  /// Schreibt einen Stand, hoechstens einen pro Tag.
+  ///
+  /// Gibt den Pfad zurueck, oder null, wenn heute schon einer liegt oder
+  /// nichts zu sichern war. Wirft nicht nach oben durch — ein misslungener
+  /// Versuch darf den Start der App nicht aufhalten.
+  static Future<String?> autoSichern(
+      {DateTime? jetzt, bool erzwingen = false}) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final now = jetzt ?? DateTime.now();
+      if (!erzwingen) {
+        final letzte = DateTime.tryParse(prefs.getString(_autoKey) ?? '');
+        if (letzte != null &&
+            letzte.year == now.year &&
+            letzte.month == now.month &&
+            letzte.day == now.day) {
+          return null;
+        }
+      }
+
+      final text = await build();
+      final vorhanden = await autoSicherungen();
+      // Ein leerer Stand ueberschreibt nie einen gefuellten. Sonst waere die
+      // automatische Sicherung genau dann wertlos, wenn man sie braucht:
+      // nach dem Verlust steht in allen Staenden nichts mehr.
+      if (_istLeer(summarize(parse(text))) && vorhanden.isNotEmpty) {
+        return null;
+      }
+
+      final ordner = await _autoOrdner();
+      final datei = File('${ordner.path}/${dateiname(now)}');
+      await datei.writeAsString(text, flush: true);
+      await _merkeZeitpunkt(_autoKey, now);
+      await _aufraeumen();
+      return datei.path;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  static bool _istLeer(BackupSummary inhalt) =>
+      inhalt.termine == 0 &&
+      inhalt.todos == 0 &&
+      inhalt.notizen == 0 &&
+      inhalt.jahresEvents == 0 &&
+      inhalt.erinnerungen == 0 &&
+      inhalt.jahresaufgaben == 0;
+
+  /// Die vorhandenen automatischen Staende, der neueste zuerst.
+  static Future<List<AutoSicherung>> autoSicherungen() async {
+    final ordner = await _autoOrdner();
+    final staende = <AutoSicherung>[];
+    for (final eintrag in await ordner.list().toList()) {
+      if (eintrag is! File || !eintrag.path.endsWith('.json')) continue;
+      final stat = await eintrag.stat();
+      staende.add(AutoSicherung(
+        pfad: eintrag.path,
+        datum: _datumAusNamen(eintrag.path) ?? stat.modified,
+        bytes: stat.size,
+      ));
+    }
+    staende.sort((a, b) => b.datum.compareTo(a.datum));
+    return staende;
+  }
+
+  /// Liest einen Stand von der Platte — danach geht es weiter wie bei einer
+  /// Datei, die man selbst ausgesucht hat.
+  static Future<Map<String, dynamic>> leseStand(String pfad) async =>
+      parse(await File(pfad).readAsString());
+
+  /// Wann zuletzt automatisch gesichert wurde.
+  static Future<DateTime?> letzteAuto() => _leseZeitpunkt(_autoKey);
+
+  /// Wann zuletzt eine Datei aus der App heraus weggelegt wurde.
+  static Future<DateTime?> letzteManuelle() => _leseZeitpunkt(_manuellKey);
+
+  static Future<DateTime?> _leseZeitpunkt(String schluessel) async {
+    final prefs = await SharedPreferences.getInstance();
+    return DateTime.tryParse(prefs.getString(schluessel) ?? '');
+  }
+
+  static Future<void> _merkeZeitpunkt(String schluessel,
+      [DateTime? jetzt]) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(
+        schluessel, (jetzt ?? DateTime.now()).toIso8601String());
+  }
+
+  static DateTime? _datumAusNamen(String pfad) {
+    final name = pfad.split(Platform.pathSeparator).last;
+    final treffer = RegExp(r'(\d{4})-(\d{2})-(\d{2})').firstMatch(name);
+    if (treffer == null) return null;
+    return DateTime(int.parse(treffer.group(1)!),
+        int.parse(treffer.group(2)!), int.parse(treffer.group(3)!));
+  }
+
+  static Future<void> _aufraeumen() async {
+    final staende = await autoSicherungen();
+    if (staende.length <= behalten) return;
+    for (final alt in staende.sublist(behalten)) {
+      try {
+        await File(alt.pfad).delete();
+      } catch (_) {
+        // Laesst sich ein alter Stand nicht loeschen, ist das kein Grund,
+        // die neue Sicherung als gescheitert zu melden.
+      }
+    }
   }
 
   // ── Lesen und Einspielen ──────────────────────────────────────────────────

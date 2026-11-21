@@ -32,6 +32,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
   bool _sourcesLoading = true;
   bool _outlookAllowTodoDrop = false;
   bool _backupLaeuft = false;
+  List<AutoSicherung> _autoStaende = [];
+  DateTime? _letzteManuelle;
 
   List<String> _blockingAllDayCats = ['vacation'];
   int _daylightSunrise = 6;
@@ -42,10 +44,51 @@ class _SettingsScreenState extends State<SettingsScreen> {
     super.initState();
     _loadSources();
     _loadConstraintSettings();
+    _loadBackupInfo();
     // Echten versionCode holen, statt der beim Bauen eingetragenen Konstante.
     UpdateService.refreshInstalledBuild().then((_) {
       if (mounted) setState(() {});
     });
+  }
+
+  Future<void> _loadBackupInfo() async {
+    // Nur eine Anzeige: laesst sich der Ordner nicht lesen, bleibt die Zeile
+    // leer, statt den ganzen Bildschirm zu verhindern.
+    List<AutoSicherung> staende = [];
+    DateTime? manuell;
+    try {
+      staende = await BackupService.autoSicherungen();
+      manuell = await BackupService.letzteManuelle();
+    } catch (_) {
+      staende = [];
+    }
+    if (mounted) {
+      setState(() {
+        _autoStaende = staende;
+        _letzteManuelle = manuell;
+      });
+    }
+  }
+
+  /// Eine Zeile darueber, wie es um die automatischen Staende steht.
+  String _autoInfo() {
+    if (_autoStaende.isEmpty) {
+      return 'Die App legt beim Start täglich einen Stand ab';
+    }
+    final anzahl = _autoStaende.length;
+    return 'Letzter Stand ${_autoStaende.first.datumKurz} · '
+        '$anzahl ${anzahl == 1 ? 'Stand' : 'Stände'} in der App';
+  }
+
+  /// Und eine darueber, wann zuletzt eine Datei das Geraet verlassen hat.
+  String _manuellInfo() {
+    final letzte = _letzteManuelle;
+    if (letzte == null) {
+      return 'Noch nie — mit dem Gerät wäre alles weg';
+    }
+    final tage = DateTime.now().difference(letzte).inDays;
+    final wann = '${letzte.day}.${letzte.month}.${letzte.year}';
+    return tage > 30 ? 'Zuletzt $wann, also $tage Tage her' : 'Zuletzt $wann';
   }
 
   Future<void> _loadSources() async {
@@ -120,6 +163,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
           pfad == null
               ? 'Abgebrochen — es wurde nichts geschrieben.'
               : 'Sicherung gespeichert.');
+      await _loadBackupInfo();
     } catch (e) {
       if (!mounted) return;
       showErrorSnack(context, 'Sicherung fehlgeschlagen: $e');
@@ -142,7 +186,86 @@ class _SettingsScreenState extends State<SettingsScreen> {
       return;
     }
     if (daten == null || !mounted) return;
+    await _applyRestore(daten);
+  }
 
+  /// Zeigt die automatischen Staende und spielt den gewaehlten ein.
+  Future<void> _showAutoBackups() async {
+    List<AutoSicherung> staende;
+    try {
+      staende = await BackupService.autoSicherungen();
+    } catch (e) {
+      if (!mounted) return;
+      showErrorSnack(context, 'Die Stände liessen sich nicht lesen: $e');
+      return;
+    }
+    if (!mounted) return;
+    if (staende.isEmpty) {
+      showInfoSnack(context,
+          'Noch kein automatischer Stand — der erste entsteht beim nächsten Start der App.');
+      return;
+    }
+    final gewaehlt = await showDialog<AutoSicherung>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppColors.surface,
+        title: const Text('Automatische Stände',
+            style: TextStyle(color: AppColors.textPrimary, fontSize: 15)),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+                'Die App behält die letzten ${BackupService.behalten} Stände. '
+                'Sie liegen im Speicher der App — mit dem Gerät sind auch sie weg.',
+                style: const TextStyle(
+                    color: AppColors.textSecondary, fontSize: 12)),
+            const SizedBox(height: 8),
+            for (final stand in staende)
+              ListTile(
+                dense: true,
+                contentPadding: EdgeInsets.zero,
+                leading: const Icon(Icons.history,
+                    color: AppColors.textSecondary, size: 20),
+                title: Text(stand.datumKurz,
+                    style: const TextStyle(
+                        color: AppColors.textPrimary, fontSize: 14)),
+                subtitle: Text(stand.groesseKurz,
+                    style: const TextStyle(
+                        color: AppColors.textSecondary, fontSize: 11)),
+                onTap: () => Navigator.pop(ctx, stand),
+              ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Abbrechen',
+                style: TextStyle(color: AppColors.textSecondary)),
+          ),
+        ],
+      ),
+    );
+    if (gewaehlt == null || !mounted) return;
+
+    Map<String, dynamic> daten;
+    try {
+      daten = await BackupService.leseStand(gewaehlt.pfad);
+    } on BackupFehler catch (e) {
+      if (!mounted) return;
+      showErrorSnack(context, e.nachricht);
+      return;
+    } catch (e) {
+      if (!mounted) return;
+      showErrorSnack(context, 'Der Stand liess sich nicht lesen: $e');
+      return;
+    }
+    if (!mounted) return;
+    await _applyRestore(daten);
+  }
+
+  /// Rueckfrage und Einspielen — egal, woher die Daten kommen.
+  Future<void> _applyRestore(Map<String, dynamic> daten) async {
     final inhalt = BackupService.summarize(daten);
     final ok = await _confirmRestore(inhalt);
     if (ok != true || !mounted) return;
@@ -368,6 +491,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
     }
   }
 
+  /// Steht fuer „keine eigene Farbe" in der Auswahl unten.
+  static const int _defaultColorChoice = -1;
+
   static const List<int> _presetColors = [
     0xFF6C63FF, 0xFF448AFF, 0xFF00BCD4, 0xFF4CAF50,
     0xFF8BC34A, 0xFFFFD740, 0xFFFF9800, 0xFFFF5252,
@@ -404,6 +530,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
         ),
         actions: [
           TextButton(
+            onPressed: () => Navigator.pop(ctx, _defaultColorChoice),
+            child: const Text('Standardfarbe',
+                style: TextStyle(color: AppColors.textSecondary)),
+          ),
+          TextButton(
             onPressed: () => Navigator.pop(ctx),
             child: const Text('Abbrechen',
                 style: TextStyle(color: AppColors.textSecondary)),
@@ -413,8 +544,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
     );
     if (picked == null) return;
     final sources = await IcsService.getSources();
-    final updated = sources.map((s) =>
-        s.id == src.id ? s.copyWith(color: picked) : s).toList();
+    final updated = sources
+        .map((s) => s.id != src.id
+            ? s
+            : (picked == _defaultColorChoice
+                ? s.copyWith(clearColor: true)
+                : s.copyWith(color: picked)))
+        .toList();
     await IcsService.saveSources(updated);
     await _loadSources();
   }
@@ -639,16 +775,55 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     title: Text(src.name,
                         style: const TextStyle(
                             color: AppColors.textPrimary, fontSize: 14)),
-                    subtitle: Text(
-                      src.url,
-                      style: const TextStyle(
-                          color: AppColors.textSecondary, fontSize: 10),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
+                    subtitle: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          src.url,
+                          style: const TextStyle(
+                              color: AppColors.textSecondary, fontSize: 10),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                        // Die Farbe hing bisher unsichtbar am Kreis links.
+                        GestureDetector(
+                          onTap: () => _pickColor(src),
+                          child: Padding(
+                            padding: const EdgeInsets.only(top: 3, bottom: 2),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Container(
+                                  width: 10,
+                                  height: 10,
+                                  decoration: BoxDecoration(
+                                      color: srcColor, shape: BoxShape.circle),
+                                ),
+                                const SizedBox(width: 5),
+                                Text(
+                                  src.color != null
+                                      ? 'Farbe ändern'
+                                      : 'Farbe wählen',
+                                  style: const TextStyle(
+                                      color: AppColors.primary,
+                                      fontSize: 11,
+                                      fontWeight: FontWeight.w600),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ],
                     ),
                     trailing: Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
+                        IconButton(
+                          icon: const Icon(Icons.palette_outlined,
+                              color: AppColors.textSecondary, size: 20),
+                          onPressed: () => _pickColor(src),
+                          tooltip: 'Farbe',
+                        ),
                         Tooltip(
                           message: 'Todo-Drop erlauben',
                           child: Switch(
@@ -837,10 +1012,19 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         color: AppColors.textSecondary, fontSize: 12)),
               ),
               _ActionTile(
+                icon: Icons.history,
+                iconColor: AppColors.primary,
+                title: 'Automatische Sicherung',
+                subtitle: _autoInfo(),
+                actionLabel: 'Stände',
+                actionColor: AppColors.primary,
+                onAction: _backupLaeuft ? () {} : _showAutoBackups,
+              ),
+              _ActionTile(
                 icon: Icons.save_alt,
                 iconColor: AppColors.started,
                 title: 'Sicherung erstellen',
-                subtitle: 'Schreibt eine Datei, die du selbst weglegst',
+                subtitle: _manuellInfo(),
                 actionLabel: _backupLaeuft ? '...' : 'Erstellen',
                 actionColor: AppColors.started,
                 onAction: _backupLaeuft ? () {} : _createBackup,

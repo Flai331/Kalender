@@ -13,7 +13,7 @@
 
 Flutter-App, rein lokal: alle Daten liegen in einer SQLite-Datei auf dem
 Gerät (drift). Kein Server, kein Konto. Hauptbereiche:
-- `lib/week/` – Wochenansicht (week_screen.dart, week_day_column.dart, event_block.dart)
+- `lib/week/` – Kalender (week_screen.dart, week_day_column.dart, event_block.dart, month_grid.dart)
 - `lib/todos/` – Todo-Verwaltung (todo_list_screen, todo_edit_screen, todo_status_dialog)
 - `lib/models/` – Datenmodelle (todo.dart, calendar_event.dart, ics_source.dart)
 - `lib/settings/` – Einstellungsscreen
@@ -21,6 +21,22 @@ Gerät (drift). Kein Server, kein Konto. Hauptbereiche:
 ## Features
 
 ### Wochenansicht (week_screen.dart)
+- Drei Ansichten in einem Screen: `CalendarView.tag | woche | monat`.
+  Umgeschaltet wird über das Menü in der Titelzeile, geblättert über die
+  Pfeile **oder durch Wischen** (`_onSwipe`, Schwelle 120 px/s). Ein Schritt
+  ist je nach Ansicht ein Tag, eine Woche oder ein Monat (`_navigate`)
+- `_visibleStart` / `_visibleEnd` sind der Zeitraum der aktuellen Ansicht.
+  Streams (`_initStreams`) und ICS-Laden (`_loadIcsEvents`) hängen daran —
+  die Monatsansicht braucht mehr als eine Woche
+- Tage **nie** mit `Duration(days: n)` rechnen, sondern mit `addDays` aus
+  `month_grid.dart` (`DateTime(y, m, d + n)`). In der Nacht der Zeitumstellung
+  hat ein Tag 23 oder 25 Stunden, `.add(Duration(days: 1))` landet dann wieder
+  im selben Tag
+- `_getWeekStart` normalisiert auf Mitternacht, sonst fehlen beim Öffnen am
+  Nachmittag die Termine von heute morgen
+- Monatsraster (`month_grid.dart`): immer ganze Wochen Mo–So, je Termin ein
+  farbiger Balken (`monthEntryColor`: Kalenderfarbe sticht Kategorie),
+  Tippen auf einen Tag öffnet die Tagesansicht
 - `_endHour = 24` — 23:00-Zeile sichtbar (nicht 23!)
 - `_baseHourHeight` — veränderlich (nicht const), für Zoom
 - Ctrl+Scroll = Zoom (Faktor 0.88/1.12, clamp 30–300 px/h)
@@ -86,6 +102,17 @@ Früher lag hinter der App ein Supabase-Projekt, mit `sync_queue`,
 `SyncService`, `AuthService` und einem Konto-Bildschirm. Das ist alles raus
 (Schema v6 wirft die Tabelle weg). Die App wird auf einem Gerät benutzt; was
 gesichert werden soll, geht über `BackupService` in eine Datei.
+
+Zeitraum-Abfragen (`eventsForRange`, `todosForRange`) nehmen alles mit, was in
+den Zeitraum **hineinreicht**, nicht nur was darin beginnt — sonst fehlt eine
+Reise über den Monatswechsel im zweiten Monat.
+
+**Sicherung:** `BackupService.autoSichern()` läuft beim Start (aus `main`,
+nicht awaited) und legt höchstens einmal am Tag einen Stand in
+`<Dokumente>/sicherungen/` ab; die letzten `behalten = 5` bleiben liegen. Ein
+leerer Stand überschreibt nie einen gefüllten — sonst wäre die Sicherung genau
+dann wertlos, wenn man sie braucht. Das ersetzt die Datei, die man selbst
+weglegt, **nicht**: mit dem Gerät ist auch der App-Ordner weg.
 
 **Neue Entität anlegen:**
 1. Tabelle in `db/app_database.dart` anlegen, `schemaVersion` erhöhen und in
