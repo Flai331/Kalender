@@ -105,6 +105,38 @@ class CalendarEvent {
 
   static const _unset = Object();
 
+  /// Aus einem importierten Termin einen eigenen machen.
+  ///
+  /// Die Feldliste steht hier und nicht in der Wochenansicht: wer dem Modell
+  /// ein Feld gibt, sieht an dieser Stelle, dass es beim Uebernehmen
+  /// mitmuss. Genau das ging einmal schief — `infoOnly` fiel weg, und ein
+  /// fremder Dienst sperrte nach dem Verschieben wieder den eigenen Tag.
+  ///
+  /// Herkunft faellt ab: neue Kennung, Quelle 'app', keine Serie, kein
+  /// Abonnement. Die An-/Abfahrt kommt von aussen herein, weil sie vorher
+  /// aufgeloest werden muss (sie haengt am Kalender, den der Termin
+  /// gerade verliert).
+  CalendarEvent adoptedAsOwn({
+    required String newId,
+    int? travelBeforeOverride,
+    int? travelAfterOverride,
+  }) =>
+      CalendarEvent(
+        id: newId,
+        title: title,
+        description: description,
+        startTime: startTime,
+        endTime: endTime,
+        isAllDay: isAllDay,
+        source: 'app',
+        category: category,
+        address: address,
+        travelBeforeOverride: travelBeforeOverride,
+        travelAfterOverride: travelAfterOverride,
+        infoOnly: infoOnly,
+        placeGroup: placeGroup,
+      );
+
   CalendarEvent copyWith({
     String? id,
     String? title,

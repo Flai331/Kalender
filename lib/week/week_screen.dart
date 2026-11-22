@@ -260,16 +260,8 @@ class WeekScreenState extends State<WeekScreen> {
         resolved.travelMinutesBefore > 0 ? resolved.travelMinutesBefore : null;
     final after =
         resolved.travelMinutesAfter > 0 ? resolved.travelMinutesAfter : null;
-    return CalendarEvent(
-      id: _uuid.v4(),
-      title: ics.title,
-      description: ics.description,
-      startTime: ics.startTime,
-      endTime: ics.endTime,
-      isAllDay: ics.isAllDay,
-      source: 'app',
-      category: ics.category,
-      address: ics.address,
+    return ics.adoptedAsOwn(
+      newId: _uuid.v4(),
       travelBeforeOverride: before,
       travelAfterOverride: after,
     );
@@ -552,11 +544,15 @@ class WeekScreenState extends State<WeekScreen> {
               child: const Text('Ausblenden',
                   style: TextStyle(color: Colors.redAccent)),
             ),
-            TextButton(
-              onPressed: () => Navigator.pop(ctx, 'travel'),
-              child: const Text('An-/Abfahrt',
-                  style: TextStyle(color: AppColors.primary)),
-            ),
+            // Zu einem Termin, der nur zur Kenntnis dasteht, faehrt man
+            // nicht hin: resolve() erzwingt dort 0/0. Der Knopf wuerde einen
+            // Dialog oeffnen, dessen Eingabe nirgends ankommt.
+            if (!event.infoOnly)
+              TextButton(
+                onPressed: () => Navigator.pop(ctx, 'travel'),
+                child: const Text('An-/Abfahrt',
+                    style: TextStyle(color: AppColors.primary)),
+              ),
             TextButton(
               onPressed: () => Navigator.pop(ctx, 'edit'),
               child: const Text('Bearbeiten',

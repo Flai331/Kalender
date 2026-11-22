@@ -246,9 +246,22 @@ Gezeichnet wird er **hinter** den eigenen Terminen, über die **volle
 Spaltenbreite**, blasser und mit `Icons.person_outline` statt der Ortsnadel.
 Das ist der Punkt: ein fremder 8-Stunden-Dienst würde sonst als Nachbar die
 halbe Tagesspalte wegnehmen. Dafür baut `_buildEventBlocks` die Liste zweimal
-durch (erst alle `infoOnly`, dann der Rest) und gibt Info-Blöcken kein
-Ziehen und keine An-/Abfahrt-Streifen. Monatsraster und Ganztags-Streifen
+durch (erst alle `infoOnly`, dann der Rest). Monatsraster und Ganztags-Streifen
 blassen ebenso ab.
+
+**Verschieben geht trotzdem** — ein fremder Dienstplan ändert sich. Der
+Info-Block hängt an derselben `LongPressDraggable` wie jeder andere (geteilte
+Vorschau: `_ziehVorschau`), bekommt aber **kein** `DragTarget<Todo>`: ein
+To-do auf einen fremden Dienst zu legen ergibt nichts, es fällt durch auf das
+Tagesraster und landet dort auf der Uhrzeit. An-/Abfahrt-Streifen bekommt er
+auch keine, und im Dialog für importierte Termine fehlt der Knopf
+„An-/Abfahrt" — `resolve()` erzwingt dort 0/0, der Dialog ginge ins Leere.
+
+`CalendarEvent.adoptedAsOwn` macht aus einem importierten Termin einen
+eigenen (Verschieben oder Bearbeiten eines Abo-Termins geht darüber).
+**Die Feldliste steht im Modell, nicht in der Wochenansicht** — sie war
+vorher in `_convertIcsToApp` und driftete: `infoOnly` fehlte, ein
+verschobener fremder Dienst sperrte danach wieder den eigenen Tag.
 
 **Kein Migrationsschritt** — die Termine liegen als JSON im Cache, fehlendes
 `infoOnly` liest sich als `false`, Altbestand redet also weiter mit.

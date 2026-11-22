@@ -386,6 +386,55 @@ class _WeekDayColumnState extends State<WeekDayColumn> {
     return lines;
   }
 
+  /// Was unter dem Finger haengt, waehrend ein Termin verschoben wird.
+  /// Beide Zweige nehmen dieselbe Vorschau — ein Info-Termin wird genauso
+  /// gezogen wie jeder andere, er sieht beim Ziehen nur blasser aus.
+  Widget _ziehVorschau(CalendarEvent event, int durationMinutes) {
+    return ValueListenableBuilder<int>(
+          valueListenable: SnapState.snapNotifier,
+          builder: (ctx, snap, _) {
+            final mh = SnapState.hourHeightForSnap(snap) / 60.0;
+            final h = (durationMinutes * mh).clamp(20.0, 2000.0);
+            return Material(
+              color: Colors.transparent,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  ValueListenableBuilder<String>(
+                    valueListenable: SnapState.currentTimeNotifier,
+                    builder: (ctx, timeStr, _) {
+                      if (timeStr.isEmpty) return const SizedBox.shrink();
+                      final parts = timeStr.split(':');
+                      final totalEnd = int.parse(parts[0]) * 60 + int.parse(parts[1]) + durationMinutes;
+                      final endStr = '${(totalEnd ~/ 60).toString().padLeft(2, '0')}:${(totalEnd % 60).toString().padLeft(2, '0')}';
+                      return Container(
+                        margin: const EdgeInsets.only(bottom: 2),
+                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                        decoration: BoxDecoration(
+                          color: AppColors.primary,
+                          borderRadius: BorderRadius.circular(4),
+                        ),
+                        child: Text('$timeStr – $endStr',
+                            style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.bold)),
+                      );
+                    },
+                  ),
+                  Opacity(
+                    opacity: 0.85,
+                    child: SizedBox(
+                      width: 90,
+                      height: h,
+                      child: EventBlock(event: event, onTap: () {}, heightPerMinute: mh),
+                    ),
+                  ),
+                ],
+              ),
+            );
+          },
+        );
+  }
+
   List<Widget> _buildEventBlocks(Map<Object, _ColInfo> layout, double totalWidth) {
     final widgets = <Widget>[];
     final dayStart = DateTime(widget.day.year, widget.day.month, widget.day.day);
@@ -412,17 +461,29 @@ class _WeekDayColumnState extends State<WeekDayColumn> {
       final colWidth = slotW - 2;
 
       if (event.infoOnly) {
-        // Ueber die ganze Breite und ohne Ziehen: daran ist nichts zu
-        // verschieben, es ist der Plan eines anderen.
+        // Ueber die ganze Breite und hinter den eigenen Terminen — aber
+        // verschiebbar: ein fremder Dienstplan aendert sich, und dann will
+        // man ihn nachziehen koennen.
+        //
+        // Kein DragTarget<Todo>: ein To-do auf einen fremden Dienst zu legen
+        // ergibt nichts. Es faellt durch auf das Tagesraster und wird dort
+        // ganz normal auf die Uhrzeit gelegt.
         widgets.add(Positioned(
           top: top,
           left: 0,
           width: totalWidth,
           height: height,
-          child: EventBlock(
-            event: event,
-            onTap: () => widget.onEventTap(event),
-            heightPerMinute: _minuteHeight,
+          child: LongPressDraggable<CalendarEvent>(
+            data: event,
+            onDraggableCanceled: (velocity, offset) => _onDragEnd(),
+            onDragCompleted: _onDragEnd,
+            feedback: _ziehVorschau(event, durationMinutes),
+            childWhenDragging: const SizedBox.shrink(),
+            child: EventBlock(
+              event: event,
+              onTap: () => widget.onEventTap(event),
+              heightPerMinute: _minuteHeight,
+            ),
           ),
         ));
         continue;
@@ -455,49 +516,7 @@ class _WeekDayColumnState extends State<WeekDayColumn> {
               data: event,
               onDraggableCanceled: (velocity, offset) => _onDragEnd(),
               onDragCompleted: _onDragEnd,
-              feedback: ValueListenableBuilder<int>(
-                valueListenable: SnapState.snapNotifier,
-                builder: (ctx, snap, _) {
-                  final mh = SnapState.hourHeightForSnap(snap) / 60.0;
-                  final h = (durationMinutes * mh).clamp(20.0, 2000.0);
-                  return Material(
-                    color: Colors.transparent,
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        ValueListenableBuilder<String>(
-                          valueListenable: SnapState.currentTimeNotifier,
-                          builder: (ctx, timeStr, _) {
-                            if (timeStr.isEmpty) return const SizedBox.shrink();
-                            final parts = timeStr.split(':');
-                            final totalEnd = int.parse(parts[0]) * 60 + int.parse(parts[1]) + durationMinutes;
-                            final endStr = '${(totalEnd ~/ 60).toString().padLeft(2, '0')}:${(totalEnd % 60).toString().padLeft(2, '0')}';
-                            return Container(
-                              margin: const EdgeInsets.only(bottom: 2),
-                              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                              decoration: BoxDecoration(
-                                color: AppColors.primary,
-                                borderRadius: BorderRadius.circular(4),
-                              ),
-                              child: Text('$timeStr – $endStr',
-                                  style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.bold)),
-                            );
-                          },
-                        ),
-                        Opacity(
-                          opacity: 0.85,
-                          child: SizedBox(
-                            width: 90,
-                            height: h,
-                            child: EventBlock(event: event, onTap: () {}, heightPerMinute: mh),
-                          ),
-                        ),
-                      ],
-                    ),
-                  );
-                },
-              ),
+              feedback: _ziehVorschau(event, durationMinutes),
               childWhenDragging: const SizedBox.shrink(),
               child: EventBlock(
                 event: event,

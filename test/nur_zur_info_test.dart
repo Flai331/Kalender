@@ -1,12 +1,14 @@
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:flutter/material.dart';
 import 'package:kalender/models/calendar_event.dart';
 import 'package:kalender/models/ics_source.dart';
 import 'package:kalender/models/travel_times.dart';
 import 'package:kalender/services/ics_service.dart';
 import 'package:kalender/services/place_reminder_service.dart';
 import 'package:kalender/services/travel_service.dart';
+import 'package:kalender/week/week_day_column.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 /// "Nur zur Info" — zum Beispiel der Dienstplan eines anderen Menschen.
@@ -274,6 +276,96 @@ END:VCALENDAR''';
         leadMinutes: 90,
       );
       expect(geplant.map((p) => p.event.id), ['eigen']);
+    });
+  });
+
+  group('Uebernehmen (fremder Kalender wird eigener Termin)', () {
+    test('die Markierung kommt mit', () {
+      final eigen = termin(nurInfo: true, quelle: 'dienstplan')
+          .adoptedAsOwn(newId: 'neu-1');
+      expect(eigen.infoOnly, isTrue);
+      expect(eigen.id, 'neu-1');
+      expect(eigen.title, 'Dienst Mama');
+    });
+
+    test('die Herkunft faellt ab', () {
+      final eigen = termin(nurInfo: true, quelle: 'dienstplan')
+          .adoptedAsOwn(newId: 'neu-1');
+      expect(eigen.source, 'app');
+      expect(eigen.icsSourceId, isNull);
+      expect(eigen.outlookEventId, isNull);
+    });
+
+    test('ein gewoehnlicher Termin bleibt gewoehnlich', () {
+      final eigen =
+          termin(quelle: 'arbeit').adoptedAsOwn(newId: 'neu-2');
+      expect(eigen.infoOnly, isFalse);
+    });
+
+    test('Uhrzeit, Ort und Gruppe ueberleben', () {
+      final quelle = termin(nurInfo: true, gruppe: 'Fitnessstudio')
+          .copyWith(address: 'Klinikum, Hauptstr. 1');
+      final eigen = quelle.adoptedAsOwn(newId: 'neu-3');
+      expect(eigen.startTime, quelle.startTime);
+      expect(eigen.endTime, quelle.endTime);
+      expect(eigen.address, 'Klinikum, Hauptstr. 1');
+      expect(eigen.placeGroup, 'Fitnessstudio');
+    });
+
+    test('An-/Abfahrt kommt von aussen und wird uebernommen', () {
+      final eigen = termin().adoptedAsOwn(
+          newId: 'neu-4', travelBeforeOverride: 20, travelAfterOverride: 15);
+      expect(eigen.travelBeforeOverride, 20);
+      expect(eigen.travelAfterOverride, 15);
+    });
+  });
+
+  group('Verschieben in der Wochenansicht', () {
+    testWidgets('auch ein Info-Termin laesst sich ziehen', (t) async {
+      SharedPreferences.setMockInitialValues({});
+      TravelService.resetForTesting();
+      await TravelService.load();
+
+      final tag = DateTime(2026, 11, 23);
+      CalendarEvent block(String id, int von, int bis, {bool info = false}) =>
+          CalendarEvent(
+            id: id,
+            title: id,
+            startTime: DateTime(tag.year, tag.month, tag.day, von),
+            endTime: DateTime(tag.year, tag.month, tag.day, bis),
+            infoOnly: info,
+          );
+
+      await t.pumpWidget(MaterialApp(
+        home: Scaffold(
+          body: SizedBox(
+            width: 200,
+            height: 600,
+            child: WeekDayColumn(
+              day: tag,
+              events: [
+                block('fremd', 8, 14, info: true),
+                block('eigen', 10, 11),
+              ],
+              todos: const [],
+              isToday: true,
+              hourHeight: 60,
+              startHour: 8,
+              endHour: 15,
+              onTodoDrop: (_, __, ___, ____) {},
+              onEventDrop: (_, __, ___, ____) {},
+              onEventTap: (_) {},
+              onTodoTap: (_) {},
+              onTodoToggleDone: (_) {},
+            ),
+          ),
+        ),
+      ));
+      await t.pumpAndSettle();
+
+      // Beide Bloecke haengen an einem Zieh-Griff — der fremde Dienstplan
+      // aendert sich, und dann will man ihn nachziehen koennen.
+      expect(find.byType(LongPressDraggable<CalendarEvent>), findsNWidgets(2));
     });
   });
 }
