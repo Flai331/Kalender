@@ -220,6 +220,39 @@ Anlegen weiß man noch nicht, wo man dann gerade ist und was offen hat.
   `PlaceSuggestScreen`; beim **kalten Start** kommt der Rückruf nicht, dann
   liefert `ReminderService.startPayload()` die Nutzlast
 
+## Nur zur Info (`CalendarEvent.infoOnly`, `IcsSource.infoOnly`)
+
+Der Dienstplan eines anderen Menschen. So ein Termin **steht im Kalender und
+nimmt an nichts teil**. Setzen kann man ihn an zwei Stellen: am eigenen
+Termin im Bearbeiten-Bildschirm, oder für einen ganzen abonnierten Kalender
+in den Einstellungen — dann erbt ihn jeder Termin daraus (`_parseIcs` reicht
+`source.infoOnly` durch).
+
+Wo er übersprungen wird — **jede Stelle, die rechnet, nicht nur malt**:
+
+- `week_screen._dayBlockedByAllDay` — ein fremder Urlaub sperrt nicht den
+  eigenen Tag
+- `week_screen._timedEventsOnDay` — zählt nicht als belegte Zeit, also
+  findet die Lückensuche sie weiterhin
+- `week_screen._todoDropAllowed` — gibt für Info-Termine immer `true`
+  zurück, ein To-do darf darauf
+- `TravelService.resolve` — erzwingt 0/0, **vor** der Vererbungskette: auch
+  ein eigener Wert am Termin und die Vorgabe des Kalenders werden übergangen
+- `PlaceReminderService.plan` — meldet sich nicht
+- `week_day_column._computeOverlapLayout` — nimmt nicht an der
+  Überlappungs-Rechnung teil
+
+Gezeichnet wird er **hinter** den eigenen Terminen, über die **volle
+Spaltenbreite**, blasser und mit `Icons.person_outline` statt der Ortsnadel.
+Das ist der Punkt: ein fremder 8-Stunden-Dienst würde sonst als Nachbar die
+halbe Tagesspalte wegnehmen. Dafür baut `_buildEventBlocks` die Liste zweimal
+durch (erst alle `infoOnly`, dann der Rest) und gibt Info-Blöcken kein
+Ziehen und keine An-/Abfahrt-Streifen. Monatsraster und Ganztags-Streifen
+blassen ebenso ab.
+
+**Kein Migrationsschritt** — die Termine liegen als JSON im Cache, fehlendes
+`infoOnly` liest sich als `false`, Altbestand redet also weiter mit.
+
 ## Serien-Erinnerungen
 
 `ReminderService.evaluateAll()` plant die Notifications. Aufgerufen wird sie

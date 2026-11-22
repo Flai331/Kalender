@@ -1453,6 +1453,8 @@ class WeekScreenState extends State<WeekScreen> {
   }
 
   bool _todoDropAllowed(CalendarEvent event) {
+    // Ein Termin nur zur Kenntnis verbietet gar nichts.
+    if (event.infoOnly) return true;
     if (event.source == 'app') return true;
     if (event.source == 'outlook') return _outlookAllowTodoDrop;
     if (event.source == 'ics' && event.icsSourceId != null) {
@@ -1517,6 +1519,9 @@ class WeekScreenState extends State<WeekScreen> {
     final icsFiltered = _icsEvents.where((e) => !_overriddenIcsIds.contains(e.id));
     final allEventsOnDay = [..._events, ...icsFiltered].where((e) =>
         e.isAllDay &&
+        // Nur zur Kenntnis: der Dienstplan eines anderen blockiert nicht
+        // den eigenen Tag.
+        !e.infoOnly &&
         e.startTime.year == day.year &&
         e.startTime.month == day.month &&
         e.startTime.day == day.day);
@@ -1529,6 +1534,10 @@ class WeekScreenState extends State<WeekScreen> {
     final seen = <String>{};
     return TravelService.resolveAll([..._events, ...icsFiltered]
         .where((e) => seen.add(e.id))
+        // Hiermit sucht die App freie Zeit. Ein Termin nur zur Kenntnis
+        // belegt keine — sonst waere der Tag eines anderen Menschen auf
+        // einmal der eigene.
+        .where((e) => !e.infoOnly)
         .where((e) =>
             !e.isAllDay &&
             e.startTime.year == day.year &&

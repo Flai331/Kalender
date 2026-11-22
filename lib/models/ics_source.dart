@@ -13,6 +13,11 @@ class IcsSource {
   /// Unterschied zum Entfernen.
   final bool visible;
 
+  /// Der ganze Kalender ist nur zur Kenntnis — der Dienstplan eines
+  /// anderen Menschen. Jeder Termin daraus wird angezeigt, nimmt aber an
+  /// der eigenen Planung nicht teil.
+  final bool infoOnly;
+
   const IcsSource({
     required this.id,
     required this.name,
@@ -21,6 +26,7 @@ class IcsSource {
     this.color,
     this.allowTodoDrop = false,
     this.visible = true,
+    this.infoOnly = false,
   });
 
   IcsSource copyWith({
@@ -32,6 +38,7 @@ class IcsSource {
     bool clearColor = false,
     bool? allowTodoDrop,
     bool? visible,
+    bool? infoOnly,
   }) => IcsSource(
     id: id ?? this.id,
     name: name ?? this.name,
@@ -40,6 +47,7 @@ class IcsSource {
     color: clearColor ? null : (color ?? this.color),
     allowTodoDrop: allowTodoDrop ?? this.allowTodoDrop,
     visible: visible ?? this.visible,
+    infoOnly: infoOnly ?? this.infoOnly,
   );
 
   Map<String, dynamic> toJson() => {
@@ -50,6 +58,7 @@ class IcsSource {
         'color': color,
         'allowTodoDrop': allowTodoDrop,
         'visible': visible,
+        'infoOnly': infoOnly,
       };
 
   factory IcsSource.fromJson(Map<String, dynamic> json) => IcsSource(
@@ -61,6 +70,7 @@ class IcsSource {
         allowTodoDrop: json['allowTodoDrop'] as bool? ?? false,
         // Altbestand kennt das Feld nicht: der Kalender war sichtbar.
         visible: json['visible'] as bool? ?? true,
+        infoOnly: json['infoOnly'] as bool? ?? false,
       );
 
   static List<IcsSource> listFromJson(String raw) {

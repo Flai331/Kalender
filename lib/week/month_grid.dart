@@ -227,10 +227,20 @@ class _EntryBar extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 2),
       alignment: Alignment.centerLeft,
       decoration: BoxDecoration(
-        color: color.withValues(alpha: event.isAllDay ? 0.85 : 0.28),
+        // Nur zur Kenntnis tritt zurueck: in der Monatsansicht steht je
+        // Tag wenig Platz, und der eigene Termin gehoert nach vorn.
+        color: color.withValues(
+            alpha: event.infoOnly
+                ? (event.isAllDay ? 0.35 : 0.12)
+                : (event.isAllDay ? 0.85 : 0.28)),
         border: event.isAllDay
             ? null
-            : Border(left: BorderSide(color: color, width: 2)),
+            : Border(
+                left: BorderSide(
+                    color: event.infoOnly
+                        ? color.withValues(alpha: 0.5)
+                        : color,
+                    width: 2)),
         borderRadius: BorderRadius.circular(2),
       ),
       child: Text(
@@ -241,8 +251,10 @@ class _EntryBar extends StatelessWidget {
         style: TextStyle(
           fontSize: 8.5,
           height: 1.1,
-          fontWeight: FontWeight.w500,
-          color: event.isAllDay ? Colors.white : AppColors.textPrimary,
+          fontWeight: event.infoOnly ? FontWeight.w400 : FontWeight.w500,
+          color: event.infoOnly
+              ? AppColors.textSecondary
+              : (event.isAllDay ? Colors.white : AppColors.textPrimary),
         ),
       ),
     );

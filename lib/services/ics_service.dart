@@ -128,7 +128,11 @@ class IcsService {
         if (response.statusCode != 200) return [];
         raw = response.body;
       }
-      return _parseIcs(raw, calendarName: source.name, calendarColor: source.color, sourceId: source.id);
+      return _parseIcs(raw,
+          calendarName: source.name,
+          calendarColor: source.color,
+          sourceId: source.id,
+          infoOnly: source.infoOnly);
     } catch (_) {
       return [];
     }
@@ -137,7 +141,10 @@ class IcsService {
   // ── ICS parsen ─────────────────────────────────────────────
 
   static List<CalendarEvent> _parseIcs(String raw,
-      {String calendarName = '', int? calendarColor, String? sourceId}) {
+      {String calendarName = '',
+      int? calendarColor,
+      String? sourceId,
+      bool infoOnly = false}) {
     final events = <CalendarEvent>[];
     final lines = _unfold(raw);
 
@@ -150,7 +157,11 @@ class IcsService {
         props.clear();
       } else if (line == 'END:VEVENT') {
         inEvent = false;
-        final ev = _build(props, calendarName: calendarName, calendarColor: calendarColor, sourceId: sourceId);
+        final ev = _build(props,
+            calendarName: calendarName,
+            calendarColor: calendarColor,
+            sourceId: sourceId,
+            infoOnly: infoOnly);
         if (ev != null) events.add(ev);
       } else if (inEvent) {
         final colon = line.indexOf(':');
@@ -181,7 +192,10 @@ class IcsService {
   }
 
   static CalendarEvent? _build(Map<String, String> p,
-      {String calendarName = '', int? calendarColor, String? sourceId}) {
+      {String calendarName = '',
+      int? calendarColor,
+      String? sourceId,
+      bool infoOnly = false}) {
     try {
       final uid = p['UID'] ?? DateTime.now().millisecondsSinceEpoch.toString();
       final summary = _decode(p['SUMMARY'] ?? 'Kein Titel');
@@ -219,6 +233,9 @@ class IcsService {
         category: 'work',
         calendarColor: calendarColor,
         icsSourceId: sourceId,
+        // Ist der ganze Kalender der Dienstplan eines anderen, dann ist es
+        // jeder Termin daraus.
+        infoOnly: infoOnly,
       );
     } catch (_) {
       return null;

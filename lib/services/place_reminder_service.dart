@@ -58,6 +58,9 @@ class PlaceReminderService {
       final gruppe = e.placeGroup?.trim() ?? '';
       if (gruppe.isEmpty) continue;
       if (e.isAllDay) continue;
+      // Der Dienstplan eines anderen Menschen braucht keinen Vorschlag,
+      // wohin **ich** gehen soll.
+      if (e.infoOnly) continue;
       if (e.status == EventStatus.done) continue;
       if (!e.startTime.isAfter(now)) continue;
       if (e.startTime.isAfter(grenze)) continue;

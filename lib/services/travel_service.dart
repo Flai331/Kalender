@@ -196,6 +196,10 @@ class TravelService {
   /// Werte werden absichtlich nicht gespeichert (siehe CalendarEvent.toJson),
   /// sonst fror der erste Abruf die damalige Vorgabe am Termin ein.
   static CalendarEvent resolve(CalendarEvent event) {
+    // Zu einem Termin, der nur zur Kenntnis dasteht, faehrt man nicht hin.
+    if (event.infoOnly) {
+      return event.copyWith(travelMinutesBefore: 0, travelMinutesAfter: 0);
+    }
     final own = ownTimesOf(event);
     final inherited = inheritedFor(event);
     return event.copyWith(

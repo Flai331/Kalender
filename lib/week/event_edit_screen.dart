@@ -40,6 +40,9 @@ class _EventEditScreenState extends State<EventEditScreen> {
   late TravelTimes _inherited;
   bool _saving = false;
 
+  /// Nur zur Kenntnis — der Dienstplan eines anderen Menschen.
+  bool _infoOnly = false;
+
   /// Ortsgruppe des Termins, z. B. „Fitnessstudio". Null = keine.
   String? _placeGroup;
 
@@ -69,6 +72,7 @@ class _EventEditScreenState extends State<EventEditScreen> {
         ? TravelService.inheritedFor(e)
         : TravelService.calendarTimes(TravelService.ownCalendarId);
     _placeGroup = e?.placeGroup;
+    _infoOnly = e?.infoOnly ?? false;
     _ladeGruppen();
   }
 
@@ -146,6 +150,7 @@ class _EventEditScreenState extends State<EventEditScreen> {
         source: 'app',
         address: address,
         placeGroup: _placeGroup,
+        infoOnly: _infoOnly,
         travelBeforeOverride: _travelBefore,
         travelAfterOverride: _travelAfter,
       );
@@ -162,6 +167,7 @@ class _EventEditScreenState extends State<EventEditScreen> {
         source: 'app',
         address: address,
         placeGroup: _placeGroup,
+        infoOnly: _infoOnly,
         travelBeforeOverride: _travelBefore,
         travelAfterOverride: _travelAfter,
       );
@@ -282,6 +288,22 @@ class _EventEditScreenState extends State<EventEditScreen> {
             onChanged: (r) => setState(() => _repeatType = r),
           ),
           const SizedBox(height: 16),
+          SwitchListTile(
+            value: _infoOnly,
+            onChanged: (v) => setState(() => _infoOnly = v),
+            title: const Text('Nur zur Info',
+                style: TextStyle(color: AppColors.textPrimary, fontSize: 14)),
+            subtitle: const Text(
+                'Zum Beispiel der Dienstplan eines anderen Menschen. Steht '
+                'im Kalender, belegt aber keine Zeit und verhindert nichts',
+                style:
+                    TextStyle(color: AppColors.textSecondary, fontSize: 12)),
+            activeThumbColor: AppColors.primary,
+            tileColor: AppColors.card,
+            shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(10)),
+          ),
+          const SizedBox(height: 8),
           SwitchListTile(
             value: _isFixed,
             onChanged: (v) => setState(() => _isFixed = v),

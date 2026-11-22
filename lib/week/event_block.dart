@@ -36,6 +36,10 @@ class EventBlock extends StatelessWidget {
         ? event!.scheduledDuration.inMinutes
         : (todo?.estimatedMinutes ?? 30);
 
+    // Nur zur Kenntnis — der Dienstplan eines anderen Menschen. Er wird
+    // blasser gezeichnet und liegt hinter den eigenen Terminen, damit der
+    // eigene Tag lesbar bleibt.
+    final nurInfo = event?.infoOnly ?? false;
     final color = event?.calendarColor != null
         ? Color(event!.calendarColor!)
         : _colorForStatus(status, category);
@@ -64,11 +68,13 @@ class EventBlock extends StatelessWidget {
           margin: const EdgeInsets.symmetric(horizontal: 1, vertical: 1),
           clipBehavior: Clip.hardEdge,
           decoration: BoxDecoration(
-            color: color.withValues(alpha: 0.2),
+            color: color.withValues(alpha: nurInfo ? 0.10 : 0.2),
             borderRadius: BorderRadius.circular(6),
             border: isDropTarget
                 ? Border.all(color: Colors.white.withValues(alpha: 0.8), width: 2)
-                : Border.all(color: color, width: 1.5),
+                : Border.all(
+                    color: nurInfo ? color.withValues(alpha: 0.45) : color,
+                    width: nurInfo ? 1 : 1.5),
           ),
           padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
           child: Column(
@@ -82,7 +88,13 @@ class EventBlock extends StatelessWidget {
                       padding: EdgeInsets.only(right: 3),
                       child: Icon(Icons.lock, size: 10, color: AppColors.fixedTag),
                     ),
-                  if (hasAddress)
+                  if (nurInfo)
+                    Padding(
+                      padding: const EdgeInsets.only(right: 3),
+                      child: Icon(Icons.person_outline,
+                          size: 10, color: color.withValues(alpha: 0.8)),
+                    ),
+                  if (hasAddress && !nurInfo)
                     Padding(
                       padding: const EdgeInsets.only(right: 3),
                       child: Icon(Icons.location_on, size: 10, color: color.withValues(alpha: 0.8)),
@@ -96,8 +108,9 @@ class EventBlock extends StatelessWidget {
                         // der bei 20 Minuten nur 15 px Platz hat. Der Titel
                         // wurde damit unten abgeschnitten.
                         height: 1.15,
-                        color: color,
-                        fontWeight: FontWeight.w600,
+                        color: nurInfo ? color.withValues(alpha: 0.8) : color,
+                        fontWeight:
+                            nurInfo ? FontWeight.w500 : FontWeight.w600,
                         decoration: status == EventStatus.done
                             ? TextDecoration.lineThrough
                             : null,
@@ -108,7 +121,7 @@ class EventBlock extends StatelessWidget {
                   ),
                   if (hakenInTitelzeile)
                     _haken(status, color, height)
-                  else if (!hakenUnten)
+                  else if (!hakenUnten && !nurInfo)
                     _statusIcon(status),
                 ],
               ),

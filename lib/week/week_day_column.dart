@@ -159,6 +159,10 @@ class _WeekDayColumnState extends State<WeekDayColumn> {
     final items = <({int start, int end, Object item})>[];
 
     for (final event in widget.events) {
+      // Termine nur zur Kenntnis draengen die eigenen nicht zur Seite: sie
+      // liegen dahinter, ueber die ganze Breite. Sonst nimmt die Schicht
+      // eines anderen die halbe Spalte weg.
+      if (event.infoOnly) continue;
       final cs = event.startTime.isBefore(dayStart) ? dayStart : event.startTime;
       final ce = event.endTime.isAfter(dayEnd) ? dayEnd : event.endTime;
       final s = (cs.hour - widget.startHour) * 60 + cs.minute;
@@ -386,7 +390,13 @@ class _WeekDayColumnState extends State<WeekDayColumn> {
     final widgets = <Widget>[];
     final dayStart = DateTime(widget.day.year, widget.day.month, widget.day.day);
     final dayEnd = dayStart.add(const Duration(days: 1));
-    for (final event in widget.events) {
+    // Erst die zur Kenntnis, dann die eigenen: was zuerst in den Stapel
+    // kommt, liegt hinten.
+    final nachTiefe = [
+      ...widget.events.where((e) => e.infoOnly),
+      ...widget.events.where((e) => !e.infoOnly),
+    ];
+    for (final event in nachTiefe) {
       final isContinuation = event.startTime.isBefore(dayStart);
       final clippedStart = isContinuation ? dayStart : event.startTime;
       final clippedEnd = event.endTime.isAfter(dayEnd) ? dayEnd : event.endTime;
@@ -400,6 +410,23 @@ class _WeekDayColumnState extends State<WeekDayColumn> {
       final slotW = totalWidth / info.numCols;
       final colLeft = info.col * slotW + 1;
       final colWidth = slotW - 2;
+
+      if (event.infoOnly) {
+        // Ueber die ganze Breite und ohne Ziehen: daran ist nichts zu
+        // verschieben, es ist der Plan eines anderen.
+        widgets.add(Positioned(
+          top: top,
+          left: 0,
+          width: totalWidth,
+          height: height,
+          child: EventBlock(
+            event: event,
+            onTap: () => widget.onEventTap(event),
+            heightPerMinute: _minuteHeight,
+          ),
+        ));
+        continue;
+      }
 
       if (!isContinuation && event.travelMinutesBefore > 0) {
         final travelHeight = (event.travelMinutesBefore * _minuteHeight).clamp(8.0, double.infinity);
@@ -627,17 +654,35 @@ class _AllDayBanner extends StatelessWidget {
         children: events.map((e) => Container(
           padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
           decoration: BoxDecoration(
-            color: AppColors.primary.withValues(alpha: 0.2),
+            // Nur zur Kenntnis: blasser, und mit Personen-Zeichen davor —
+            // sonst sieht ein fremder Dienstplan aus wie der eigene Urlaub.
+            color: AppColors.primary
+                .withValues(alpha: e.infoOnly ? 0.14 : 0.2),
             borderRadius: BorderRadius.circular(4),
           ),
-          child: Text(
-            e.title,
-            style: const TextStyle(
-              fontSize: 10,
-              fontWeight: FontWeight.w500,
-              color: AppColors.textPrimary,
-            ),
-            overflow: TextOverflow.ellipsis,
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (e.infoOnly) ...[
+                Icon(Icons.person_outline,
+                    size: 10, color: AppColors.textSecondary),
+                const SizedBox(width: 3),
+              ],
+              Flexible(
+                child: Text(
+                  e.title,
+                  style: TextStyle(
+                    fontSize: 10,
+                    fontWeight:
+                        e.infoOnly ? FontWeight.w400 : FontWeight.w500,
+                    color: e.infoOnly
+                        ? AppColors.textSecondary
+                        : AppColors.textPrimary,
+                  ),
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+            ],
           ),
         )).toList(),
       ),

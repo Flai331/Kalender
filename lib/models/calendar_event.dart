@@ -45,6 +45,14 @@ class CalendarEvent {
   final int travelMinutesAfter;
   final String? icsSourceId;
 
+  /// Nur zur Kenntnis — z. B. der Dienstplan eines anderen Menschen.
+  ///
+  /// So ein Termin wird angezeigt, **nimmt aber an nichts teil**: er
+  /// blockiert keine Zeit, verhindert kein To-do, bekommt keine An- und
+  /// Abfahrt und meldet sich nicht. Er steht da, damit man sieht, wann der
+  /// andere arbeitet — mehr soll er nicht.
+  final bool infoOnly;
+
   /// Die Ortsgruppe, aus der dieser Termin seinen Ort bekommt — z. B.
   /// „Fitnessstudio". Welches Studio es wird, entscheidet die App erst,
   /// wenn der Termin naeher rueckt: dann zaehlen Öffnungszeiten, Rangliste
@@ -77,6 +85,7 @@ class CalendarEvent {
     int? travelMinutesAfter,
     this.icsSourceId,
     this.placeGroup,
+    this.infoOnly = false,
   })  : travelBeforeOverride = travelBeforeOverride,
         travelAfterOverride = travelAfterOverride,
         // Ohne Auflösung gilt der eigene Wert; ohne eigenen Wert nichts.
@@ -122,6 +131,7 @@ class CalendarEvent {
     int? travelMinutesAfter,
     Object? icsSourceId = _unset,
     Object? placeGroup = _unset,
+    bool? infoOnly,
   }) {
     return CalendarEvent(
       id: id ?? this.id,
@@ -154,6 +164,7 @@ class CalendarEvent {
       icsSourceId: icsSourceId == _unset ? this.icsSourceId : icsSourceId as String?,
       placeGroup:
           placeGroup == _unset ? this.placeGroup : placeGroup as String?,
+      infoOnly: infoOnly ?? this.infoOnly,
     );
   }
 
@@ -182,6 +193,7 @@ class CalendarEvent {
         'travelAfterOverride': travelAfterOverride,
         'icsSourceId': icsSourceId,
         'placeGroup': placeGroup,
+        'infoOnly': infoOnly,
       };
 
   factory CalendarEvent.fromJson(Map<String, dynamic> json) => CalendarEvent(
@@ -227,6 +239,7 @@ class CalendarEvent {
             : (json['travelMinutesAfter'] as num?)?.toInt(),
         icsSourceId: json['icsSourceId'] as String?,
         placeGroup: json['placeGroup'] as String?,
+        infoOnly: json['infoOnly'] as bool? ?? false,
       );
 
   // Hilfsmethode: TimeOfDay aus startTime

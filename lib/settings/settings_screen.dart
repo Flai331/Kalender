@@ -407,6 +407,17 @@ class _SettingsScreenState extends State<SettingsScreen> {
     await _loadSources();
   }
 
+  /// Ein ganzer Kalender nur zur Kenntnis — der Dienstplan eines anderen
+  /// Menschen. Die Termine daraus werden angezeigt, belegen aber keine Zeit.
+  Future<void> _toggleIcsInfoOnly(IcsSource src, bool value) async {
+    final sources = await IcsService.getSources();
+    final updated = sources
+        .map((s) => s.id == src.id ? s.copyWith(infoOnly: value) : s)
+        .toList();
+    await IcsService.saveSources(updated);
+    await _loadSources();
+  }
+
   Future<void> _toggleOutlookAllowTodoDrop(bool value) async {
     await IcsService.setOutlookAllowTodoDrop(value);
     setState(() => _outlookAllowTodoDrop = value);
@@ -603,6 +614,38 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         await _toggleIcsAllowTodoDrop(aktuell, v);
                         setLocal(() =>
                             aktuell = aktuell.copyWith(allowTodoDrop: v));
+                      },
+                    ),
+                  ],
+                ),
+                const Divider(height: 26, color: AppColors.background),
+                Row(
+                  children: [
+                    const Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text('Nur zur Info',
+                              style: TextStyle(
+                                  color: AppColors.textPrimary, fontSize: 13)),
+                          Text(
+                              'Dienstplan eines anderen Menschen: wird '
+                              'angezeigt, belegt aber keine Zeit und '
+                              'verhindert kein To-do',
+                              style: TextStyle(
+                                  color: AppColors.textSecondary,
+                                  fontSize: 11)),
+                        ],
+                      ),
+                    ),
+                    Switch(
+                      value: aktuell.infoOnly,
+                      activeThumbColor: AppColors.primary,
+                      materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                      onChanged: (v) async {
+                        await _toggleIcsInfoOnly(aktuell, v);
+                        setLocal(
+                            () => aktuell = aktuell.copyWith(infoOnly: v));
                       },
                     ),
                   ],
@@ -895,9 +938,16 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          aus ? 'Ausgeblendet' : src.url,
-                          style: const TextStyle(
-                              color: AppColors.textSecondary, fontSize: 10),
+                          aus
+                              ? 'Ausgeblendet'
+                              : src.infoOnly
+                                  ? 'Nur zur Info · ${src.url}'
+                                  : src.url,
+                          style: TextStyle(
+                              color: src.infoOnly && !aus
+                                  ? AppColors.primaryLight
+                                  : AppColors.textSecondary,
+                              fontSize: 10),
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                         ),
