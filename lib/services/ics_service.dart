@@ -105,7 +105,9 @@ class IcsService {
   // ── Events laden ───────────────────────────────────────────
 
   static Future<List<CalendarEvent>> fetchEvents() async {
-    final sources = await getSources();
+    // Ausgeblendete Kalender werden gar nicht erst geholt: sie sollen weder
+    // im Kalender auftauchen noch Zeit und Netz kosten.
+    final sources = (await getSources()).where((s) => s.visible).toList();
     if (sources.isEmpty) return [];
 
     final results = await Future.wait(

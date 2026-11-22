@@ -491,65 +491,131 @@ class _SettingsScreenState extends State<SettingsScreen> {
     }
   }
 
-  /// Steht fuer „keine eigene Farbe" in der Auswahl unten.
-  static const int _defaultColorChoice = -1;
-
   static const List<int> _presetColors = [
     0xFF6C63FF, 0xFF448AFF, 0xFF00BCD4, 0xFF4CAF50,
     0xFF8BC34A, 0xFFFFD740, 0xFFFF9800, 0xFFFF5252,
     0xFFE040FB, 0xFFFF4081, 0xFF795548, 0xFF607D8B,
   ];
 
-  Future<void> _pickColor(IcsSource src) async {
-    final picked = await showDialog<int>(
+  /// Alles, was zu einem Kalender einstellbar ist. Das Ein- und Ausblenden
+  /// sitzt als Schalter in der Zeile selbst — das ist das, was man dort
+  /// erwartet.
+  Future<void> _openCalendarOptions(IcsSource src) async {
+    var aktuell = src;
+    await showDialog<void>(
       context: context,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: AppColors.surface,
-        title: Text('Farbe für ${src.name}',
-            style: const TextStyle(color: AppColors.textPrimary, fontSize: 15)),
-        content: Wrap(
-          spacing: 10,
-          runSpacing: 10,
-          children: _presetColors.map((c) {
-            final isSelected = src.color == c;
-            return GestureDetector(
-              onTap: () => Navigator.pop(ctx, c),
-              child: Container(
-                width: 36,
-                height: 36,
-                decoration: BoxDecoration(
-                  color: Color(c),
-                  shape: BoxShape.circle,
-                  border: isSelected
-                      ? Border.all(color: Colors.white, width: 2.5)
-                      : null,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setLocal) => AlertDialog(
+          backgroundColor: AppColors.surface,
+          title: Text(aktuell.name,
+              style:
+                  const TextStyle(color: AppColors.textPrimary, fontSize: 15)),
+          content: SizedBox(
+            width: double.maxFinite,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text('Farbe im Kalender',
+                    style:
+                        TextStyle(color: AppColors.textSecondary, fontSize: 12)),
+                const SizedBox(height: 10),
+                Wrap(
+                  spacing: 10,
+                  runSpacing: 10,
+                  children: [
+                    for (final c in _presetColors)
+                      GestureDetector(
+                        onTap: () async {
+                          await _setColor(aktuell, c);
+                          setLocal(() => aktuell = aktuell.copyWith(color: c));
+                        },
+                        child: Container(
+                          width: 36,
+                          height: 36,
+                          decoration: BoxDecoration(
+                            color: Color(c),
+                            shape: BoxShape.circle,
+                            border: aktuell.color == c
+                                ? Border.all(color: Colors.white, width: 2.5)
+                                : null,
+                          ),
+                        ),
+                      ),
+                  ],
                 ),
-              ),
-            );
-          }).toList(),
+                const Divider(height: 26, color: AppColors.background),
+                Row(
+                  children: [
+                    const Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text('Todos hineinziehen',
+                              style: TextStyle(
+                                  color: AppColors.textPrimary, fontSize: 13)),
+                          Text(
+                              'To-dos lassen sich auf Termine dieses Kalenders ziehen',
+                              style: TextStyle(
+                                  color: AppColors.textSecondary,
+                                  fontSize: 11)),
+                        ],
+                      ),
+                    ),
+                    Switch(
+                      value: aktuell.allowTodoDrop,
+                      activeThumbColor: AppColors.primary,
+                      materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                      onChanged: (v) async {
+                        await _toggleIcsAllowTodoDrop(aktuell, v);
+                        setLocal(() =>
+                            aktuell = aktuell.copyWith(allowTodoDrop: v));
+                      },
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () async {
+                await _setColor(aktuell, null);
+                setLocal(() => aktuell = aktuell.copyWith(clearColor: true));
+              },
+              child: const Text('Standardfarbe',
+                  style: TextStyle(color: AppColors.textSecondary)),
+            ),
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('Fertig',
+                  style: TextStyle(color: AppColors.primary)),
+            ),
+          ],
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, _defaultColorChoice),
-            child: const Text('Standardfarbe',
-                style: TextStyle(color: AppColors.textSecondary)),
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text('Abbrechen',
-                style: TextStyle(color: AppColors.textSecondary)),
-          ),
-        ],
       ),
     );
-    if (picked == null) return;
+  }
+
+  /// Setzt die Farbe eines Kalenders; null nimmt die eigene Farbe weg.
+  Future<void> _setColor(IcsSource src, int? farbe) async {
     final sources = await IcsService.getSources();
     final updated = sources
         .map((s) => s.id != src.id
             ? s
-            : (picked == _defaultColorChoice
+            : (farbe == null
                 ? s.copyWith(clearColor: true)
-                : s.copyWith(color: picked)))
+                : s.copyWith(color: farbe)))
+        .toList();
+    await IcsService.saveSources(updated);
+    await _loadSources();
+  }
+
+  /// Blendet einen Kalender aus oder wieder ein. Der Eintrag bleibt stehen.
+  Future<void> _toggleIcsVisible(IcsSource src, bool value) async {
+    final sources = await IcsService.getSources();
+    final updated = sources
+        .map((s) => s.id == src.id ? s.copyWith(visible: value) : s)
         .toList();
     await IcsService.saveSources(updated);
     await _loadSources();
@@ -732,6 +798,15 @@ class _SettingsScreenState extends State<SettingsScreen> {
           _Section(
             title: 'Kalender (ICS)',
             children: [
+              const Padding(
+                padding: EdgeInsets.fromLTRB(16, 10, 16, 2),
+                child: Text(
+                    'Der Schalter blendet einen Kalender aus, ohne ihn zu '
+                    'löschen. Farbe und weitere Einstellungen gibt es über '
+                    'den Namen.',
+                    style: TextStyle(
+                        color: AppColors.textSecondary, fontSize: 12)),
+              ),
               if (_sourcesLoading)
                 const Padding(
                   padding: EdgeInsets.all(16),
@@ -751,14 +826,19 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   final srcColor = src.color != null
                       ? Color(src.color!)
                       : AppColors.primary;
+                  // Ausgeblendete Kalender bleiben stehen, treten aber zurueck.
+                  final aus = !src.visible;
                   return ListTile(
+                    onTap: () => _openCalendarOptions(src),
                     leading: GestureDetector(
-                      onTap: () => _pickColor(src),
+                      onTap: () => _openCalendarOptions(src),
                       child: Container(
                         width: 28,
                         height: 28,
                         decoration: BoxDecoration(
-                          color: srcColor,
+                          color: aus
+                              ? srcColor.withValues(alpha: 0.25)
+                              : srcColor,
                           shape: BoxShape.circle,
                           border: Border.all(
                               color: Colors.white24, width: 1),
@@ -773,13 +853,16 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       ),
                     ),
                     title: Text(src.name,
-                        style: const TextStyle(
-                            color: AppColors.textPrimary, fontSize: 14)),
+                        style: TextStyle(
+                            color: aus
+                                ? AppColors.textDisabled
+                                : AppColors.textPrimary,
+                            fontSize: 14)),
                     subtitle: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          src.url,
+                          aus ? 'Ausgeblendet' : src.url,
                           style: const TextStyle(
                               color: AppColors.textSecondary, fontSize: 10),
                           maxLines: 1,
@@ -787,7 +870,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         ),
                         // Die Farbe hing bisher unsichtbar am Kreis links.
                         GestureDetector(
-                          onTap: () => _pickColor(src),
+                          onTap: () => _openCalendarOptions(src),
                           child: Padding(
                             padding: const EdgeInsets.only(top: 3, bottom: 2),
                             child: Row(
@@ -818,15 +901,16 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     trailing: Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        // Kein eigener Farb-Knopf mehr: zusammen mit
-                        // Schalter und Papierkorb lief die Zeile am Handy
-                        // ueber. Die beschriftete Zeile unter dem Namen ist
-                        // ohnehin deutlicher.
+                        // Der Schalter macht das, was man an dieser Stelle
+                        // erwartet: den Kalender an und aus. Alles Weitere
+                        // steckt hinter dem Namen.
                         Tooltip(
-                          message: 'Todo-Drop erlauben',
+                          message: src.visible
+                              ? 'Kalender ausblenden'
+                              : 'Kalender einblenden',
                           child: Switch(
-                            value: src.allowTodoDrop,
-                            onChanged: (v) => _toggleIcsAllowTodoDrop(src, v),
+                            value: src.visible,
+                            onChanged: (v) => _toggleIcsVisible(src, v),
                             activeThumbColor: AppColors.primary,
                             materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
                           ),

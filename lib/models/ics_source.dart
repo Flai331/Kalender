@@ -8,6 +8,11 @@ class IcsSource {
   final int? color; // ARGB int, null = App-Standard
   final bool allowTodoDrop;
 
+  /// Ausgeblendete Kalender werden nicht geholt und nicht angezeigt. Der
+  /// Eintrag samt Farbe und Einstellungen bleibt aber stehen — das ist der
+  /// Unterschied zum Entfernen.
+  final bool visible;
+
   const IcsSource({
     required this.id,
     required this.name,
@@ -15,6 +20,7 @@ class IcsSource {
     this.isFile = false,
     this.color,
     this.allowTodoDrop = false,
+    this.visible = true,
   });
 
   IcsSource copyWith({
@@ -25,6 +31,7 @@ class IcsSource {
     int? color,
     bool clearColor = false,
     bool? allowTodoDrop,
+    bool? visible,
   }) => IcsSource(
     id: id ?? this.id,
     name: name ?? this.name,
@@ -32,6 +39,7 @@ class IcsSource {
     isFile: isFile ?? this.isFile,
     color: clearColor ? null : (color ?? this.color),
     allowTodoDrop: allowTodoDrop ?? this.allowTodoDrop,
+    visible: visible ?? this.visible,
   );
 
   Map<String, dynamic> toJson() => {
@@ -41,6 +49,7 @@ class IcsSource {
         'isFile': isFile,
         'color': color,
         'allowTodoDrop': allowTodoDrop,
+        'visible': visible,
       };
 
   factory IcsSource.fromJson(Map<String, dynamic> json) => IcsSource(
@@ -50,6 +59,8 @@ class IcsSource {
         isFile: json['isFile'] as bool? ?? false,
         color: json['color'] as int?,
         allowTodoDrop: json['allowTodoDrop'] as bool? ?? false,
+        // Altbestand kennt das Feld nicht: der Kalender war sichtbar.
+        visible: json['visible'] as bool? ?? true,
       );
 
   static List<IcsSource> listFromJson(String raw) {
