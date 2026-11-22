@@ -2,7 +2,14 @@
 
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED"/>
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
+    <!-- Weckgenaue Meldungen: ohne die kommt die Abfahrt-Erinnerung erst,
+         wenn Android das Handy das naechste Mal aufweckt — unter Umstaenden
+         eine Stunde zu spaet. SCHEDULE_EXACT_ALARM muesste der Benutzer ab
+         Android 14 erst erlauben, USE_EXACT_ALARM ist fuer Kalender- und
+         Weckerprogramme gedacht und gilt sofort. Beide: das alte greift auf
+         Android 12 und 13, das neue ab 14. -->
     <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM"/>
+    <uses-permission android:name="android.permission.USE_EXACT_ALARM"/>
     <uses-permission android:name="android.permission.VIBRATE"/>
     <uses-permission android:name="android.permission.INTERNET"/>
     <!-- Selbst-Update: die App übergibt die geladene APK an den Android-Installer -->

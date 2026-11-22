@@ -7,6 +7,7 @@ import 'app_colors.dart';
 import 'db/app_database.dart';
 import 'models/todo.dart';
 import 'services/backup_service.dart';
+import 'services/departure_reminder_service.dart';
 import 'services/feedback_service.dart';
 import 'services/local_service.dart';
 import 'models/calendar_event.dart';
@@ -68,6 +69,10 @@ void main() async {
   // Vor jedem Termin mit Ortsgruppe melden, damit die App sagen kann,
   // welches Studio offen hat. Wirft nicht.
   unawaited(PlaceReminderService.scheduleAll());
+
+  // Ans Losfahren erinnern. Holt dabei die Abo-Kalender, darum ebenfalls
+  // nicht awaited — und ebenfalls ohne zu werfen.
+  unawaited(DepartureReminderService.scheduleAll());
 
   await WidgetService.init();
 

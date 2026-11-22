@@ -96,6 +96,7 @@ Verschiebt überfällige pending Todos automatisch nach vorne:
 - `LongPressDraggable` + `DragTarget`
 - Während Drag: blaue Pill über Block zeigt "HH:MM – HH:MM" (via `currentTimeNotifier` + `ValueListenableBuilder`)
 - `SnapState`: globale Klasse mit `snapNotifier`, `currentTimeNotifier`, `isDraggingNotifier`
+- Im Raster liegt dabei ein gestrichelter Platzhalter an der Stelle, an der losgelassen wird → **Einfüge-Vorschau** (eigener Abschnitt unten)
 
 ### EventBlock (event_block.dart)
 - `clipBehavior: Clip.hardEdge` — kein Overflow-Banner
@@ -130,6 +131,11 @@ Verschiebt überfällige pending Todos automatisch nach vorne:
 | Plus-Knopf deckt das letzte To-do zu | Todo-Leiste als letztes Element der Body-Spalte; `endFloat` setzt den FAB an den Scaffold-Boden | Leiste in `bottomNavigationBar:` — dann hebt Flutter den FAB von selbst darüber, in der tatsächlichen Höhe |
 | Ranzoomen beim Ziehen bleibt aus | `_onDragMove` setzte den Ruhe-Zähler bei **jeder** Regung zurück; ein Daumen zittert um 1–2 px | Erst ab `_zittergrenze` (8 px) als Bewegung zählen |
 | Ranzoomen klappt gar nicht mehr, bis zum App-Neustart | Abgebrochener Zug ließ `SnapState` auf 1 Minute stehen; der nächste stand schon am Ende der Leiter | `SnapState.begin()` beim Start **jedes** Zuges, `stop()` an **jedem** Ende (auch `onDragEnd` der Todo-Leiste) |
+| PointerScrollEvent not found | Fehlende Imports | `flutter/gestures.dart` + `flutter/services.dart` |
+| Platzhalter beim Ziehen springt nicht mit, wenn die Leiter feiner rastet | Die Vorschau wurde nur in `onMove` gerechnet — die Leiter rastet aber auch, wenn der Finger stillsteht | Letzten Punkt merken (`_letzterPunkt`) und am `snapNotifier` hängen; dieselbe Rechnung füttert Vorschau, Zeit-Pille und Ablegen |
+| Meldung kommt im alten Ton, obwohl die Stufe umgestellt wurde | Android übernimmt Wichtigkeit und Ton nur beim **Anlegen** des Kanals | Je Stufe ein eigener `channelId` (`abfahrt_dringend`, `abfahrt_alarm`, …) |
+| Abfahrt-Meldung kommt zweimal, einmal zur alten Uhrzeit | Ein übernommener Abo-Termin liegt lokal **und** kommt weiter aus dem Abo | `IcsService.fetchEventsOhneUebernommene()` statt `fetchEvents()` |
+| `exact_alarms_not_permitted` bricht die ganze Planung ab | Ab Android 14 ist `SCHEDULE_EXACT_ALARM` standardmäßig verweigert | `USE_EXACT_ALARM` im Manifest (gilt sofort) **und** Rückfall auf `inexactAllowWhileIdle` in `_stellen` |
 
 
 ## Was im Terminblock steht (`event_block.dart`)
@@ -318,7 +324,78 @@ nie aufgerufen: es wurde also nie eine Erinnerung eingeplant.
   verbunden" und keine Fallback-Regel konnte je greifen. `OutlookService` ist
   entfernt; `SeriesReminder.calendarSourceId` hält jetzt die Id der ICS-Quelle
   (alter JSON-Schlüssel `outlookCalendarId` wird noch gelesen)
-| PointerScrollEvent not found | Fehlende Imports | `flutter/gestures.dart` + `flutter/services.dart` |
+
+## Einfüge-Vorschau beim Ziehen (`week/week_day_column.dart`)
+
+Während ein To-do oder ein Termin über dem Raster hängt, steht dort ein
+gestrichelter Kasten in der **tatsächlichen Dauer** des Gezogenen — mit der
+Uhrzeit darin (`08:30 – 09:00`, in der schmalen Wochenspalte nur `08:30`).
+Das ist die Antwort auf „wo landet das, wenn ich jetzt loslasse".
+
+- Zustand ist ein `ValueNotifier<({int minute, int dauer})?>`. `null` heißt
+  **hier landet gerade nichts** — kein Platzhalter. Dart-Records vergleichen
+  sich von selbst, der Notifier meldet also nur echte Änderungen
+- Gestrichelt, nicht gefüllt: ein zweiter satter Block sähe aus wie ein
+  zweiter Termin. `_StrichRand` malt den Rand über `Path.computeMetrics()`
+- Die Vorschau erscheint **erst nach der Schonzeit** (250 ms, `_acceptTimer`),
+  mit der ein fremder Tag einen Zug annimmt. Damit ist die Schonzeit zum
+  ersten Mal sichtbar, statt den Benutzer raten zu lassen
+- `_gerasteteMinute()` rechnet **einmal** und versorgt Vorschau, Zeit-Pille
+  und `_handleDrop`. Vorher rechnete das Ablegen eigenständig, und die Pille
+  blieb nach einem Leiter-Schritt auf der alten Uhrzeit stehen
+- **`DragTargetDetails.offset` ist die linke obere Ecke des gezogenen Bildes,
+  nicht der Finger** (Finger minus Greifpunkt). In Tests muss der Greifpunkt
+  deshalb aus der Geometrie kommen (`t.getRect(...)`), nicht geraten werden
+- Weil die Leiter (30 → 15 → 5 → 1 Min.) auch rastet, wenn der Finger
+  stillsteht, hängt die Spalte am `snapNotifier` und rechnet mit dem
+  gemerkten letzten Punkt neu
+
+Tests: `test/einfuegestelle_test.dart` (Spalte 300×360, 8–14 Uhr bei 60 px/h,
+damit 1 px = 1 Minute ist).
+
+## Ans Losfahren erinnern (`services/departure_reminder_service.dart`)
+
+Meldet sich vor der **Abfahrt**, nicht vor dem Termin: wer um 8:00 anfangen
+muss und 20 Minuten fährt, bekommt um 7:35 Bescheid (5 Minuten Vorlauf ist
+die Vorgabe). Ohne Anfahrtszeit gibt es nichts loszufahren — keine Meldung.
+
+- Einstellbar in den Einstellungen unter *Benachrichtigungen*: an/aus,
+  Vorlauf (0 – 30 Min.) und **wie eindringlich** (`ReminderUrgency`:
+  still / normal / dringend / wie ein Wecker)
+- **Je Stufe ein eigener Android-Kanal.** Die Wichtigkeit eines Kanals steht
+  ab seiner Anlage fest, Android ignoriert jede spätere Änderung. Darum
+  `channelId(stufe) = 'abfahrt_<id>'` und nicht ein Kanal mit wechselnder
+  Einstellung. Die Zuordnung Stufe → Android steht allein in
+  `ReminderService.androidFuer()`
+- *Wie ein Wecker* läuft über `AudioAttributesUsage.alarm`: die
+  Benachrichtigungs-Lautstärke geht beim Stummschalten mit, die
+  Alarm-Lautstärke nicht
+- `plan()` ist **reine Rechnung** (Termine, To-dos, `now`, Vorlauf → Liste)
+  und darum ohne Datenbank und ohne Android prüfbar. Minuten-Arithmetik statt
+  `Duration`, damit die Zeitumstellung nicht die Uhrzeit verschiebt
+- Gerechnet wird auf **aufgelösten** Terminen (`TravelService.resolveAll`):
+  die Anfahrt eines importierten Termins steht am Kalender, nicht am Termin
+- Abo-Termine kommen über `IcsService.fetchEventsOhneUebernommene()` —
+  ein übernommener (verschobener) Abo-Termin liegt sonst doppelt vor und
+  klingelt zweimal, einmal zur alten Uhrzeit
+- Horizont 7 Tage (länger als beim Ortsvorschlag): wer übers Wochenende nicht
+  in die App schaut, soll Montag trotzdem gewarnt werden
+- `scheduleAll()` läuft nach **jedem** Speichern, Verschieben und Löschen,
+  wirft nie und läuft immer nur einmal gleichzeitig (`_laeuft`/`_nochmal`).
+  Die Abos werden dabei höchstens alle 15 Minuten neu geholt
+- Gestellte Meldungen stehen in `departure_scheduled`; was beim nächsten
+  Durchgang fehlt, wird abgesagt. Sonst klingelt ein gelöschter Termin weiter
+
+Tests: `test/abfahrt_test.dart`.
+
+### Weckgenau stellen
+
+`ReminderService._stellen()` versucht `exactAllowWhileIdle` und fällt bei
+`exact_alarms_not_permitted` auf `inexactAllowWhileIdle` zurück (einmal je
+App-Lauf ins Protokoll). Das Manifest bringt `USE_EXACT_ALARM` mit — das Recht
+für Kalender- und Weckerprogramme, das sofort gilt; `SCHEDULE_EXACT_ALARM`
+müsste der Benutzer ab Android 14 erst erlauben. Ohne den Rückfall hätte eine
+Verweigerung die ganze Planungsschleife abgebrochen.
 
 ## Imports week_screen.dart
 ```dart

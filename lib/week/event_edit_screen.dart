@@ -1,9 +1,12 @@
-﻿import 'package:flutter/material.dart';
+﻿import 'dart:async';
+
+import 'package:flutter/material.dart';
 import 'package:uuid/uuid.dart';
 import '../app_colors.dart';
 import '../services/category_service.dart';
 import '../widgets/category_picker.dart';
 import '../models/calendar_event.dart';
+import '../services/departure_reminder_service.dart';
 import '../services/local_service.dart';
 import '../services/place_reminder_service.dart';
 import '../services/place_service.dart';
@@ -186,6 +189,9 @@ class _EventEditScreenState extends State<EventEditScreen> {
     // Die Meldung vor dem Termin haengt an Zeit und Gruppe — beides kann
     // sich gerade geaendert haben.
     if (ok) await PlaceReminderService.scheduleAll();
+    // Und die Erinnerung ans Losfahren: Beginn und Anfahrt koennen beide
+    // gerade andere geworden sein.
+    if (ok) unawaited(DepartureReminderService.scheduleAll());
     if (ok && mounted) Navigator.pop(context);
   }
 

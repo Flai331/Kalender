@@ -3,7 +3,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show PlatformException;
 import 'package:shared_preferences/shared_preferences.dart';
 import '../app_colors.dart';
+import '../models/reminder_urgency.dart';
 import '../services/category_service.dart';
+import '../services/departure_reminder_service.dart';
 import 'categories_screen.dart';
 import '../places/places_screen.dart';
 import '../services/place_reminder_service.dart';
@@ -40,6 +42,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
   String _orteZeile = 'Wird geladen …';
   int _vorlaufMinuten = PlaceReminderService.defaultLeadMinutes;
 
+  bool _abfahrtAn = true;
+  int _abfahrtVorlauf = DepartureReminderService.defaultLeadMinutes;
+  ReminderUrgency _abfahrtStufe = DepartureReminderService.defaultUrgency;
+
   List<String> _blockingAllDayCats = ['vacation'];
   int _daylightSunrise = 6;
   int _daylightSunset = 20;
@@ -51,6 +57,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     _loadConstraintSettings();
     _loadBackupInfo();
     _ladeOrteZeile();
+    _ladeAbfahrt();
     // Echten versionCode holen, statt der beim Bauen eingetragenen Konstante.
     UpdateService.refreshInstalledBuild().then((_) {
       if (mounted) setState(() {});
@@ -370,6 +377,45 @@ class _SettingsScreenState extends State<SettingsScreen> {
           'in $gruppen ${gruppen == 1 ? "Gruppe" : "Gruppen"}';
     });
   }
+
+  // ── Ans Losfahren erinnern ────────────────────────────────────────────────
+
+  Future<void> _ladeAbfahrt() async {
+    final an = await DepartureReminderService.istAn();
+    final vorlauf = await DepartureReminderService.leadMinutes();
+    final stufe = await DepartureReminderService.urgency();
+    if (!mounted) return;
+    setState(() {
+      _abfahrtAn = an;
+      _abfahrtVorlauf = vorlauf;
+      _abfahrtStufe = stufe;
+    });
+  }
+
+  /// Den Messenger vor dem Warten holen: danach ist der Context vielleicht
+  /// nicht mehr da.
+  void _gespeichert() {
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(const SnackBar(
+        content: Text('Gespeichert.', style: TextStyle(color: Colors.white)),
+        backgroundColor: AppColors.card,
+        duration: Duration(seconds: 2),
+      ));
+  }
+
+  Widget _abfahrtZeile(String titel, Widget auswahl) => Padding(
+        padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+        child: Row(
+          children: [
+            Expanded(
+              child: Text(titel,
+                  style: const TextStyle(color: AppColors.textPrimary)),
+            ),
+            auswahl,
+          ],
+        ),
+      );
 
   Future<void> _openCategories() async {
     await Navigator.push(
@@ -1104,6 +1150,90 @@ class _SettingsScreenState extends State<SettingsScreen> {
           _Section(
             title: 'Benachrichtigungen',
             children: [
+              SwitchListTile(
+                secondary: const Icon(Icons.directions_car_outlined,
+                    color: AppColors.primary, size: 22),
+                title: const Text('Ans Losfahren erinnern',
+                    style:
+                        TextStyle(color: AppColors.textPrimary, fontSize: 14)),
+                subtitle: const Text(
+                    'Meldet sich vor der Abfahrt, nicht vor dem Termin. Nur '
+                    'wo eine Anfahrtszeit steht — ohne Fahrt gibt es nichts '
+                    'loszufahren.',
+                    style: TextStyle(
+                        color: AppColors.textSecondary, fontSize: 12)),
+                value: _abfahrtAn,
+                onChanged: (wert) async {
+                  setState(() => _abfahrtAn = wert);
+                  await DepartureReminderService.setAn(wert);
+                  if (!mounted) return;
+                  _gespeichert();
+                },
+                activeThumbColor: AppColors.primary,
+              ),
+              if (_abfahrtAn) ...[
+                _abfahrtZeile(
+                  'Wie lange vorher',
+                  DropdownButton<int>(
+                    value: _abfahrtVorlauf,
+                    dropdownColor: AppColors.card,
+                    underline: const SizedBox.shrink(),
+                    items: [
+                      for (final m in [0, 2, 5, 10, 15, 20, 30])
+                        DropdownMenuItem(
+                          value: m,
+                          child: Text(
+                            m == 0 ? 'Genau dann' : '$m Min.',
+                            style:
+                                const TextStyle(color: AppColors.textPrimary),
+                          ),
+                        ),
+                    ],
+                    onChanged: (wert) async {
+                      if (wert == null) return;
+                      setState(() => _abfahrtVorlauf = wert);
+                      await DepartureReminderService.setLeadMinutes(wert);
+                      if (!mounted) return;
+                      _gespeichert();
+                    },
+                  ),
+                ),
+                _abfahrtZeile(
+                  'Wie eindringlich',
+                  DropdownButton<ReminderUrgency>(
+                    value: _abfahrtStufe,
+                    dropdownColor: AppColors.card,
+                    underline: const SizedBox.shrink(),
+                    items: [
+                      for (final stufe in ReminderUrgency.values)
+                        DropdownMenuItem(
+                          value: stufe,
+                          child: Text(stufe.label,
+                              style: const TextStyle(
+                                  color: AppColors.textPrimary)),
+                        ),
+                    ],
+                    onChanged: (wert) async {
+                      if (wert == null) return;
+                      setState(() => _abfahrtStufe = wert);
+                      await DepartureReminderService.setUrgency(wert);
+                      if (!mounted) return;
+                      _gespeichert();
+                    },
+                  ),
+                ),
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+                  child: Text(
+                    // Was die Stufe tut, und wer das letzte Wort hat.
+                    '${_abfahrtStufe.beschreibung}. Wie laut es wirklich '
+                    'wird, entscheidet am Ende das Handy — jede Stufe hat '
+                    'in den Android-Einstellungen einen eigenen Kanal.',
+                    style: const TextStyle(
+                        color: AppColors.textSecondary, fontSize: 12),
+                  ),
+                ),
+              ],
               _ActionTile(
                 icon: Icons.notifications_outlined,
                 iconColor: AppColors.primary,

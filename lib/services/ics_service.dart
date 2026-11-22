@@ -9,6 +9,37 @@ const _uuid = Uuid();
 
 class IcsService {
   static const String _sourcesKey = 'ics_sources';
+
+  /// Kennungen der Abo-Termine, die als **eigener** Termin uebernommen
+  /// wurden (verschoben, bearbeitet, abgehakt).
+  ///
+  /// Sie kommen beim Abruf weiter aus dem Abonnement mit — der fremde
+  /// Kalender weiss ja nichts davon. Wer die Termine benutzt, muss sie
+  /// herausnehmen, sonst steht derselbe Dienst zweimal da. Der Schluessel
+  /// liegt hier und nicht in der Wochenansicht, weil auch die
+  /// Abfahrt-Erinnerung ihn braucht: zwei Kopien hiessen dort zweimal
+  /// klingeln.
+  static const String overriddenKey = 'overridden_ics_ids';
+
+  static Future<Set<String>> overriddenIds() async {
+    final prefs = await SharedPreferences.getInstance();
+    return (prefs.getStringList(overriddenKey) ?? const []).toSet();
+  }
+
+  /// Nimmt die uebernommenen aus einer Liste Abo-Termine heraus.
+  ///
+  /// Getrennt von [fetchEventsOhneUebernommene], damit die Regel ohne Netz
+  /// und ohne Einstellungen pruefbar ist.
+  static List<CalendarEvent> ohneUebernommene(
+          List<CalendarEvent> alle, Set<String> uebernommen) =>
+      alle.where((e) => !uebernommen.contains(e.id)).toList();
+
+  /// Die Abo-Termine ohne die uebernommenen.
+  static Future<List<CalendarEvent>> fetchEventsOhneUebernommene() async {
+    final uebernommen = await overriddenIds();
+    return ohneUebernommene(await fetchEvents(), uebernommen);
+  }
+
   static const String _outlookAllowTodoDropKey = 'outlook_allow_todo_drop';
 
   static Future<bool> getOutlookAllowTodoDrop() async {

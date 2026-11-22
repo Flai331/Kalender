@@ -1,10 +1,13 @@
-﻿import 'package:flutter/material.dart';
+﻿import 'dart:async';
+
+import 'package:flutter/material.dart';
 import 'package:uuid/uuid.dart';
 import '../app_colors.dart';
 import '../services/category_service.dart';
 import '../widgets/category_picker.dart';
 import '../models/todo.dart';
 import '../models/calendar_event.dart';
+import '../services/departure_reminder_service.dart';
 import '../services/local_service.dart';
 import '../widgets/feedback_button.dart';
 import '../widgets/save_feedback.dart';
@@ -113,6 +116,9 @@ class _TodoEditScreenState extends State<TodoEditScreen> {
     } finally {
       if (mounted) setState(() => _saving = false);
     }
+    // Zeit und Anfahrt koennen sich geaendert haben — dann stimmt auch die
+    // Erinnerung ans Losfahren nicht mehr.
+    if (ok) unawaited(DepartureReminderService.scheduleAll());
     if (ok && mounted) Navigator.pop(context);
   }
 
@@ -142,7 +148,10 @@ class _TodoEditScreenState extends State<TodoEditScreen> {
     try {
       ok = await guardedAction(
         context,
-        () => LocalService.deleteTodo(widget.todo!.id),
+        () async {
+          await LocalService.deleteTodo(widget.todo!.id);
+          await DepartureReminderService.cancelFor(widget.todo!.id);
+        },
         offlineMessage: 'Kein Internet – konnte nicht gelöscht werden. '
             'Bitte später erneut versuchen.',
         errorPrefix: 'Todo löschen fehlgeschlagen',

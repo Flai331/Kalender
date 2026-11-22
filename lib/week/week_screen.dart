@@ -10,6 +10,7 @@ import '../models/calendar_event.dart';
 import '../models/todo.dart';
 import '../models/yearly_checklist.dart';
 import '../services/daylight_service.dart';
+import '../services/departure_reminder_service.dart';
 import '../services/local_service.dart';
 import '../services/place_reminder_service.dart';
 import '../services/shift_service.dart';
@@ -66,7 +67,7 @@ class WeekScreenState extends State<WeekScreen> {
   List<String> _blockingAllDayCats = ['vacation'];
   final Set<String> _noSlotTodos = {};
   final Set<String> _overriddenIcsIds = {};
-  static const String _overriddenIcsKey = 'overridden_ics_ids';
+  static const String _overriddenIcsKey = IcsService.overriddenKey;
 
   double _hourHeight = 60.0;
   double _baseHourHeight = 60.0;
@@ -287,6 +288,7 @@ class WeekScreenState extends State<WeekScreen> {
     // ist damit toter Ballast. Die Serien-Einstellung bleibt — die anderen
     // Vorkommen hängen noch daran.
     await TravelService.setEventTimes(icsEvent.id, null);
+    unawaited(DepartureReminderService.scheduleAll());
     return appEvent;
   }
 
@@ -491,6 +493,8 @@ class WeekScreenState extends State<WeekScreen> {
       scheduledStartMinute: minute,
     );
     await LocalService.saveTodo(updated);
+    // Die Abfahrt haengt an der neuen Uhrzeit.
+    unawaited(DepartureReminderService.scheduleAll());
   }
 
   Future<void> _onEventDrop(
@@ -506,6 +510,7 @@ class WeekScreenState extends State<WeekScreen> {
 
     final updated = event.copyWith(startTime: newStart, endTime: newEnd);
     await LocalService.saveEvent(updated);
+    unawaited(DepartureReminderService.scheduleAll());
   }
 
   Future<void> _onEventTap(CalendarEvent event) async {
@@ -640,6 +645,7 @@ class WeekScreenState extends State<WeekScreen> {
         // Sonst meldet sich die App noch fuer einen Termin, den es nicht
         // mehr gibt.
         await PlaceReminderService.cancelFor(event.id);
+        await DepartureReminderService.cancelFor(event.id);
     }
   }
 
@@ -754,6 +760,9 @@ class WeekScreenState extends State<WeekScreen> {
         );
       case 'delete':
         await LocalService.deleteTodo(todo.id);
+        // Sonst meldet sich die App noch fuers Losfahren zu einem To-do,
+        // das es nicht mehr gibt.
+        await DepartureReminderService.cancelFor(todo.id);
     }
   }
 
@@ -1872,6 +1881,10 @@ class WeekScreenState extends State<WeekScreen> {
       ));
       shifted = true;
     }
+
+    // Verschobene To-dos muessen ihre Abfahrt-Meldung nachziehen, sonst
+    // klingelt es zur alten Uhrzeit.
+    if (shifted) unawaited(DepartureReminderService.scheduleAll());
 
     if (!mounted) return;
 

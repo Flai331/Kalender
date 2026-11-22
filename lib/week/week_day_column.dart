@@ -131,6 +131,20 @@ class _WeekDayColumnState extends State<WeekDayColumn> {
   Timer? _acceptTimer;
   bool _dayAccepted = false;
 
+  /// Wo das Gezogene landet, wenn man jetzt loslaesst: gerastete Minute ab
+  /// `startHour` und Dauer. Null heisst **hier landet gerade nichts**.
+  ///
+  /// Dass die Vorschau in der Schonzeit (`_dayAccepted`) wegbleibt, ist
+  /// Absicht: dann tut ein Loslassen wirklich nichts, und man sieht das
+  /// vorher statt hinterher.
+  final _einfuegestelle = ValueNotifier<({int minute, int dauer})?>(null);
+
+  /// Der letzte Zugpunkt und was daran haengt — gebraucht, um die Vorschau
+  /// nachzutragen, wenn sich etwas **ohne** Fingerbewegung aendert (Ende der
+  /// Schonzeit, feineres Raster).
+  Offset? _letzterPunkt;
+  Object? _letzteDaten;
+
   double get _minuteHeight => widget.hourHeight / 60.0;
   int get _totalHours => widget.endHour - widget.startHour;
   int get _totalMinutes => _totalHours * 60;
@@ -160,14 +174,78 @@ class _WeekDayColumnState extends State<WeekDayColumn> {
     _acceptTimer = null;
     _dayAccepted = false;
     _letzterZugPunkt = null;
+    _vorschauWeg();
     SnapState.stop();
   }
 
   @override
+  void initState() {
+    super.initState();
+    // Wird die Zoom-Leiter waehrend eines Zuges feiner, aendert sich die
+    // gerastete Stelle, ohne dass der Finger sich ruehrt: aus 08:30 wird
+    // 08:27. Ohne diesen Horcher stuende in der Blase weiter 08:30 — und
+    // abgelegt wuerde trotzdem auf 08:27.
+    SnapState.snapNotifier.addListener(_rasterGeaendert);
+  }
+
+  @override
   void dispose() {
+    SnapState.snapNotifier.removeListener(_rasterGeaendert);
     _stillTimer?.cancel();
     _acceptTimer?.cancel();
+    _einfuegestelle.dispose();
     super.dispose();
+  }
+
+  void _rasterGeaendert() {
+    final punkt = _letzterPunkt;
+    final daten = _letzteDaten;
+    if (punkt == null || daten == null) return;
+    _zeigeVorschau(daten, punkt);
+  }
+
+  /// Vergisst den laufenden Zug: keine Vorschau, kein nachgetragener Punkt.
+  void _vorschauWeg() {
+    _letzterPunkt = null;
+    _letzteDaten = null;
+    _einfuegestelle.value = null;
+  }
+
+  /// Wie lang das Gezogene ist. Null, wenn es nichts Bekanntes ist — dann
+  /// gibt es auch keine Vorschau, statt eine erfundene Hoehe zu malen.
+  static int? _dauerVon(Object daten) {
+    if (daten is Todo) return daten.estimatedMinutes;
+    if (daten is CalendarEvent) return daten.scheduledDuration.inMinutes;
+    return null;
+  }
+
+  /// Die gerastete Minute unter dem gezogenen Block (ab `startHour`).
+  ///
+  /// `details.offset` ist die **obere Kante** des Gezogenen, nicht der
+  /// Finger — genau die Kante landet nachher auf der Uhrzeit. Vorschau und
+  /// Ablegen rechnen darum hier gemeinsam, sonst stuende der Block hinterher
+  /// woanders als die Vorschau versprach.
+  int? _gerasteteMinute(Offset globalPunkt) {
+    final box = _gridKey.currentContext?.findRenderObject() as RenderBox?;
+    if (box == null) return null;
+    final local = box.globalToLocal(globalPunkt);
+    final rohMinuten =
+        (local.dy / _minuteHeight).clamp(0.0, _totalMinutes - 1.0).toInt();
+    return SnapState.snap(rohMinuten, _totalMinutes);
+  }
+
+  /// Zeigt die Einfuegestelle im Raster und sagt der Blase am Finger
+  /// dieselbe Uhrzeit.
+  void _zeigeVorschau(Object daten, Offset globalPunkt) {
+    _letzterPunkt = globalPunkt;
+    _letzteDaten = daten;
+    final minute = _gerasteteMinute(globalPunkt);
+    if (minute == null) return;
+    SnapState.updateTime(widget.startHour + minute ~/ 60, minute % 60);
+    final dauer = _dauerVon(daten);
+    _einfuegestelle.value = (!_dayAccepted || dauer == null)
+        ? null
+        : (minute: minute, dauer: dauer);
   }
 
   // ── Overlap layout ────────────────────────────────────────────────────────
@@ -244,13 +322,11 @@ class _WeekDayColumnState extends State<WeekDayColumn> {
   }
 
   void _handleDrop(Object data, Offset globalOffset) {
-    final box = _gridKey.currentContext?.findRenderObject() as RenderBox?;
-    if (box == null) return;
-    final local = box.globalToLocal(globalOffset);
-    final rawMinutes = (local.dy / _minuteHeight).clamp(0.0, _totalMinutes - 1.0).toInt();
-    final snapped = SnapState.snap(rawMinutes, _totalMinutes);
+    final snapped = _gerasteteMinute(globalOffset);
+    if (snapped == null) return;
     final hour = widget.startHour + snapped ~/ 60;
     final minute = snapped % 60;
+    _vorschauWeg();
     SnapState.stop();
     if (data is Todo) {
       widget.onTodoDrop(data, widget.day, hour, minute);
@@ -300,6 +376,7 @@ class _WeekDayColumnState extends State<WeekDayColumn> {
           _stillTimer = null;
           _dayAccepted = false;
           _letzterZugPunkt = null;
+          _vorschauWeg();
         },
         onMove: (details) {
           if (!_dayAccepted && _acceptTimer == null) {
@@ -317,18 +394,15 @@ class _WeekDayColumnState extends State<WeekDayColumn> {
             } else {
               _acceptTimer = Timer(const Duration(milliseconds: 250), () {
                 _dayAccepted = true;
+                // Die Vorschau nachtragen: haelt der Finger ganz still,
+                // kommt kein weiteres onMove, und sie bliebe aus, obwohl
+                // ein Loslassen jetzt ankaeme.
+                _rasterGeaendert();
               });
             }
           }
           _onDragMove(details.offset);
-          final box = _gridKey.currentContext?.findRenderObject() as RenderBox?;
-          if (box == null) return;
-          final local = box.globalToLocal(details.offset);
-          final rawMinutes = (local.dy / _minuteHeight).clamp(0.0, _totalMinutes - 1.0).toInt();
-          final snapped = SnapState.snap(rawMinutes, _totalMinutes);
-          final hour = widget.startHour + snapped ~/ 60;
-          final minute = snapped % 60;
-          SnapState.updateTime(hour, minute);
+          _zeigeVorschau(details.data, details.offset);
         },
         builder: (ctx, candidateData, rejectedData) {
           final isHighlighted = candidateData.isNotEmpty;
@@ -368,9 +442,49 @@ class _WeekDayColumnState extends State<WeekDayColumn> {
 
                   ..._buildEventBlocks(layout, totalWidth),
                   ..._buildTodoBlocks(layout, totalWidth),
+
+                  // Zuletzt und damit ueber allem: der Platzhalter muss
+                  // sichtbar sein, auch wenn an der Stelle schon etwas steht.
+                  _vorschauSchicht(totalWidth),
                 ],
               );
             },
+          );
+        },
+      ),
+    );
+  }
+
+  /// Der Platzhalter an der Einfuegestelle.
+  ///
+  /// `IgnorePointer`, weil die Schicht ueber dem ganzen Tag liegt: ohne das
+  /// faenge sie jeden Tipp auf die Bloecke darunter ab.
+  Widget _vorschauSchicht(double totalWidth) {
+    return IgnorePointer(
+      child: ValueListenableBuilder<({int minute, int dauer})?>(
+        valueListenable: _einfuegestelle,
+        builder: (ctx, stelle, _) {
+          if (stelle == null) return const SizedBox.shrink();
+          final hoehe =
+              (stelle.dauer * _minuteHeight).clamp(16.0, double.infinity);
+          return Stack(
+            children: [
+              Positioned(
+                top: stelle.minute * _minuteHeight,
+                left: 1,
+                width: totalWidth - 2,
+                height: hoehe,
+                child: _Einfuegevorschau(
+                  // Fuer die Tests: der Platzhalter ist privat, aber seine
+                  // Lage ist die Aussage des ganzen Features.
+                  key: const Key('einfuegestelle'),
+                  startMinute: widget.startHour * 60 + stelle.minute,
+                  dauerMinuten: stelle.dauer,
+                  breite: totalWidth - 2,
+                  hoehe: hoehe,
+                ),
+              ),
+            ],
           );
         },
       ),
@@ -679,6 +793,120 @@ class _WeekDayColumnState extends State<WeekDayColumn> {
     }
     return widgets;
   }
+}
+
+// ── Einfuege-Vorschau ─────────────────────────────────────────────────────────
+
+/// „Hier landet es, wenn du jetzt loslaesst."
+///
+/// Ueber die ganze Spaltenbreite und nicht in der Ueberlappungs-Spalte des
+/// Nachbarn: abgelegt wird auf eine **Uhrzeit**, die Aufteilung in Spalten
+/// rechnet die Ansicht erst danach neu aus. Eine halbbreite Vorschau wuerde
+/// also etwas versprechen, was so nicht kommt.
+class _Einfuegevorschau extends StatelessWidget {
+  /// Beginn in Minuten ab Mitternacht.
+  final int startMinute;
+  final int dauerMinuten;
+  final double breite;
+  final double hoehe;
+
+  const _Einfuegevorschau({
+    super.key,
+    required this.startMinute,
+    required this.dauerMinuten,
+    required this.breite,
+    required this.hoehe,
+  });
+
+  static String hm(int minutenAbMitternacht) {
+    final h = (minutenAbMitternacht ~/ 60) % 24;
+    final m = minutenAbMitternacht % 60;
+    return '${h.toString().padLeft(2, '0')}:${m.toString().padLeft(2, '0')}';
+  }
+
+  /// Was hineinpasst: in der Wochenspalte (~52 px) nur der Beginn, in der
+  /// Tagesansicht die ganze Spanne. Gemessen, nicht geraten — '08:30 – 09:00'
+  /// braucht bei 9 px Schrift rund 68 px.
+  static String zeitText(int startMinute, int dauerMinuten, double breite) =>
+      breite >= 76
+          ? '${hm(startMinute)} – ${hm(startMinute + dauerMinuten)}'
+          : hm(startMinute);
+
+  @override
+  Widget build(BuildContext context) {
+    return CustomPaint(
+      // Gestrichelt, nicht durchgezogen: mit einem vollen Rahmen sah der
+      // Platzhalter aus wie ein Block, der schon dasteht. Beim Verschieben
+      // ist die Stelle, aus der man ihn genommen hat, ohnehin leer — dann
+      // stuenden zwei Dinge gleich da, von denen nur eins echt ist.
+      foregroundPainter: const _StrichRand(AppColors.primary),
+      child: Container(
+        decoration: BoxDecoration(
+          color: AppColors.primary.withValues(alpha: 0.18),
+          borderRadius: BorderRadius.circular(4),
+        ),
+        clipBehavior: Clip.hardEdge,
+        padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+        alignment: Alignment.topLeft,
+        // Die Uhrzeit steht hier noch einmal, nicht nur in der Blase am
+        // Finger: die verdeckt der Daumen oft selbst.
+        child: hoehe < 22
+            ? const SizedBox.shrink()
+            : Text(
+                zeitText(startMinute, dauerMinuten, breite),
+                maxLines: 1,
+                overflow: TextOverflow.clip,
+                style: const TextStyle(
+                  fontSize: 9,
+                  height: 1.0,
+                  fontWeight: FontWeight.w700,
+                  color: AppColors.primaryLight,
+                ),
+              ),
+      ),
+    );
+  }
+}
+
+/// Zeichnet einen gestrichelten Rahmen auf das Rechteck.
+///
+/// Flutter kann das nicht von sich aus — `Border` kennt nur durchgezogen.
+/// Der Weg geht ueber die Pfadlaenge: Stueck fuer Stueck aus der abgerundeten
+/// Kontur geschnitten, damit die Striche auch um die Ecken laufen.
+class _StrichRand extends CustomPainter {
+  final Color farbe;
+  const _StrichRand(this.farbe);
+
+  static const double _strich = 5.0;
+  static const double _luecke = 3.5;
+  static const double _breite = 1.8;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    // Um die halbe Strichbreite nach innen: sonst liegt die Haelfte des
+    // Strichs ausserhalb und wird weggeschnitten.
+    final rechteck = RRect.fromRectAndRadius(
+      (Offset.zero & size).deflate(_breite / 2),
+      const Radius.circular(4),
+    );
+    final pfad = Path()..addRRect(rechteck);
+    final stift = Paint()
+      ..color = farbe
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = _breite;
+    for (final mass in pfad.computeMetrics()) {
+      var start = 0.0;
+      while (start < mass.length) {
+        final ende =
+            start + _strich < mass.length ? start + _strich : mass.length;
+        canvas.drawPath(mass.extractPath(start, ende), stift);
+        start = ende + _luecke;
+      }
+    }
+  }
+
+  @override
+  bool shouldRepaint(_StrichRand alt) => alt.farbe != farbe;
 }
 
 class _AllDayBanner extends StatelessWidget {
