@@ -3,10 +3,11 @@
 import 'package:flutter/material.dart';
 import 'package:uuid/uuid.dart';
 import '../app_colors.dart';
+import '../models/ics_source.dart';
 import '../models/series_reminder.dart';
 import '../models/yearly_checklist.dart';
+import '../services/ics_service.dart';
 import '../services/local_service.dart';
-import '../services/outlook_service.dart';
 import '../services/reminder_service.dart';
 import '../widgets/feedback_button.dart';
 import '../widgets/save_feedback.dart';
@@ -34,7 +35,7 @@ class _ReminderEditScreenState extends State<ReminderEditScreen> {
   late int _windowEndHour;
   late bool _isActive;
 
-  List<Map<String, dynamic>> _calendars = [];
+  List<IcsSource> _calendars = [];
   String? _selectedCalendarId;
   bool _loadingCalendars = false;
 
@@ -54,18 +55,25 @@ class _ReminderEditScreenState extends State<ReminderEditScreen> {
     _windowStartHour = r?.windowStartHour ?? 8;
     _windowEndHour = r?.windowEndHour ?? 22;
     _isActive = r?.isActive ?? true;
-    _selectedCalendarId = r?.outlookCalendarId.isNotEmpty == true
-        ? r!.outlookCalendarId
+    _selectedCalendarId = r?.calendarSourceId.isNotEmpty == true
+        ? r!.calendarSourceId
         : null;
     _loadCalendars();
   }
 
   Future<void> _loadCalendars() async {
     setState(() => _loadingCalendars = true);
-    final cals = await OutlookService.getCalendars();
+    final cals = (await IcsService.getSources())
+        .where((s) => s.visible)
+        .toList();
     if (mounted) {
       setState(() {
         _calendars = cals;
+        // Ein Kalender, der inzwischen weg oder ausgeblendet ist, darf nicht
+        // als Auswahl stehen bleiben: das Dropdown wuerde sonst werfen.
+        if (!cals.any((c) => c.id == _selectedCalendarId)) {
+          _selectedCalendarId = null;
+        }
         _loadingCalendars = false;
       });
     }
@@ -81,7 +89,7 @@ class _ReminderEditScreenState extends State<ReminderEditScreen> {
     final reminder = SeriesReminder(
       id: widget.reminder?.id ?? _uuid.v4(),
       title: _titleCtrl.text.trim(),
-      outlookCalendarId: _selectedCalendarId ?? '',
+      calendarSourceId: _selectedCalendarId ?? '',
       triggerEventKeyword: _keywordCtrl.text.trim(),
       normalTriggerDay: _normalDay,
       fallbackCondition: 'if_event_on_day',
@@ -105,7 +113,7 @@ class _ReminderEditScreenState extends State<ReminderEditScreen> {
       if (mounted) setState(() => _saving = false);
     }
     // Neu einplanen, sonst greift die Änderung erst beim nächsten App-Start.
-    // Nicht awaited — die Outlook-Abfrage darf das Schließen nicht aufhalten.
+    // Nicht awaited — der Kalenderabruf darf das Schließen nicht aufhalten.
     if (ok) unawaited(ReminderService.evaluateAll());
     if (ok && mounted) Navigator.pop(context);
   }
@@ -155,7 +163,7 @@ class _ReminderEditScreenState extends State<ReminderEditScreen> {
               maxLines: 2),
           const SizedBox(height: 20),
 
-          _SectionLabel('Auslöser-Kalender (Outlook)'),
+          _SectionLabel('Auslöser-Kalender'),
           if (_loadingCalendars)
             const Padding(
               padding: EdgeInsets.symmetric(vertical: 8),
@@ -169,7 +177,8 @@ class _ReminderEditScreenState extends State<ReminderEditScreen> {
                 borderRadius: BorderRadius.circular(8),
               ),
               child: const Text(
-                'Kein Outlook verbunden. In Einstellungen anmelden.',
+                'Noch kein Kalender abonniert. In den Einstellungen unter '
+                '"Kalender (ICS)" hinzufügen.',
                 style: TextStyle(color: AppColors.textSecondary, fontSize: 13),
               ),
             )
@@ -177,6 +186,8 @@ class _ReminderEditScreenState extends State<ReminderEditScreen> {
             DropdownButtonFormField<String>(
               initialValue: _selectedCalendarId,
               dropdownColor: AppColors.surface,
+              // Ohne das laeuft ein langer Kalendername rechts heraus.
+              isExpanded: true,
               decoration: InputDecoration(
                 filled: true,
                 fillColor: AppColors.card,
@@ -186,20 +197,21 @@ class _ReminderEditScreenState extends State<ReminderEditScreen> {
                 ),
               ),
               style: const TextStyle(color: AppColors.textPrimary, fontSize: 14),
-              hint: const Text('Kalender auswählen...',
+              hint: const Text('Alle Kalender durchsuchen',
                   style: TextStyle(color: AppColors.textDisabled)),
-              items: _calendars.map((c) {
-                return DropdownMenuItem<String>(
-                  value: c['id'] as String,
-                  child: Text(c['name'] as String? ?? 'Kalender'),
-                );
-              }).toList(),
+              items: _calendars
+                  .map((c) => DropdownMenuItem<String>(
+                        value: c.id,
+                        child: Text(c.name,
+                            maxLines: 1, overflow: TextOverflow.ellipsis),
+                      ))
+                  .toList(),
               onChanged: (v) => setState(() => _selectedCalendarId = v),
             ),
           const SizedBox(height: 12),
           _Field(
               controller: _keywordCtrl,
-              label: 'Stichwort im Outlook-Termin',
+              label: 'Stichwort im Termin',
               hint: 'z.B. "Spätdienst"'),
           const SizedBox(height: 20),
 

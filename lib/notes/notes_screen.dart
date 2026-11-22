@@ -12,12 +12,22 @@ class NotesScreen extends StatefulWidget {
   State<NotesScreen> createState() => _NotesScreenState();
 }
 
+/// Ein Ziel im Bildschirm: Textfeld und Haken gehoeren zusammen, darum
+/// liegen sie in einem Objekt und koennen nicht auseinanderlaufen.
+class _ZielZeile {
+  final TextEditingController ctrl;
+  bool erledigt;
+
+  _ZielZeile({String text = '', this.erledigt = false})
+      : ctrl = TextEditingController(text: text);
+}
+
 class _NotesScreenState extends State<NotesScreen> {
   late String _weekKey;
   bool _loading = true;
 
   final TextEditingController _contentCtrl = TextEditingController();
-  final List<TextEditingController> _goalCtrls = [];
+  final List<_ZielZeile> _ziele = [];
 
   @override
   void initState() {
@@ -30,31 +40,37 @@ class _NotesScreenState extends State<NotesScreen> {
     final note = await LocalService.getWeekNote(_weekKey);
     setState(() {
       _contentCtrl.text = note.content;
-      _goalCtrls.clear();
+      for (final z in _ziele) {
+        z.ctrl.dispose();
+      }
+      _ziele.clear();
       for (final g in note.goals) {
-        _goalCtrls.add(TextEditingController(text: g));
+        _ziele.add(_ZielZeile(text: g.text, erledigt: g.done));
       }
       _loading = false;
     });
   }
 
-  Future<void> _save() async {
-    final goals = _goalCtrls
-        .map((c) => c.text.trim())
-        .where((g) => g.isNotEmpty)
-        .toList();
-    final updated = WeekNote(
-      weekKey: _weekKey,
-      content: _contentCtrl.text,
-      goals: goals,
-    );
+  WeekNote _aktuellerStand() => WeekNote(
+        weekKey: _weekKey,
+        content: _contentCtrl.text,
+        goals: _ziele
+            .where((z) => z.ctrl.text.trim().isNotEmpty)
+            .map((z) =>
+                WeekGoal(text: z.ctrl.text.trim(), done: z.erledigt))
+            .toList(),
+      );
+
+  /// `still` speichert ohne Rueckmeldung — das ist der Weg fuer den Haken:
+  /// ein Tipp darf nicht erst durch "Speichern" bestaetigt werden muessen.
+  Future<void> _save({bool still = false}) async {
     // Speichert in die lokale Datenbank, aus der die Ansichten lesen.
     final ok = await guardedAction(
       context,
-      () => LocalService.saveWeekNote(updated),
+      () => LocalService.saveWeekNote(_aktuellerStand()),
       errorPrefix: 'Notiz speichern fehlgeschlagen',
     );
-    if (ok && mounted) {
+    if (ok && mounted && !still) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('Gespeichert'),
@@ -65,20 +81,29 @@ class _NotesScreenState extends State<NotesScreen> {
     }
   }
 
+  /// Hakt ein Ziel ab oder wieder auf und sichert es sofort — mitsamt dem,
+  /// was gerade in den Textfeldern steht.
+  Future<void> _toggleZiel(int index) async {
+    setState(() => _ziele[index].erledigt = !_ziele[index].erledigt);
+    if (_ziele[index].ctrl.text.trim().isEmpty) return;
+    await _save(still: true);
+  }
+
   void _addGoal() {
-    if (_goalCtrls.length >= 5) return;
-    setState(() => _goalCtrls.add(TextEditingController()));
+    if (_ziele.length >= 5) return;
+    setState(() => _ziele.add(_ZielZeile()));
   }
 
   void _removeGoal(int index) {
     setState(() {
-      _goalCtrls[index].dispose();
-      _goalCtrls.removeAt(index);
+      _ziele[index].ctrl.dispose();
+      _ziele.removeAt(index);
     });
   }
 
   @override
   Widget build(BuildContext context) {
+    final offen = _ziele.where((z) => !z.erledigt).length;
     return Scaffold(
       backgroundColor: AppColors.background,
       appBar: AppBar(
@@ -114,8 +139,10 @@ class _NotesScreenState extends State<NotesScreen> {
               children: [
                 // Wochenziele
                 _SectionHeader(
-                  title: 'Wochenziele',
-                  trailing: _goalCtrls.length < 5
+                  title: _ziele.isEmpty
+                      ? 'Wochenziele'
+                      : 'Wochenziele · $offen offen',
+                  trailing: _ziele.length < 5
                       ? IconButton(
                           icon: const Icon(Icons.add_circle_outline,
                               color: AppColors.primary, size: 20),
@@ -123,7 +150,7 @@ class _NotesScreenState extends State<NotesScreen> {
                         )
                       : null,
                 ),
-                if (_goalCtrls.isEmpty)
+                if (_ziele.isEmpty)
                   Padding(
                     padding: const EdgeInsets.only(bottom: 12),
                     child: GestureDetector(
@@ -152,19 +179,42 @@ class _NotesScreenState extends State<NotesScreen> {
                       ),
                     ),
                   ),
-                ...List.generate(_goalCtrls.length, (i) {
+                ...List.generate(_ziele.length, (i) {
+                  final ziel = _ziele[i];
                   return Padding(
                     padding: const EdgeInsets.only(bottom: 8),
                     child: Row(
                       children: [
-                        const Text('○ ',
-                            style: TextStyle(
-                                color: AppColors.primary, fontSize: 16)),
+                        // Der Haken: das war vorher ein totes Zeichen.
+                        IconButton(
+                          icon: Icon(
+                            ziel.erledigt
+                                ? Icons.check_circle
+                                : Icons.radio_button_unchecked,
+                            color: ziel.erledigt
+                                ? AppColors.primary
+                                : AppColors.textDisabled,
+                            size: 22,
+                          ),
+                          onPressed: () => _toggleZiel(i),
+                          tooltip: ziel.erledigt
+                              ? 'Wieder offen'
+                              : 'Erledigt',
+                          visualDensity: VisualDensity.compact,
+                        ),
                         Expanded(
                           child: TextField(
-                            controller: _goalCtrls[i],
-                            style: const TextStyle(
-                                color: AppColors.textPrimary, fontSize: 14),
+                            controller: ziel.ctrl,
+                            style: TextStyle(
+                              color: ziel.erledigt
+                                  ? AppColors.textDisabled
+                                  : AppColors.textPrimary,
+                              fontSize: 14,
+                              decoration: ziel.erledigt
+                                  ? TextDecoration.lineThrough
+                                  : null,
+                              decorationColor: AppColors.textDisabled,
+                            ),
                             decoration: InputDecoration(
                               hintText: 'Ziel ${i + 1}...',
                               hintStyle: const TextStyle(
@@ -184,6 +234,7 @@ class _NotesScreenState extends State<NotesScreen> {
                           icon: const Icon(Icons.remove_circle_outline,
                               size: 18, color: AppColors.textDisabled),
                           onPressed: () => _removeGoal(i),
+                          visualDensity: VisualDensity.compact,
                         ),
                       ],
                     ),
@@ -218,8 +269,8 @@ class _NotesScreenState extends State<NotesScreen> {
   @override
   void dispose() {
     _contentCtrl.dispose();
-    for (final c in _goalCtrls) {
-      c.dispose();
+    for (final z in _ziele) {
+      z.ctrl.dispose();
     }
     super.dispose();
   }

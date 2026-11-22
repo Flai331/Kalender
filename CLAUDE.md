@@ -48,6 +48,25 @@ Gerät (drift). Kein Server, kein Konto. Hauptbereiche:
 - Mehrtägige Events/Todos: overlap-basiertes Filtern (`startTime.isBefore(dayEnd) && endTime.isAfter(dayStart)`) + Clipping in Spalte
 - Auto-Shift (`_autoShiftOverdueTodos`): nach Shift `setState(() => _initStreams())` für sofortiges UI-Update
 
+### Kalender-Abos (settings_screen.dart)
+- Der Schalter je Zeile blendet den Kalender **ein und aus**
+  (`IcsSource.visible`). Ausgeblendet wird er gar nicht erst geholt
+  (`IcsService.fetchEvents`), bleibt aber mit Farbe und Einstellungen stehen.
+  Bis 11/2026 hing an dieser Stelle `allowTodoDrop` — eine Einstellung, die
+  nur ein Tooltip erklärte, den man am Handy nie sieht
+- Farbe und "Todos hineinziehen" sitzen im Dialog hinter dem Namen
+  (`_openCalendarOptions`)
+- Neue Felder in `IcsSource` brauchen in `fromJson` einen Vorgabewert, der
+  den Altbestand richtig stellt (`visible: … ?? true`)
+
+### Wochennotizen (notes_screen.dart)
+- Wochenziele sind **abhakbar** (`WeekGoal{text, done}`). Vorher stand dort
+  ein totes "○"-Zeichen, das wie ein Kästchen aussah
+- Der Haken speichert **sofort und still** (`_save(still: true)`) — und nimmt
+  den gerade getippten Text mit, damit nichts verloren geht
+- `WeekGoal.fromJson` nimmt auch eine blanke Zeichenkette: so lagen die Ziele
+  bis 11/2026 in der Datenbank
+
 ### Auto-Shift-Logik
 Verschiebt überfällige pending Todos automatisch nach vorne:
 - **Fahrtzeiten**: `blockStart = scheduledStart - travelBefore`, `blockEnd = scheduledStart + estimatedMinutes + travelAfter`
@@ -133,7 +152,8 @@ Aktueller Stand (Schema v6): `events_cache`, `todos_cache`,
 `week_notes_cache`, `categories_cache`.
 
 Netz braucht die App nur für drei Dinge, alle ohne Konto:
-- ICS-Abos (`IcsService`) und Outlook (`OutlookService`)
+- ICS-Abos (`IcsService`) — auch die Outlook-Kalender kommen so herein,
+  eine Anmeldung bei Microsoft gibt es nicht und braucht es nicht
 - Update-Prüfung über die GitHub-Releases (`UpdateService`)
 
 ## Benutzer-Kennung
@@ -156,10 +176,17 @@ Speichern im `reminder_edit_screen`. Vorher existierte die Methode, wurde aber
 nie aufgerufen: es wurde also nie eine Erinnerung eingeplant.
 
 - `evaluateAll()` **wirft nie** — jede Erinnerung ist einzeln abgesichert,
-  damit eine fehlschlagende (Outlook-Abfrage ohne Netz) die übrigen nicht
+  damit eine fehlschlagende (Kalenderabruf ohne Netz) die übrigen nicht
   verhindert; Fehler landen im Protokoll
-- Beide Aufrufe sind `unawaited`: `outlook_service` setzt **keinen Timeout**,
-  ein hängender Request würde sonst den App-Start blockieren
+- Beide Aufrufe sind `unawaited`, der Kalenderabruf darf weder den App-Start
+  noch das Schließen des Bildschirms aufhalten
+- Auslöser ist ein Termin aus den **ICS-Abos**, gesucht von
+  `ReminderService.findEventOnDay`. Bis 11/2026 fragte das die
+  Microsoft-Graph-API über `OutlookService` — die war nie eingerichtet
+  (Platzhalter-Client-Id), also stand im Bildschirm immer "Kein Outlook
+  verbunden" und keine Fallback-Regel konnte je greifen. `OutlookService` ist
+  entfernt; `SeriesReminder.calendarSourceId` hält jetzt die Id der ICS-Quelle
+  (alter JSON-Schlüssel `outlookCalendarId` wird noch gelesen)
 | PointerScrollEvent not found | Fehlende Imports | `flutter/gestures.dart` + `flutter/services.dart` |
 
 ## Imports week_screen.dart

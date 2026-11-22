@@ -1,7 +1,9 @@
 class SeriesReminder {
   final String id;
   final String title;
-  final String outlookCalendarId;
+  /// Id der ICS-Quelle, die den Ausloeser-Termin enthaelt. Leer = alle
+  /// abonnierten Kalender durchsuchen.
+  final String calendarSourceId;
   final String triggerEventKeyword;
   final int normalTriggerDay;
   final String fallbackCondition; // 'if_event_on_day' | 'always'
@@ -17,7 +19,7 @@ class SeriesReminder {
   SeriesReminder({
     required this.id,
     required this.title,
-    this.outlookCalendarId = '',
+    this.calendarSourceId = '',
     this.triggerEventKeyword = '',
     required this.normalTriggerDay,
     this.fallbackCondition = 'if_event_on_day',
@@ -34,7 +36,7 @@ class SeriesReminder {
   SeriesReminder copyWith({
     String? id,
     String? title,
-    String? outlookCalendarId,
+    String? calendarSourceId,
     String? triggerEventKeyword,
     int? normalTriggerDay,
     String? fallbackCondition,
@@ -50,7 +52,7 @@ class SeriesReminder {
     return SeriesReminder(
       id: id ?? this.id,
       title: title ?? this.title,
-      outlookCalendarId: outlookCalendarId ?? this.outlookCalendarId,
+      calendarSourceId: calendarSourceId ?? this.calendarSourceId,
       triggerEventKeyword: triggerEventKeyword ?? this.triggerEventKeyword,
       normalTriggerDay: normalTriggerDay ?? this.normalTriggerDay,
       fallbackCondition: fallbackCondition ?? this.fallbackCondition,
@@ -69,7 +71,7 @@ class SeriesReminder {
   Map<String, dynamic> toJson() => {
         'id': id,
         'title': title,
-        'outlookCalendarId': outlookCalendarId,
+        'calendarSourceId': calendarSourceId,
         'triggerEventKeyword': triggerEventKeyword,
         'normalTriggerDay': normalTriggerDay,
         'fallbackCondition': fallbackCondition,
@@ -86,7 +88,12 @@ class SeriesReminder {
   factory SeriesReminder.fromJson(Map<String, dynamic> json) => SeriesReminder(
         id: json['id'] as String,
         title: json['title'] as String,
-        outlookCalendarId: json['outlookCalendarId'] as String? ?? '',
+        // Der alte Schluessel hielt eine Graph-Kalender-Id. Die passte zu
+        // keinem Abo, weil Outlook nie verbunden war — der Wert wird
+        // uebernommen und laeuft dann als "alle Kalender".
+        calendarSourceId: json['calendarSourceId'] as String? ??
+            json['outlookCalendarId'] as String? ??
+            '',
         triggerEventKeyword: json['triggerEventKeyword'] as String? ?? '',
         normalTriggerDay: json['normalTriggerDay'] as int,
         fallbackCondition:

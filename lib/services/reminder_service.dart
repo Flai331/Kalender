@@ -1,10 +1,11 @@
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:timezone/data/latest.dart' as tz;
 import 'package:timezone/timezone.dart' as tz;
+import '../models/calendar_event.dart';
 import '../models/series_reminder.dart';
 import 'feedback_service.dart';
+import 'ics_service.dart';
 import 'local_service.dart';
-import 'outlook_service.dart';
 
 class ReminderService {
   static final FlutterLocalNotificationsPlugin _notifications =
@@ -29,8 +30,9 @@ class ReminderService {
   ///
   /// Wirft nie: die Methode läuft beim App-Start und nach jedem Speichern,
   /// ein Fehler darf weder den Start noch die übrigen Erinnerungen kippen.
-  /// `_evaluate` fragt für die Fallback-Regel Outlook ab — ohne Netz schlägt
-  /// das fehl, die Erinnerungen ohne Fallback müssen trotzdem geplant werden.
+  /// `_evaluate` holt für die Fallback-Regel die abonnierten Kalender —
+  /// ohne Netz schlägt das fehl, die Erinnerungen ohne Fallback müssen
+  /// trotzdem geplant werden.
   static Future<void> evaluateAll() async {
     final List<SeriesReminder> reminders;
     try {
@@ -52,6 +54,36 @@ class ReminderService {
     }
   }
 
+  /// Sucht den Ausloeser-Termin an einem Tag in den abonnierten Kalendern.
+  ///
+  /// Die Termine kommen aus den ICS-Abos — das ist der einzige Weg, auf dem
+  /// Outlook-Termine in dieser App landen. Ohne `sourceId` zaehlen alle
+  /// sichtbaren Kalender. Ein leeres Stichwort heisst "irgendein Termin an
+  /// dem Tag". Bei mehreren Treffern gewinnt der frueheste.
+  static Future<CalendarEvent?> findEventOnDay({
+    required DateTime day,
+    required String keyword,
+    String? sourceId,
+    List<CalendarEvent>? events,
+  }) async {
+    final alle = events ?? await IcsService.fetchEvents();
+    final tagStart = DateTime(day.year, day.month, day.day);
+    final tagEnde = DateTime(day.year, day.month, day.day + 1);
+    final suche = keyword.trim().toLowerCase();
+
+    final treffer = alle.where((e) {
+      if (sourceId != null && e.icsSourceId != sourceId) return false;
+      // Ueberlappung mit dem Tag, gleiche Regel wie in der Wochenansicht.
+      if (!e.startTime.isBefore(tagEnde)) return false;
+      if (e.endTime.isBefore(tagStart)) return false;
+      if (suche.isEmpty) return true;
+      return e.title.toLowerCase().contains(suche);
+    }).toList()
+      ..sort((a, b) => a.startTime.compareTo(b.startTime));
+
+    return treffer.isEmpty ? null : treffer.first;
+  }
+
   static Future<void> _evaluate(SeriesReminder reminder, DateTime now) async {
     // Erinnerung für den aktuellen Monat berechnen
     final normalDay = DateTime(now.year, now.month, reminder.normalTriggerDay);
@@ -61,25 +93,23 @@ class ReminderService {
     int triggerMinute = reminder.windowStartMinute;
 
     if (reminder.fallbackCondition == 'if_event_on_day') {
-      // Prüfen ob am normalTriggerDay ein passendes Outlook-Event existiert
-      final event = await OutlookService.findEventOnDay(
+      // Prüfen ob am normalTriggerDay ein passender Termin im abonnierten
+      // Kalender steht
+      final event = await findEventOnDay(
         day: normalDay,
         keyword: reminder.triggerEventKeyword,
-        calendarId: reminder.outlookCalendarId.isNotEmpty
-            ? reminder.outlookCalendarId
+        sourceId: reminder.calendarSourceId.isNotEmpty
+            ? reminder.calendarSourceId
             : null,
       );
 
       if (event != null) {
         // Fallback: Erinnerung am fallbackDay verschieben
         triggerDate = DateTime(now.year, now.month, reminder.fallbackDay);
-        final eventStart = OutlookService.parseEventStart(event);
-        if (eventStart != null) {
-          final offsetTime =
-              eventStart.add(Duration(minutes: reminder.fallbackOffsetMinutes));
-          triggerHour = offsetTime.hour;
-          triggerMinute = offsetTime.minute;
-        }
+        final offsetTime = event.startTime
+            .add(Duration(minutes: reminder.fallbackOffsetMinutes));
+        triggerHour = offsetTime.hour;
+        triggerMinute = offsetTime.minute;
       } else {
         // Kein Konflikt → normalTriggerDay verwenden
         triggerDate = normalDay;

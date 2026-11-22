@@ -57,7 +57,7 @@ void main() {
     await LocalService.saveReminder(SeriesReminder(
       id: 'r1',
       title: 'Müll rausstellen',
-      outlookCalendarId: 'cal',
+      calendarSourceId: 'cal',
       triggerEventKeyword: 'Abfuhr',
       normalTriggerDay: 2,
       fallbackCondition: 'always',
@@ -77,7 +77,7 @@ void main() {
     await LocalService.saveWeekNote(WeekNote(
       weekKey: '2026-W47',
       content: 'Ruhige Woche',
-      goals: ['ausschlafen'],
+      goals: [const WeekGoal(text: 'ausschlafen', done: true)],
     ));
     await CategoryService.update('work', label: 'Dienst');
     await CategoryService.add('Ehrenamt', 0xFF00BCD4);
@@ -150,7 +150,7 @@ void main() {
           (await LocalService.getYearlyChecklists()).single.title, 'Steuer');
       final notiz = await LocalService.getWeekNote('2026-W47');
       expect(notiz.content, 'Ruhige Woche');
-      expect(notiz.goals, ['ausschlafen']);
+      expect(notiz.goals, [const WeekGoal(text: 'ausschlafen', done: true)]);
     });
 
     test('Kategorien kommen mit Namen und Farbe zurueck', () async {

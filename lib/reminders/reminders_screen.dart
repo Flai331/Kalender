@@ -61,7 +61,7 @@ class _SeriesRemindersTab extends StatelessWidget {
                   icon: Icons.notifications_outlined,
                   message: 'Noch keine Serien-Erinnerungen',
                   hint:
-                      'Erstelle Regeln, die sich nach deinen Outlook-Terminen richten',
+                      'Erstelle Regeln, die sich nach deinen Kalender-Terminen richten',
                   onAdd: () => _openEdit(context),
                 )
               : ListView.builder(
