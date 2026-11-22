@@ -5,6 +5,8 @@ import '../services/category_service.dart';
 import '../widgets/category_picker.dart';
 import '../models/calendar_event.dart';
 import '../services/local_service.dart';
+import '../services/place_reminder_service.dart';
+import '../services/place_service.dart';
 import '../services/travel_service.dart';
 import '../models/travel_times.dart';
 import '../widgets/feedback_button.dart';
@@ -38,6 +40,13 @@ class _EventEditScreenState extends State<EventEditScreen> {
   late TravelTimes _inherited;
   bool _saving = false;
 
+  /// Ortsgruppe des Termins, z. B. „Fitnessstudio". Null = keine.
+  String? _placeGroup;
+
+  /// Die Gruppen, die es gibt. Leer heisst: der Benutzer hat noch keine
+  /// Orte angelegt, dann bleibt die Auswahl aus.
+  List<String> _placeGroups = [];
+
   bool get _isNew => widget.event == null;
 
   @override
@@ -59,6 +68,21 @@ class _EventEditScreenState extends State<EventEditScreen> {
     _inherited = e != null
         ? TravelService.inheritedFor(e)
         : TravelService.calendarTimes(TravelService.ownCalendarId);
+    _placeGroup = e?.placeGroup;
+    _ladeGruppen();
+  }
+
+  Future<void> _ladeGruppen() async {
+    final gruppen = await PlaceService.groups();
+    if (!mounted) return;
+    setState(() {
+      _placeGroups = gruppen;
+      // Eine Gruppe, die es nicht mehr gibt, soll nicht stumm am Termin
+      // haengen bleiben.
+      if (_placeGroup != null && !gruppen.contains(_placeGroup)) {
+        _placeGroup = null;
+      }
+    });
   }
 
   DateTime _roundToNext30() {
@@ -121,6 +145,7 @@ class _EventEditScreenState extends State<EventEditScreen> {
         repeatType: _repeatType,
         source: 'app',
         address: address,
+        placeGroup: _placeGroup,
         travelBeforeOverride: _travelBefore,
         travelAfterOverride: _travelAfter,
       );
@@ -136,6 +161,7 @@ class _EventEditScreenState extends State<EventEditScreen> {
         repeatType: _repeatType,
         source: 'app',
         address: address,
+        placeGroup: _placeGroup,
         travelBeforeOverride: _travelBefore,
         travelAfterOverride: _travelAfter,
       );
@@ -151,6 +177,9 @@ class _EventEditScreenState extends State<EventEditScreen> {
     } finally {
       if (mounted) setState(() => _saving = false);
     }
+    // Die Meldung vor dem Termin haengt an Zeit und Gruppe — beides kann
+    // sich gerade geaendert haben.
+    if (ok) await PlaceReminderService.scheduleAll();
     if (ok && mounted) Navigator.pop(context);
   }
 
@@ -209,6 +238,10 @@ class _EventEditScreenState extends State<EventEditScreen> {
             hint: 'Ort / Adresse (optional)...',
             prefixIcon: Icons.location_on_outlined,
           ),
+          if (_placeGroups.isNotEmpty) ...[
+            const SizedBox(height: 12),
+            _ortsgruppe(),
+          ],
           const SizedBox(height: 12),
           TravelTimePicker(
             label: 'Anfahrt',
@@ -281,6 +314,55 @@ class _EventEditScreenState extends State<EventEditScreen> {
         ),
         child: child!,
       );
+
+  /// Welche Ortsgruppe gilt — welcher Ort daraus, entscheidet die App
+  /// erst, wenn der Termin naeher rueckt.
+  Widget _ortsgruppe() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        DropdownButtonFormField<String?>(
+          initialValue: _placeGroup,
+          isExpanded: true,
+          dropdownColor: AppColors.card,
+          decoration: const InputDecoration(
+            labelText: 'Ort aus Gruppe',
+            prefixIcon:
+                Icon(Icons.storefront_outlined, color: AppColors.textSecondary),
+            labelStyle: TextStyle(color: AppColors.textSecondary),
+            filled: true,
+            fillColor: AppColors.card,
+            border: OutlineInputBorder(),
+          ),
+          items: [
+            const DropdownMenuItem(
+              value: null,
+              child: Text('Keine',
+                  style: TextStyle(color: AppColors.textSecondary)),
+            ),
+            for (final g in _placeGroups)
+              DropdownMenuItem(
+                value: g,
+                child: Text(g,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(color: AppColors.textPrimary)),
+              ),
+          ],
+          onChanged: (wert) => setState(() => _placeGroup = wert),
+        ),
+        if (_placeGroup != null)
+          const Padding(
+            padding: EdgeInsets.fromLTRB(4, 6, 4, 0),
+            child: Text(
+              'Bevor der Termin ansteht, meldet sich die App und sagt, '
+              'welcher offen hat.',
+              style: TextStyle(color: AppColors.textSecondary, fontSize: 12),
+            ),
+          ),
+      ],
+    );
+  }
 
   @override
   void dispose() {

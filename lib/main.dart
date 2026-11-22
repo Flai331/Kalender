@@ -9,6 +9,9 @@ import 'models/todo.dart';
 import 'services/backup_service.dart';
 import 'services/feedback_service.dart';
 import 'services/local_service.dart';
+import 'models/calendar_event.dart';
+import 'places/place_suggest_screen.dart';
+import 'services/place_reminder_service.dart';
 import 'services/reminder_service.dart';
 import 'services/category_service.dart';
 import 'services/travel_service.dart';
@@ -44,6 +47,7 @@ void main() async {
 
   await ReminderService.initialize();
   await ReminderService.requestPermissions();
+  ReminderService.onTap = _benachrichtigungAngetippt;
 
   final db = AppDatabase();
   await LocalService.init(db);
@@ -61,6 +65,10 @@ void main() async {
   // den App-Start blockieren. evaluateAll wirft nicht.
   unawaited(ReminderService.evaluateAll());
 
+  // Vor jedem Termin mit Ortsgruppe melden, damit die App sagen kann,
+  // welches Studio offen hat. Wirft nicht.
+  unawaited(PlaceReminderService.scheduleAll());
+
   await WidgetService.init();
 
   // Einmal am Tag einen Stand wegschreiben, bevor etwas passiert. Bewusst
@@ -68,7 +76,43 @@ void main() async {
   // meldet Fehler nach innen statt nach oben.
   unawaited(BackupService.autoSichern());
 
+  // Wurde die App ueber eine Benachrichtigung gestartet, kommt der
+  // Rueckruf oben nicht — die Nutzlast liegt dann nur in den Startdaten.
+  final start = await ReminderService.startPayload();
+
   runApp(const KalenderApp());
+
+  if (start != null) {
+    WidgetsBinding.instance.addPostFrameCallback(
+        (_) => _benachrichtigungAngetippt(start));
+  }
+}
+
+/// Oeffnet den Ortsvorschlag, wenn die angetippte Meldung dazu gehoert.
+///
+/// Laeuft ueber den NavigatorKey: hier gibt es keinen BuildContext, und die
+/// App kann beim Antippen auch gerade erst starten.
+Future<void> _benachrichtigungAngetippt(String? payload) async {
+  final eventId = PlaceReminderService.eventIdFromPayload(payload);
+  if (eventId == null) return;
+  try {
+    final events = await LocalService.getAllEvents();
+    CalendarEvent? termin;
+    for (final e in events) {
+      if (e.id == eventId) {
+        termin = e;
+        break;
+      }
+    }
+    // Termin geloescht oder Gruppe entfernt: dann gibt es nichts zu zeigen.
+    if (termin == null || (termin.placeGroup ?? '').isEmpty) return;
+    final nav = navigatorKey.currentState;
+    if (nav == null) return;
+    await nav.push(MaterialPageRoute(
+        builder: (_) => PlaceSuggestScreen(event: termin!)));
+  } catch (e) {
+    FeedbackService.log('Ortsvorschlag nicht zu oeffnen: $e');
+  }
 }
 
 class KalenderApp extends StatelessWidget {

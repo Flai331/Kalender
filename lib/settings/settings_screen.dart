@@ -6,6 +6,7 @@ import '../app_colors.dart';
 import '../services/category_service.dart';
 import 'categories_screen.dart';
 import '../places/places_screen.dart';
+import '../services/place_reminder_service.dart';
 import '../services/place_service.dart';
 import '../models/ics_source.dart';
 import '../services/backup_service.dart';
@@ -37,6 +38,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   List<AutoSicherung> _autoStaende = [];
   DateTime? _letzteManuelle;
   String _orteZeile = 'Wird geladen …';
+  int _vorlaufMinuten = PlaceReminderService.defaultLeadMinutes;
 
   List<String> _blockingAllDayCats = ['vacation'];
   int _daylightSunrise = 6;
@@ -355,8 +357,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
   /// sich das Oeffnen lohnt.
   Future<void> _ladeOrteZeile() async {
     final orte = await PlaceService.all();
+    final vorlauf = await PlaceReminderService.leadMinutes();
     if (!mounted) return;
     setState(() {
+      _vorlaufMinuten = vorlauf;
       if (orte.isEmpty) {
         _orteZeile = 'Noch keine Orte';
         return;
@@ -1128,6 +1132,51 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   'sagt die App, in welches du kannst.',
                   style: TextStyle(
                       color: AppColors.textSecondary, fontSize: 12),
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+                child: Row(
+                  children: [
+                    const Expanded(
+                      child: Text('Wie lange vorher melden',
+                          style: TextStyle(color: AppColors.textPrimary)),
+                    ),
+                    DropdownButton<int>(
+                      value: _vorlaufMinuten,
+                      dropdownColor: AppColors.card,
+                      underline: const SizedBox.shrink(),
+                      items: [
+                        for (final m in [15, 30, 60, 90, 120, 180])
+                          DropdownMenuItem(
+                            value: m,
+                            child: Text(
+                              m < 60
+                                  ? '$m Min.'
+                                  : '${m ~/ 60} ${m == 60 ? "Stunde" : "Stunden"}',
+                              style: const TextStyle(
+                                  color: AppColors.textPrimary),
+                            ),
+                          ),
+                      ],
+                      onChanged: (wert) async {
+                        if (wert == null) return;
+                        // Den Messenger vor dem Warten holen: danach ist
+                        // der Context vielleicht nicht mehr da.
+                        final messenger = ScaffoldMessenger.of(context);
+                        setState(() => _vorlaufMinuten = wert);
+                        await PlaceReminderService.setLeadMinutes(wert);
+                        messenger
+                          ..hideCurrentSnackBar()
+                          ..showSnackBar(const SnackBar(
+                            content: Text('Gespeichert.',
+                                style: TextStyle(color: Colors.white)),
+                            backgroundColor: AppColors.card,
+                            duration: Duration(seconds: 2),
+                          ));
+                      },
+                    ),
+                  ],
                 ),
               ),
             ],

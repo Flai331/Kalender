@@ -11,6 +11,7 @@ import '../models/todo.dart';
 import '../models/yearly_checklist.dart';
 import '../services/daylight_service.dart';
 import '../services/local_service.dart';
+import '../services/place_reminder_service.dart';
 import '../services/shift_service.dart';
 import '../services/category_service.dart';
 import '../services/travel_service.dart';
@@ -640,6 +641,9 @@ class WeekScreenState extends State<WeekScreen> {
         );
       case 'delete':
         await LocalService.deleteEvent(event.id);
+        // Sonst meldet sich die App noch fuer einen Termin, den es nicht
+        // mehr gibt.
+        await PlaceReminderService.cancelFor(event.id);
     }
   }
 

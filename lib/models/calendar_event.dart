@@ -45,6 +45,12 @@ class CalendarEvent {
   final int travelMinutesAfter;
   final String? icsSourceId;
 
+  /// Die Ortsgruppe, aus der dieser Termin seinen Ort bekommt — z. B.
+  /// „Fitnessstudio". Welches Studio es wird, entscheidet die App erst,
+  /// wenn der Termin naeher rueckt: dann zaehlen Öffnungszeiten, Rangliste
+  /// und wo man gerade ist. Null heisst: kein Ortsvorschlag.
+  final String? placeGroup;
+
   CalendarEvent({
     required this.id,
     required this.title,
@@ -70,6 +76,7 @@ class CalendarEvent {
     int? travelMinutesBefore,
     int? travelMinutesAfter,
     this.icsSourceId,
+    this.placeGroup,
   })  : travelBeforeOverride = travelBeforeOverride,
         travelAfterOverride = travelAfterOverride,
         // Ohne Auflösung gilt der eigene Wert; ohne eigenen Wert nichts.
@@ -114,6 +121,7 @@ class CalendarEvent {
     int? travelMinutesBefore,
     int? travelMinutesAfter,
     Object? icsSourceId = _unset,
+    Object? placeGroup = _unset,
   }) {
     return CalendarEvent(
       id: id ?? this.id,
@@ -144,6 +152,8 @@ class CalendarEvent {
       travelMinutesBefore: travelMinutesBefore ?? this.travelMinutesBefore,
       travelMinutesAfter: travelMinutesAfter ?? this.travelMinutesAfter,
       icsSourceId: icsSourceId == _unset ? this.icsSourceId : icsSourceId as String?,
+      placeGroup:
+          placeGroup == _unset ? this.placeGroup : placeGroup as String?,
     );
   }
 
@@ -171,6 +181,7 @@ class CalendarEvent {
         'travelBeforeOverride': travelBeforeOverride,
         'travelAfterOverride': travelAfterOverride,
         'icsSourceId': icsSourceId,
+        'placeGroup': placeGroup,
       };
 
   factory CalendarEvent.fromJson(Map<String, dynamic> json) => CalendarEvent(
@@ -215,6 +226,7 @@ class CalendarEvent {
             ? (json['travelAfterOverride'] as num?)?.toInt()
             : (json['travelMinutesAfter'] as num?)?.toInt(),
         icsSourceId: json['icsSourceId'] as String?,
+        placeGroup: json['placeGroup'] as String?,
       );
 
   // Hilfsmethode: TimeOfDay aus startTime

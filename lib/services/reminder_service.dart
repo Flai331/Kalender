@@ -11,12 +11,33 @@ class ReminderService {
   static final FlutterLocalNotificationsPlugin _notifications =
       FlutterLocalNotificationsPlugin();
 
+  /// Wird gerufen, wenn der Benutzer eine Benachrichtigung antippt.
+  /// Setzt main.dart, damit dieser Dienst keine Bildschirme kennen muss.
+  static void Function(String? payload)? onTap;
+
   static Future<void> initialize() async {
     tz.initializeTimeZones();
 
     const android = AndroidInitializationSettings('@mipmap/ic_launcher');
     const settings = InitializationSettings(android: android);
-    await _notifications.initialize(settings);
+    await _notifications.initialize(
+      settings,
+      onDidReceiveNotificationResponse: (antwort) =>
+          onTap?.call(antwort.payload),
+    );
+  }
+
+  /// Die Nutzlast der Benachrichtigung, mit der die App gestartet wurde —
+  /// null, wenn sie normal geoeffnet wurde. Beim kalten Start kommt der
+  /// Rueckruf oben nicht, die Nutzlast liegt nur hier.
+  static Future<String?> startPayload() async {
+    try {
+      final details = await _notifications.getNotificationAppLaunchDetails();
+      if (details?.didNotificationLaunchApp != true) return null;
+      return details?.notificationResponse?.payload;
+    } catch (_) {
+      return null;
+    }
   }
 
   static Future<void> requestPermissions() async {
@@ -150,6 +171,41 @@ class ReminderService {
       title: reminder.title,
       body: reminder.message,
       scheduledAt: triggerDateTime,
+    );
+  }
+
+  /// Plant eine Benachrichtigung auf einen Zeitpunkt.
+  ///
+  /// Offen fuer andere Dienste (die Ortsvorschlaege nutzen es), darum mit
+  /// eigenem Kanal und Nutzlast.
+  static Future<void> scheduleAt({
+    required int id,
+    required String title,
+    required String body,
+    required DateTime scheduledAt,
+    String? payload,
+    String channelId = 'series_reminders',
+    String channelName = 'Serien-Erinnerungen',
+    String channelDescription = 'Kalender-gesteuerte Erinnerungen',
+  }) async {
+    if (scheduledAt.isBefore(DateTime.now())) return;
+    final androidDetails = AndroidNotificationDetails(
+      channelId,
+      channelName,
+      channelDescription: channelDescription,
+      importance: Importance.high,
+      priority: Priority.high,
+    );
+    await _notifications.zonedSchedule(
+      id,
+      title,
+      body,
+      tz.TZDateTime.from(scheduledAt, tz.local),
+      NotificationDetails(android: androidDetails),
+      androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
+      uiLocalNotificationDateInterpretation:
+          UILocalNotificationDateInterpretation.absoluteTime,
+      payload: payload,
     );
   }
 

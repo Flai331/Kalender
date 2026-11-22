@@ -139,6 +139,11 @@ Früher lag hinter der App ein Supabase-Projekt, mit `sync_queue`,
 (Schema v6 wirft die Tabelle weg). Die App wird auf einem Gerät benutzt; was
 gesichert werden soll, geht über `BackupService` in eine Datei.
 
+Schema v7 bringt `places_cache`: eine Zeile je Benutzer mit der ganzen
+Orts-Liste als JSON, wie bei den Kategorien — die Rangliste gehört zur Liste,
+nicht zum einzelnen Ort. `CalendarEvent.placeGroup` brauchte **keine**
+Migration, Termine liegen als JSON-Blob in `events_cache.data`.
+
 Zeitraum-Abfragen (`eventsForRange`, `todosForRange`) nehmen alles mit, was in
 den Zeitraum **hineinreicht**, nicht nur was darin beginnt — sonst fehlt eine
 Reise über den Monatswechsel im zweiten Monat.
@@ -184,6 +189,36 @@ bleibt aber: ohne sie müssten alle sieben Tabellen migriert werden.
   nach einem Wechsel verwaisen
 - Die Kennung steckt in der Sicherung **nicht** mit drin — beim Einspielen
   schreibt `restore()` alles auf die Kennung des Geräts, auf dem es landet
+
+## Orte mit Öffnungszeiten (lib/places/, place_service.dart)
+
+Mehrere Fitnessstudios in einer **Gruppe**, je Gruppe eine **Rangliste**
+(`Place.rank`, kleiner = lieber). Am Termin steht nur die Gruppe
+(`CalendarEvent.placeGroup`) — **welcher Ort es wird, entscheidet die App
+erst, wenn der Termin näher rückt**. Das war die ausdrückliche Vorgabe: beim
+Anlegen weiß man noch nicht, wo man dann gerade ist und was offen hat.
+
+- `OpeningHours` ist ein Fenster je Wochentag in Minuten ab Mitternacht.
+  `toMinute` darf **über 1440** gehen (bis 1 Uhr nachts = 1500 am Vortag) —
+  als zweiter Eintrag am Folgetag ginge die Nacht Sonntag→Montag verloren
+- **Keine eingetragenen Zeiten heißt immer offen** (`Place.hasHours`), sonst
+  wäre ein frisch angelegtes Studio für immer unsichtbar und die App meldete
+  „keiner offen", obwohl drei Orte in der Liste stehen
+- `PlaceService.suggest` sortiert: ganz offen → beim Start offen
+  (`closesDuring`, „kann hin, muss früher raus") → zu; darunter die
+  **Rangliste**. Die Entfernung steht nur daneben, sie sortiert nicht
+- Die Entfernung ist **Luftlinie** (Haversine); ohne Koordinaten oder ohne
+  eigenen Standort bleibt `distanceKm` null statt geraten zu werden
+- Adresse → Koordinaten über `GeoService` (Paket `geocoding`, Geocoder des
+  Geräts): **kein Schlüssel, kein Dienst im Netz**. Fehler kommen als
+  `GeoFehler` mit einem anzeigbaren Satz
+- `PlaceReminderService` plant die Meldung `leadMinutes` vor dem Termin
+  (Vorgabe 90, einstellbar). `plan()` ist rein gerechnet und ohne Android
+  prüfbar. Die Nutzlast trägt nur die Termin-Kennung — **welcher Ort**
+  entscheidet sich erst beim Antippen, mit dem Standort von dann
+- Antippen läuft über `ReminderService.onTap` → `main.dart` →
+  `PlaceSuggestScreen`; beim **kalten Start** kommt der Rückruf nicht, dann
+  liefert `ReminderService.startPayload()` die Nutzlast
 
 ## Serien-Erinnerungen
 

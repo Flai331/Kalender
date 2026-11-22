@@ -13,6 +13,11 @@ class PlaceSuggestion {
   /// Hat den **ganzen** Zeitraum ueber offen.
   final bool open;
 
+  /// Hat wenigstens zum Beginn des Termins offen, schliesst aber vorher.
+  /// Das ist der Fall „kann hin, muss frueher raus" — der ist etwas
+  /// anderes als zu, und soll nicht als zu dastehen.
+  final bool openAtStart;
+
   /// Luftlinie in km, oder null — ohne Koordinaten oder ohne eigenen
   /// Standort gibt es keine Entfernung, und dann wird auch keine erfunden.
   final double? distanceKm;
@@ -26,10 +31,14 @@ class PlaceSuggestion {
   const PlaceSuggestion({
     required this.place,
     required this.open,
+    this.openAtStart = false,
     this.distanceKm,
     this.closesAt,
     this.nextOpening,
   });
+
+  /// Offen beim Start, aber nicht bis zum Schluss.
+  bool get closesDuring => !open && openAtStart;
 
   String get distanceText => distanceKm == null
       ? ''
@@ -135,19 +144,24 @@ class PlaceService {
 
     final liste = orte.map((p) {
       final offen = p.isOpenDuring(from, to);
+      final amAnfang = offen || p.isOpenAt(from);
       return PlaceSuggestion(
         place: p,
         open: offen,
+        openAtStart: amAnfang,
         distanceKm: habeStandort && p.hasPosition
             ? distanceKm(myLatitude, myLongitude, p.latitude!, p.longitude!)
             : null,
-        closesAt: offen ? p.closingAfter(from) : null,
-        nextOpening: offen ? null : p.nextOpening(from),
+        closesAt: amAnfang ? p.closingAfter(from) : null,
+        nextOpening: amAnfang ? null : p.nextOpening(from),
       );
     }).toList();
 
     liste.sort((a, b) {
       if (a.open != b.open) return a.open ? -1 : 1;
+      // Unter den nicht ganz offenen zuerst die, bei denen man wenigstens
+      // anfangen kann.
+      if (a.openAtStart != b.openAtStart) return a.openAtStart ? -1 : 1;
       final rang = _nachRang(a.place, b.place);
       if (rang != 0) return rang;
       // Gleicher Rang kommt vor, wenn Orte von Hand angelegt wurden.

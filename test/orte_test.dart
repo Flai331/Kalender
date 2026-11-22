@@ -302,6 +302,45 @@ void main() {
       expect(liste.first.place.id, 'clever');
     });
 
+    test('wer waehrend des Termins schliesst, ist nicht einfach zu',
+        () async {
+      // Termin 19:00–21:00. McFit macht um 20 Uhr zu, Fit/One um 23 Uhr.
+      final liste = await frage(um(23, 19), um(23, 21));
+      final mc = liste.firstWhere((s) => s.place.id == 'mcfit');
+      expect(mc.open, isFalse, reason: 'nicht die ganze Zeit');
+      expect(mc.openAtStart, isTrue, reason: 'anfangen geht');
+      expect(mc.closesDuring, isTrue);
+      expect(mc.closesAt, um(23, 20), reason: 'bis dahin kann er trainieren');
+      expect(mc.nextOpening, isNull);
+
+      final fit = liste.firstWhere((s) => s.place.id == 'fitone');
+      expect(fit.open, isTrue);
+      expect(liste.first.place.id, 'fitone',
+          reason: 'wer ganz offen hat, steht ueber dem, der frueher zumacht');
+    });
+
+    test('halb offen steht ueber ganz zu', () async {
+      // Montag 19:00–21:00: McFit (bis 20) und Clever Fit (bis 20) sind
+      // halb da, ein frueh schliessender Ort gar nicht.
+      final frueh = Place(
+        id: 'frueh',
+        name: 'Frueh zu',
+        group: 'Fitnessstudio',
+        rank: 0,
+        hours: werktags(8, 17),
+      );
+      final liste = await PlaceService.suggest(
+        group: 'Fitnessstudio',
+        from: um(23, 19),
+        to: um(23, 21),
+        places: [frueh, mcfit],
+      );
+      expect(liste.map((s) => s.place.id).toList(), ['mcfit', 'frueh'],
+          reason: 'trotz schlechterem Rang: bei ihm kann man anfangen');
+      expect(liste.last.closesDuring, isFalse);
+      expect(liste.last.nextOpening, um(24, 8));
+    });
+
     test('Entfernung als Text: Meter bleiben Meter', () async {
       final liste = await frage(um(23, 10), um(23, 11));
       final nah = liste.firstWhere((s) => s.place.id == 'clever');
