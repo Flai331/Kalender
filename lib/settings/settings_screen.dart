@@ -760,11 +760,23 @@ class _SettingsScreenState extends State<SettingsScreen> {
         ),
       );
 
+  /// Zwei Meldungen, und das mit Absicht.
+  ///
+  /// Die sofortige sagt nur: die App darf überhaupt melden. Die geplante geht
+  /// den Weg, den jede echte Erinnerung geht — Wecker über den AlarmManager,
+  /// Empfänger, Kanal. Kommt die erste und die zweite nicht, liegt es nicht
+  /// am Recht, sondern am Wecker.
   Future<void> _testNotification() async {
     await ReminderService.showTestNotification(
       'Test-Erinnerung',
-      'Die Benachrichtigungen funktionieren korrekt!',
+      'Die App darf melden. Gleich kommt die zweite.',
     );
+    await DepartureReminderService.probeStellen(_abfahrtStufe);
+    if (!mounted) return;
+    showInfoSnack(
+        context,
+        'Die zweite Meldung kommt in 15 Sekunden — die ist der eigentliche '
+        'Test.');
   }
 
   // ── Update-Prüfung ────────────────────────────────────────────
@@ -1238,7 +1250,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 icon: Icons.notifications_outlined,
                 iconColor: AppColors.primary,
                 title: 'Test-Benachrichtigung',
-                subtitle: 'Prüfen ob Notifications funktionieren',
+                subtitle: 'Eine sofort, eine geplante 15 Sekunden später',
                 actionLabel: 'Testen',
                 actionColor: AppColors.primary,
                 onAction: _testNotification,

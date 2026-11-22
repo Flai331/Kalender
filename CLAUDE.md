@@ -413,6 +413,13 @@ selbst aktualisiert und das für AlarmManager dasselbe Vergessen ist.
 wirft keinen Fehler — es passiert einfach nichts, und das sieht man erst
 Wochen später an der Meldung, die nie kam.
 
+Darum stellt der Knopf *Test-Benachrichtigung* jetzt **zwei**: eine sofort
+(`show()` — sagt nur, dass die App melden darf) und eine geplante 15 Sekunden
+später über `DepartureReminderService.probeStellen()`, in der eingestellten
+Stufe und über deren echten Kanal. Kommt die erste und die zweite nicht,
+liegt es nicht am Recht, sondern am Wecker. Die Probe trägt eine Kennung aus
+`'__probe__'`, die keiner echten Meldung in die Quere kommt.
+
 ## Imports week_screen.dart
 ```dart
 import 'package:flutter/gestures.dart';   // PointerScrollEvent

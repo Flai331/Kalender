@@ -204,6 +204,18 @@ void main() {
           isNot('ortsvorschlag:e1'.hashCode & 0x3FFFFFFF));
     });
 
+    test('die Probe kommt keiner echten Meldung in die Quere', () {
+      // Sonst loescht die Probe ausgerechnet den Hinweis, den sie pruefen
+      // soll. Termin-Kennungen sind UUIDs — "__probe__" ist keine.
+      final probe = DepartureReminderService.probeId;
+      expect(probe, DepartureReminderService.probeId, reason: 'stabil');
+      for (final id in ['e1', 't1', '', 'abfahrt', '0']) {
+        expect(probe, isNot(DepartureReminderService.notificationId(id)));
+      }
+      expect(probe, greaterThanOrEqualTo(0));
+      expect(probe, lessThan(0x40000000));
+    });
+
     test('je Stufe ein eigener Kanal', () {
       final kanaele = ReminderUrgency.values
           .map(DepartureReminderService.channelId)

@@ -123,6 +123,36 @@ class DepartureReminderService {
   static int notificationId(String eintragId) =>
       'abfahrt:$eintragId'.hashCode & 0x3FFFFFFF;
 
+  /// Die Kennung der Probe-Meldung.
+  ///
+  /// Aus einer Zeichenkette gerechnet, die als Kennung eines Termins oder
+  /// To-dos nicht vorkommt — so kann die Probe keiner echten Meldung in die
+  /// Quere kommen und wird von [_einmalPlanen] auch nicht wieder abgesagt.
+  static int get probeId => notificationId('__probe__');
+
+  /// Stellt eine Probe in ein paar Sekunden — mit der Stufe, die gerade
+  /// eingestellt ist.
+  ///
+  /// Der Punkt ist nicht der Text, sondern der **Weg**: Wecker ueber den
+  /// AlarmManager, Empfaenger im Manifest, Kanal der gewaehlten Stufe. Genau
+  /// dieser Weg lief lange ins Leere, ohne dass es auffiel — die
+  /// Test-Meldung in den Einstellungen benutzte `show()` und brauchte ihn
+  /// gar nicht.
+  static Future<void> probeStellen(ReminderUrgency stufe,
+      {Duration warte = const Duration(seconds: 15)}) async {
+    await ReminderService.scheduleAt(
+      id: probeId,
+      title: 'Probe: Losfahren',
+      body: 'So meldet sich „${stufe.label}". Echte Hinweise kommen genauso.',
+      scheduledAt: DateTime.now().add(warte),
+      channelId: channelId(stufe),
+      channelName: 'Losfahren (${stufe.label})',
+      channelDescription:
+          'Meldet sich, bevor man zu einem Termin losfahren muss.',
+      urgency: stufe,
+    );
+  }
+
   // ── Planen ───────────────────────────────────────────────────────────────
 
   /// Welche Eintraege bekommen eine Meldung, und wann?
