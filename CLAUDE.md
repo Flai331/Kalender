@@ -136,6 +136,7 @@ Verschiebt überfällige pending Todos automatisch nach vorne:
 | Meldung kommt im alten Ton, obwohl die Stufe umgestellt wurde | Android übernimmt Wichtigkeit und Ton nur beim **Anlegen** des Kanals | Je Stufe ein eigener `channelId` (`abfahrt_dringend`, `abfahrt_alarm`, …) |
 | Abfahrt-Meldung kommt zweimal, einmal zur alten Uhrzeit | Ein übernommener Abo-Termin liegt lokal **und** kommt weiter aus dem Abo | `IcsService.fetchEventsOhneUebernommene()` statt `fetchEvents()` |
 | `exact_alarms_not_permitted` bricht die ganze Planung ab | Ab Android 14 ist `SCHEDULE_EXACT_ALARM` standardmäßig verweigert | `USE_EXACT_ALARM` im Manifest (gilt sofort) **und** Rückfall auf `inexactAllowWhileIdle` in `_stellen` |
+| Geplante Meldungen kommen nie, der Test-Knopf geht | Die beiden Empfänger des Plugins fehlten im Manifest — AlarmManager stellt den Wecker, aber niemand nimmt ab; `show()` braucht keinen und ging deshalb | `ScheduledNotificationReceiver` + `ScheduledNotificationBootReceiver` ins Manifest, bewacht von `test/manifest_test.dart` |
 
 
 ## Was im Terminblock steht (`event_block.dart`)
@@ -396,6 +397,21 @@ App-Lauf ins Protokoll). Das Manifest bringt `USE_EXACT_ALARM` mit — das Recht
 für Kalender- und Weckerprogramme, das sofort gilt; `SCHEDULE_EXACT_ALARM`
 müsste der Benutzer ab Android 14 erst erlauben. Ohne den Rückfall hätte eine
 Verweigerung die ganze Planungsschleife abgebrochen.
+
+**Und erst einmal muss überhaupt jemand abnehmen.** Das Plugin stellt den
+Wecker über AlarmManager mit einem PendingIntent auf
+`ScheduledNotificationReceiver` — eine Klasse, die das Plugin mitbringt, die
+aber **die App** im Manifest anmelden muss (steht so im README des Plugins).
+Sie fehlte. Damit ist seit jeher keine einzige *geplante* Meldung erschienen:
+keine Serien-Erinnerung, kein Ortsvorschlag. Aufgefallen ist es nicht, weil
+der Test-Knopf `show()` benutzt — sofort, ohne Wecker, also ohne Empfänger.
+Dazu `ScheduledNotificationBootReceiver`, der die Wecker nach einem Neustart
+neu stellt; `MY_PACKAGE_REPLACED` steht mit im Filter, weil die App sich
+selbst aktualisiert und das für AlarmManager dasselbe Vergessen ist.
+
+`test/manifest_test.dart` bewacht beides. Ein fehlender Eintrag im Manifest
+wirft keinen Fehler — es passiert einfach nichts, und das sieht man erst
+Wochen später an der Meldung, die nie kam.
 
 ## Imports week_screen.dart
 ```dart

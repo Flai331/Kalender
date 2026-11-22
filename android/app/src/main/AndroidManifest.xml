@@ -70,6 +70,34 @@
                 android:resource="@xml/todo_widget_info" />
         </receiver>
 
+        <!-- Geplante Meldungen.
+
+             Ohne diese beiden Empfänger stellt das Plugin den Wecker zwar,
+             aber niemand nimmt ab: AlarmManager schickt die Meldung an
+             ScheduledNotificationReceiver, und was im Manifest nicht steht,
+             gibt es für Android nicht. Alles Geplante — Serien-Erinnerungen,
+             Ortsvorschläge, die Abfahrt-Erinnerung — fiel damit still aus.
+             Nur der Test-Knopf ging, weil der die Meldung sofort zeigt und
+             gar keinen Wecker braucht.
+
+             Der Boot-Empfänger stellt die Wecker nach einem Neustart wieder:
+             AlarmManager vergisst beim Ausschalten alles. MY_PACKAGE_REPLACED
+             ist dasselbe nach einem Update der App — und die App aktualisiert
+             sich selbst. -->
+        <receiver
+            android:name="com.dexterous.flutterlocalnotifications.ScheduledNotificationReceiver"
+            android:exported="false" />
+        <receiver
+            android:name="com.dexterous.flutterlocalnotifications.ScheduledNotificationBootReceiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED"/>
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED"/>
+                <action android:name="android.intent.action.QUICKBOOT_POWERON"/>
+                <action android:name="com.htc.intent.action.QUICKBOOT_POWERON"/>
+            </intent-filter>
+        </receiver>
+
         <!-- workmanager für Hintergrund-Tasks -->
         <service
             android:name="androidx.work.impl.background.systemjob.SystemJobService"
