@@ -48,6 +48,13 @@ class SnapState {
     });
   }
 
+  /// Ein neuer Zug faengt wieder beim groben Raster an.
+  ///
+  /// Ohne das bleibt ein abgebrochener Zug auf 1 Minute stehen, und der
+  /// naechste laesst sich gar nicht mehr heranzoomen — er stuende schon am
+  /// Ende der Leiter, und `_runTimer` bricht sofort ab.
+  static void begin() => stop();
+
   static void stop() {
     _timer?.cancel();
     _index = 0;
@@ -128,7 +135,19 @@ class _WeekDayColumnState extends State<WeekDayColumn> {
   int get _totalHours => widget.endHour - widget.startHour;
   int get _totalMinutes => _totalHours * 60;
 
-  void _onDragMove() {
+  /// Ab wie viel Weg ein Zug als bewegt gilt.
+  ///
+  /// Ein Daumen auf Glas zittert staendig um ein, zwei Pixel. Wuerde jede
+  /// dieser Regungen den Ruhe-Zaehler zuruecksetzen, kaeme das feinere
+  /// Raster nie — gemessen: vier Sekunden Halten mit 1 px Zittern blieben
+  /// auf 30 Minuten stehen.
+  static const double _zittergrenze = 8.0;
+  Offset? _letzterZugPunkt;
+
+  void _onDragMove(Offset punkt) {
+    final letzter = _letzterZugPunkt;
+    if (letzter != null && (punkt - letzter).distance < _zittergrenze) return;
+    _letzterZugPunkt = punkt;
     SnapState.pause();
     _stillTimer?.cancel();
     _stillTimer = Timer(const Duration(milliseconds: 600), SnapState.resume);
@@ -140,6 +159,7 @@ class _WeekDayColumnState extends State<WeekDayColumn> {
     _acceptTimer?.cancel();
     _acceptTimer = null;
     _dayAccepted = false;
+    _letzterZugPunkt = null;
     SnapState.stop();
   }
 
@@ -279,6 +299,7 @@ class _WeekDayColumnState extends State<WeekDayColumn> {
           _stillTimer?.cancel();
           _stillTimer = null;
           _dayAccepted = false;
+          _letzterZugPunkt = null;
         },
         onMove: (details) {
           if (!_dayAccepted && _acceptTimer == null) {
@@ -299,7 +320,7 @@ class _WeekDayColumnState extends State<WeekDayColumn> {
               });
             }
           }
-          _onDragMove();
+          _onDragMove(details.offset);
           final box = _gridKey.currentContext?.findRenderObject() as RenderBox?;
           if (box == null) return;
           final local = box.globalToLocal(details.offset);
@@ -475,6 +496,7 @@ class _WeekDayColumnState extends State<WeekDayColumn> {
           height: height,
           child: LongPressDraggable<CalendarEvent>(
             data: event,
+            onDragStarted: SnapState.begin,
             onDraggableCanceled: (velocity, offset) => _onDragEnd(),
             onDragCompleted: _onDragEnd,
             feedback: _ziehVorschau(event, durationMinutes),
@@ -514,6 +536,7 @@ class _WeekDayColumnState extends State<WeekDayColumn> {
             final isTarget = candidateTodos.isNotEmpty;
             return LongPressDraggable<CalendarEvent>(
               data: event,
+              onDragStarted: SnapState.begin,
               onDraggableCanceled: (velocity, offset) => _onDragEnd(),
               onDragCompleted: _onDragEnd,
               feedback: _ziehVorschau(event, durationMinutes),
@@ -587,6 +610,7 @@ class _WeekDayColumnState extends State<WeekDayColumn> {
         height: height,
         child: LongPressDraggable<Todo>(
           data: todo,
+          onDragStarted: SnapState.begin,
           onDraggableCanceled: (velocity, offset) => _onDragEnd(),
           onDragCompleted: _onDragEnd,
           feedback: ValueListenableBuilder<int>(

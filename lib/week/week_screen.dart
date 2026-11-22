@@ -784,7 +784,6 @@ class WeekScreenState extends State<WeekScreen> {
                   },
                 ),
               ),
-              _buildTodoPool(),
             ],
           ),
           // Snap-Level + Zeit Overlay
@@ -844,6 +843,12 @@ class WeekScreenState extends State<WeekScreen> {
           ),
         ],
       ),
+      // Die Todo-Leiste sitzt im unteren Balken des Scaffolds, nicht als
+      // letztes Element der Spalte. Nur so hebt Flutter den Plus-Knopf von
+      // selbst darueber — vorher sass er genau auf dem letzten To-do und
+      // deckte es zu. Die Hoehe ergibt sich dabei von allein, egal ob die
+      // Leiste leer (52 px) oder gefuellt (72 px) ist.
+      bottomNavigationBar: _buildTodoPool(),
       floatingActionButton: FloatingActionButton(
         heroTag: 'week_fab',
         onPressed: _addEvent,
@@ -1058,6 +1063,11 @@ class WeekScreenState extends State<WeekScreen> {
                     final todo = _unscheduled[i];
                     return LongPressDraggable<Todo>(
                       data: todo,
+                      // Ohne diese beiden blieb das feine Raster nach einem
+                      // abgebrochenen Zug stehen: der naechste Zug fing bei
+                      // 1 Minute an und liess sich nicht mehr heranzoomen.
+                      onDragStarted: SnapState.begin,
+                      onDragEnd: (_) => SnapState.stop(),
                       feedback: Material(
                         color: Colors.transparent,
                         child: Container(

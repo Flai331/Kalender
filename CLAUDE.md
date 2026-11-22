@@ -127,6 +127,39 @@ Verschiebt überfällige pending Todos automatisch nach vorne:
 | Speichern-Knopf reagiert nicht mehr | `_saving = true` vor dem `await`, Exception (z.B. offline) → Flag wird nie zurückgesetzt | `try/finally` + `guardedAction()` aus `widgets/save_feedback.dart` |
 | Speichern schlägt still fehl | `await …save…()` ohne try/catch — Nutzer sieht keine Meldung | `guardedAction()` zeigt SnackBar + schreibt ins Protokoll |
 | Termin/Todo landet nicht in der Ansicht | Screen schreibt nicht über `LocalService` | `LocalService.saveEvent/saveTodo` (wie in `week_screen.dart`) |
+| Plus-Knopf deckt das letzte To-do zu | Todo-Leiste als letztes Element der Body-Spalte; `endFloat` setzt den FAB an den Scaffold-Boden | Leiste in `bottomNavigationBar:` — dann hebt Flutter den FAB von selbst darüber, in der tatsächlichen Höhe |
+| Ranzoomen beim Ziehen bleibt aus | `_onDragMove` setzte den Ruhe-Zähler bei **jeder** Regung zurück; ein Daumen zittert um 1–2 px | Erst ab `_zittergrenze` (8 px) als Bewegung zählen |
+| Ranzoomen klappt gar nicht mehr, bis zum App-Neustart | Abgebrochener Zug ließ `SnapState` auf 1 Minute stehen; der nächste stand schon am Ende der Leiter | `SnapState.begin()` beim Start **jedes** Zuges, `stop()` an **jedem** Ende (auch `onDragEnd` der Todo-Leiste) |
+
+
+## Was im Terminblock steht (`event_block.dart`)
+
+Zuerst der Titel, darunter die **Dauer**, darunter die Uhrzeit — soweit der
+Block hoch und breit genug ist. **Keine An- und Abfahrt im Text**: die stand
+früher als "🚗07:40  08:00 – 09:00  🏠09:20" in einer Zeile und wurde in der
+52 px schmalen Wochenspalte zu "🚗07:40 08…" — man las die Abfahrt statt des
+Termins. Die Fahrzeiten stehen ohnehin als eigene Streifen über und unter dem
+Block.
+
+`EventBlock.dauerText` schreibt Viertelstunden als Bruch (`1½ Std`), weil
+"1 Std 30 min" 50 px braucht und nur 37 px Platz sind. Krumme Reste gehen
+ganz in Minuten (`80 min`) — lieber das als eine gerundete, also falsche
+Stundenzahl. Nichts wird länger als acht Zeichen, dafür gibt es einen Test.
+
+**Das Höhenbudget ist eng und muss stimmen.** Vom Block gehen ab: 1 px Rand
+oben und unten, 1,5 px Rahmen oben und unten, dazu das Polster. Bei einem
+24-px-Block bleiben 13 px — da passt nicht einmal die 13,8 px hohe
+Titelzeile hinein, sie wurde unten angeschnitten. Darum:
+
+- Polster 1 px statt 3 px, solange der Block unter 36 px ist
+- Dauerzeile mit Zeilenhöhe 1.0 und in engen Blöcken 8 statt 9 px — diese
+  1,4 px entscheiden darüber, ob der sehr häufige 30-Minuten-Termin seine
+  Dauer zeigt
+- Dauer ab 30 px, Uhrzeit ab 44 px und nur in breiten Spalten
+
+Wer hier etwas ändert: **rendern und hinsehen.** Jede dieser Zahlen kommt aus
+einem Bild, nicht aus Kopfrechnen, und ein Überlauf fällt sonst nicht auf —
+der Block schneidet sauber ab (`Clip.hardEdge`).
 
 ## Datenhaltung (drift/SQLite)
 

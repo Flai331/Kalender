@@ -44,8 +44,8 @@ class EventBlock extends StatelessWidget {
         ? Color(event!.calendarColor!)
         : _colorForStatus(status, category);
     final height = (durationMinutes * heightPerMinute).clamp(24.0, 200.0);
-    final showTime = height >= 36;
-    final timeStr = _timeString();
+    final dauerStr = dauerText(durationMinutes);
+    final zeitStr = _zeitraumText();
 
     return LayoutBuilder(builder: (context, constraints) {
       // Eine Tagesspalte der Wochenansicht ist am Handy rund 52 px breit.
@@ -59,7 +59,26 @@ class EventBlock extends StatelessWidget {
       // Zeichen Titel uebrig. Dort bleibt es beim Status-Dialog.
       final hakenUnten = hatHaken && schmal && height >= 44;
       final hakenInTitelzeile = hatHaken && !schmal;
-      final zeigeZeit = showTime && timeStr != null && !hakenUnten;
+      // Platz wird von oben vergeben: erst der Titel, dann die Dauer, dann
+      // die Uhrzeit. Die Dauer passt auch in die schmalste Spalte ("1 Std"),
+      // der Zeitraum braucht die doppelte Breite.
+      // Was innen wirklich uebrig bleibt: Rand des Blocks (1 px oben und
+      // unten), Rahmen (1,5 px oben und unten) und Polster gehen ab. Bei
+      // einem 24-px-Block sind das 11 px Abzug — in die restlichen 13 passt
+      // die 13,8 px hohe Titelzeile nicht, sie wurde unten angeschnitten.
+      // Darum rueckt das Polster in kurzen Bloecken auf 1 px zusammen.
+      final engesPolster = height < 36;
+      final polster = engesPolster ? 1.0 : 3.0;
+      // Der Halbstunden-Termin ist der haeufigste ueberhaupt und misst bei
+      // Normalzoom genau 30 px — innen bleiben davon 23. Titel 13,8 plus
+      // Dauer 9,0 waeren 22,8: ginge auf, aber ohne jede Reserve. Darum
+      // steht die Dauer in engen Bloecken eine Spur kleiner (8 statt 9 px),
+      // dann sind es 21,8 und es bleibt Luft. Mit der Uhrzeit darunter
+      // sind es 31,8 bei weitem Polster, macht ab 44 px.
+      final zeigeDauer = height >= 30 && !hakenUnten;
+      final zeigeZeit =
+          zeigeDauer && !schmal && height >= 44 && zeitStr != null;
+      final titelZweizeilig = !zeigeDauer && durationMinutes >= 45;
 
       return GestureDetector(
         onTap: onTap,
@@ -76,7 +95,7 @@ class EventBlock extends StatelessWidget {
                     color: nurInfo ? color.withValues(alpha: 0.45) : color,
                     width: nurInfo ? 1 : 1.5),
           ),
-          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+          padding: EdgeInsets.symmetric(horizontal: 6, vertical: polster),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             mainAxisSize: MainAxisSize.min,
@@ -115,7 +134,7 @@ class EventBlock extends StatelessWidget {
                             ? TextDecoration.lineThrough
                             : null,
                       ),
-                      maxLines: (showTime || durationMinutes >= 45) ? 2 : 1,
+                      maxLines: titelZweizeilig ? 2 : 1,
                       overflow: TextOverflow.ellipsis,
                     ),
                   ),
@@ -125,14 +144,29 @@ class EventBlock extends StatelessWidget {
                     _statusIcon(status),
                 ],
               ),
+              if (zeigeDauer)
+                Text(
+                  dauerStr,
+                  style: TextStyle(
+                    fontSize: engesPolster ? 8 : 9,
+                    // 1.0 statt 1.15: die 1,4 px entscheiden darueber, ob
+                    // ein 30-Minuten-Termin seine Dauer zeigt. Buchstaben
+                    // mit Unterlaenge kommen hier nicht vor.
+                    height: 1.0,
+                    color: color.withValues(alpha: 0.85),
+                    fontWeight: FontWeight.w600,
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
               if (zeigeZeit)
                 Text(
-                  timeStr,
+                  zeitStr,
                   style: TextStyle(
                     fontSize: 9,
-                    height: 1.15,
-                    color: color.withValues(alpha: 0.85),
-                    fontWeight: FontWeight.w500,
+                    height: 1.0,
+                    color: color.withValues(alpha: 0.6),
+                    fontWeight: FontWeight.w400,
                   ),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
@@ -149,66 +183,46 @@ class EventBlock extends StatelessWidget {
     });
   }
 
-  String? _timeString() {
+  /// Wie lange der Termin dauert — ohne An- und Abfahrt.
+  ///
+  /// Vorher stand hier die Uhrzeit zusammen mit Abfahrt und Heimkehr in
+  /// einer Zeile: "\u{1F697}07:40  08:00 \u2013 09:00  \u{1F3E0}09:20". In einer
+  /// Tagesspalte von 52 px blieb davon "\u{1F697}07:40 08\u2026" stehen — man las die
+  /// Abfahrt und nicht den Termin. Die Fahrzeiten stehen ohnehin als
+  /// eigene Streifen ueber und unter dem Block.
+  ///
+  /// Geschrieben wird kurz genug fuer die schmalste Spalte: dort sind rund
+  /// 37 px Platz, "1 Std 30 min" braucht 50 und wurde zu "1 Std \u2026".
+  /// Viertelstunden stehen darum als Bruch — das ist exakt und passt.
+  static String dauerText(int minuten) {
+    if (minuten < 60) return '$minuten min';
+    final std = minuten ~/ 60;
+    const brueche = {0: '', 15: '\u00BC', 30: '\u00BD', 45: '\u00BE'};
+    final bruch = brueche[minuten % 60];
+    // Krumme Reste (1 Std 20) haben keinen Bruch: dann lieber ganz in
+    // Minuten als eine gerundete, also falsche Stundenzahl.
+    if (bruch == null) return '$minuten min';
+    return '$std$bruch Std';
+  }
+
+  /// Von wann bis wann — wieder ohne An- und Abfahrt.
+  String? _zeitraumText() {
     if (event != null) {
       final s = event!.startTime;
       final e = event!.endTime;
-      final start = _hm(s.hour, s.minute);
-      final end   = _hm(e.hour, e.minute);
-      final before = event!.travelMinutesBefore;
-      final after  = event!.travelMinutesAfter;
-      final depart = before > 0
-          ? _addMin(s.hour * 60 + s.minute - before)
-          : null;
-      final returnArrival = after > 0
-          ? _addMin(e.hour * 60 + e.minute + after)
-          : null;
-      final parts = [
-        if (depart != null) '🚗$depart',
-        '$start – $end',
-        if (returnArrival != null) '🏠$returnArrival',
-      ];
-      return parts.join('  ');
+      return '${_hm(s.hour, s.minute)} – ${_hm(e.hour, e.minute)}';
     }
     if (todo != null && todo!.scheduledStartHour != null) {
       final sh = todo!.scheduledStartHour!;
       final sm = todo!.scheduledStartMinute ?? 0;
       final total = sh * 60 + sm + todo!.estimatedMinutes;
-      final eh = total ~/ 60;
-      final em = total % 60;
-      final start = _hm(sh, sm);
-      final end   = _hm(eh % 24, em);
-      final before = todo!.travelMinutesBefore;
-      final after  = todo!.travelMinutesAfter;
-      final depart = before > 0
-          ? _addMin(sh * 60 + sm - before)
-          : null;
-      final returnArrival = after > 0
-          ? _addMin(total + after)
-          : null;
-      final parts = [
-        if (depart != null) '🚗$depart',
-        '$start – $end',
-        if (returnArrival != null) '🏠$returnArrival',
-      ];
-      return parts.join('  ');
+      return '${_hm(sh, sm)} – ${_hm(total ~/ 60, total % 60)}';
     }
     return null;
   }
 
   static String _hm(int h, int m) =>
       '${(h % 24).toString().padLeft(2, '0')}:${m.toString().padLeft(2, '0')}';
-
-  static String _addMin(int totalMin) {
-    final h = (totalMin ~/ 60) % 24;
-    final m = totalMin % 60;
-    if (h < 0 || m < 0) {
-      // negative = before midnight
-      final abs = totalMin.abs();
-      return _hm(24 - abs ~/ 60 - (abs % 60 > 0 ? 1 : 0), (60 - abs % 60) % 60);
-    }
-    return _hm(h, m);
-  }
 
   EventStatus? get _todoStatus {
     switch (todo?.status) {
