@@ -82,6 +82,18 @@ class CategoriesCache extends Table {
   Set<Column> get primaryKey => {userId};
 }
 
+/// Die Orte mit ihren Oeffnungszeiten — EINE Zeile je Benutzer mit der
+/// ganzen Liste, aus demselben Grund wie bei den Kategorien: die Rangliste
+/// ist eine Eigenschaft der Liste, nicht des einzelnen Ortes.
+class PlacesCache extends Table {
+  TextColumn get userId => text()();
+  TextColumn get data => text()();
+  IntColumn get updatedAt => integer()();
+
+  @override
+  Set<Column> get primaryKey => {userId};
+}
+
 @DriftDatabase(tables: [
   EventsCache,
   TodosCache,
@@ -90,6 +102,7 @@ class CategoriesCache extends Table {
   YearlyChecklistsCache,
   WeekNotesCache,
   CategoriesCache,
+  PlacesCache,
 ])
 class AppDatabase extends _$AppDatabase {
   AppDatabase() : super(_openConnection());
@@ -98,7 +111,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase.forTesting(super.executor);
 
   @override
-  int get schemaVersion => 6;
+  int get schemaVersion => 7;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -130,6 +143,10 @@ class AppDatabase extends _$AppDatabase {
           // hochzuladen; die Tabelle stand nur noch da und sammelte Zeilen.
           if (from < 6) {
             await m.deleteTable('sync_queue');
+          }
+          // v7: Orte mit Oeffnungszeiten. Neu, es gibt nichts zu uebernehmen.
+          if (from < 7) {
+            await m.createTable(placesCache);
           }
         },
       );

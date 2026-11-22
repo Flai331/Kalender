@@ -5,6 +5,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:kalender/db/app_database.dart';
 import 'package:kalender/models/annual_event.dart';
 import 'package:kalender/models/calendar_event.dart';
+import 'package:kalender/models/place.dart';
 import 'package:kalender/models/series_reminder.dart';
 import 'package:kalender/models/todo.dart';
 import 'package:kalender/models/week_note.dart';
@@ -79,6 +80,19 @@ void main() {
       content: 'Ruhige Woche',
       goals: [const WeekGoal(text: 'ausschlafen', done: true)],
     ));
+    await LocalService.savePlaces([
+      Place(
+        id: 'p1',
+        name: 'McFit',
+        group: 'Fitnessstudio',
+        address: 'Hauptstrasse 1',
+        latitude: 53.5511,
+        longitude: 9.9937,
+        hours: const [
+          OpeningHours(weekday: 1, fromMinute: 480, toMinute: 1200),
+        ],
+      ),
+    ]);
     await CategoryService.update('work', label: 'Dienst');
     await CategoryService.add('Ehrenamt', 0xFF00BCD4);
 
@@ -104,6 +118,7 @@ void main() {
       expect(daten['yearlyChecklists'], hasLength(1));
       expect(daten['weekNotes'], hasLength(1));
       expect(daten['categories'], hasLength(5));
+      expect(daten['places'], hasLength(1));
       expect(daten['settings'], isA<Map>());
     });
 
@@ -151,6 +166,13 @@ void main() {
       final notiz = await LocalService.getWeekNote('2026-W47');
       expect(notiz.content, 'Ruhige Woche');
       expect(notiz.goals, [const WeekGoal(text: 'ausschlafen', done: true)]);
+
+      // Orte sind Handarbeit: Zeiten abtippen macht man nicht zweimal.
+      final ort = (await LocalService.getPlaces()).single;
+      expect(ort.name, 'McFit');
+      expect(ort.group, 'Fitnessstudio');
+      expect(ort.latitude, closeTo(53.5511, 0.0001));
+      expect(ort.hours.single.toMinute, 1200);
     });
 
     test('Kategorien kommen mit Namen und Farbe zurueck', () async {

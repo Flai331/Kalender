@@ -12,7 +12,7 @@ dependencies:
     sdk: flutter
   cupertino_icons: ^1.0.8
 
-  # Microsoft OAuth + Outlook
+  # Netz: ICS-Abos, Update-Pruefung
   http: ^1.4.0
   flutter_secure_storage: ^9.2.4
   url_launcher: ^6.3.1
@@ -29,8 +29,10 @@ dependencies:
   image_picker: ^1.1.2
   path_provider: ^2.1.5
 
-  # Location (for daylight calculation)
+  # Location (Tageslicht, und welcher Ort ist der naechste)
   geolocator: ^13.0.0
+  # Adresse -> Koordinaten. Nutzt den Geocoder des Geraets, kein Schluessel.
+  geocoding: ^3.0.0
 
   # File picking
   file_picker: ^8.1.2

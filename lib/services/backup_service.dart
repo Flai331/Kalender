@@ -9,6 +9,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../models/annual_event.dart';
 import '../models/app_category.dart';
 import '../models/calendar_event.dart';
+import '../models/place.dart';
 import '../models/series_reminder.dart';
 import '../models/todo.dart';
 import '../models/week_note.dart';
@@ -27,6 +28,7 @@ class BackupSummary {
   final int jahresaufgaben;
   final int notizen;
   final int kategorien;
+  final int orte;
   final int einstellungen;
 
   const BackupSummary({
@@ -38,6 +40,7 @@ class BackupSummary {
     required this.jahresaufgaben,
     required this.notizen,
     required this.kategorien,
+    this.orte = 0,
     required this.einstellungen,
   });
 
@@ -50,6 +53,7 @@ class BackupSummary {
         if (jahresaufgaben > 0) '$jahresaufgaben Jahresaufgaben',
         if (notizen > 0) '$notizen Wochennotizen',
         if (kategorien > 0) '$kategorien Kategorien',
+        if (orte > 0) '$orte Orte',
         if (einstellungen > 0) '$einstellungen Einstellungen',
       ];
 }
@@ -137,6 +141,8 @@ class BackupService {
           (await LocalService.getCategories() ?? CategoryService.all)
               .map((c) => c.toJson())
               .toList(),
+      'places':
+          (await LocalService.getPlaces()).map((p) => p.toJson()).toList(),
       'settings': await _settings(),
     };
     return const JsonEncoder.withIndent('  ').convert(daten);
@@ -364,6 +370,7 @@ class BackupService {
       jahresaufgaben: zaehle('yearlyChecklists'),
       notizen: zaehle('weekNotes'),
       kategorien: zaehle('categories'),
+      orte: zaehle('places'),
       einstellungen: einstellungen is Map ? einstellungen.length : 0,
     );
   }
@@ -389,6 +396,7 @@ class BackupService {
         .map(AppCategory.fromJson)
         .whereType<AppCategory>()
         .toList();
+    final places = liste('places').map(Place.fromJson).toList();
 
     await LocalService.clearAll();
     await LocalService.seedEvents(events);
@@ -400,6 +408,7 @@ class BackupService {
     if (categories.isNotEmpty) {
       await LocalService.seedCategories(categories);
     }
+    await LocalService.seedPlaces(places);
 
     final einstellungen = daten['settings'];
     if (einstellungen is Map) {

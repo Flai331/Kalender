@@ -5,6 +5,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../app_colors.dart';
 import '../services/category_service.dart';
 import 'categories_screen.dart';
+import '../places/places_screen.dart';
+import '../services/place_service.dart';
 import '../models/ics_source.dart';
 import '../services/backup_service.dart';
 import '../services/daylight_service.dart';
@@ -34,6 +36,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   bool _backupLaeuft = false;
   List<AutoSicherung> _autoStaende = [];
   DateTime? _letzteManuelle;
+  String _orteZeile = 'Wird geladen …';
 
   List<String> _blockingAllDayCats = ['vacation'];
   int _daylightSunrise = 6;
@@ -45,6 +48,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     _loadSources();
     _loadConstraintSettings();
     _loadBackupInfo();
+    _ladeOrteZeile();
     // Echten versionCode holen, statt der beim Bauen eingetragenen Konstante.
     UpdateService.refreshInstalledBuild().then((_) {
       if (mounted) setState(() {});
@@ -336,6 +340,31 @@ class _SettingsScreenState extends State<SettingsScreen> {
         ],
       ),
     );
+  }
+
+  Future<void> _openPlaces() async {
+    await Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => const PlacesScreen()),
+    );
+    if (!mounted) return;
+    await _ladeOrteZeile();
+  }
+
+  /// Die Unterzeile sagt, was eingetragen ist — sonst weiss man nicht, ob
+  /// sich das Oeffnen lohnt.
+  Future<void> _ladeOrteZeile() async {
+    final orte = await PlaceService.all();
+    if (!mounted) return;
+    setState(() {
+      if (orte.isEmpty) {
+        _orteZeile = 'Noch keine Orte';
+        return;
+      }
+      final gruppen = orte.map((p) => p.group).toSet().length;
+      _orteZeile = '${orte.length} ${orte.length == 1 ? "Ort" : "Orte"} '
+          'in $gruppen ${gruppen == 1 ? "Gruppe" : "Gruppen"}';
+    });
   }
 
   Future<void> _openCategories() async {
@@ -1073,6 +1102,33 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 actionLabel: 'Öffnen',
                 actionColor: AppColors.primary,
                 onAction: _openCategories,
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+
+          // Orte mit Öffnungszeiten
+          _Section(
+            title: 'Orte',
+            children: [
+              _ActionTile(
+                icon: Icons.storefront_outlined,
+                iconColor: AppColors.primary,
+                title: 'Orte und Öffnungszeiten',
+                subtitle: _orteZeile,
+                actionLabel: 'Öffnen',
+                actionColor: AppColors.primary,
+                onAction: _openPlaces,
+              ),
+              const Padding(
+                padding: EdgeInsets.fromLTRB(16, 0, 16, 12),
+                child: Text(
+                  'Mehrere Fitnessstudios in eine Gruppe, Öffnungszeiten '
+                  'dazu, Rangliste festlegen — wenn ein Termin näher rückt, '
+                  'sagt die App, in welches du kannst.',
+                  style: TextStyle(
+                      color: AppColors.textSecondary, fontSize: 12),
+                ),
               ),
             ],
           ),

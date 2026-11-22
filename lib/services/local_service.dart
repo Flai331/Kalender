@@ -9,6 +9,7 @@ import '../models/todo.dart';
 import '../models/annual_event.dart';
 import '../models/series_reminder.dart';
 import '../models/yearly_checklist.dart';
+import '../models/place.dart';
 import '../models/week_note.dart';
 import '../models/app_category.dart';
 
@@ -476,6 +477,39 @@ class LocalService {
         );
   }
 
+  // ── Orte ─────────────────────────────────────────────────────────────────
+
+  /// Die gespeicherten Orte, oder eine leere Liste.
+  static Future<List<Place>> getPlaces() async {
+    final rows = await (_db.select(_db.placesCache)
+          ..where((c) => c.userId.equals(_uid)))
+        .get();
+    if (rows.isEmpty) return [];
+    try {
+      return Place.listFromJson(rows.first.data);
+    } catch (_) {
+      // Lieber keine Orte als ein Absturz beim Start.
+      return [];
+    }
+  }
+
+  /// Schreibt die ganze Liste. Die Rangliste gehoert zur Liste, nicht zum
+  /// einzelnen Ort — darum eine Zeile je Benutzer, wie bei den Kategorien.
+  static Future<void> savePlaces(List<Place> items) => _writePlaces(items);
+
+  /// Wie [savePlaces]; eigener Name fuer das Einspielen einer Sicherung.
+  static Future<void> seedPlaces(List<Place> items) => _writePlaces(items);
+
+  static Future<void> _writePlaces(List<Place> items) async {
+    await _db.into(_db.placesCache).insertOnConflictUpdate(
+          PlacesCacheCompanion(
+            userId: Value(_uid),
+            data: Value(Place.listToJson(items)),
+            updatedAt: Value(DateTime.now().millisecondsSinceEpoch),
+          ),
+        );
+  }
+
   // ── Alles loeschen ────────────────────────────────────────────────────────
 
   /// Raeumt alle Daten dieses Benutzers weg.
@@ -500,6 +534,8 @@ class LocalService {
       await (_db.delete(_db.weekNotesCache)..where((t) => t.userId.equals(_uid)))
           .go();
       await (_db.delete(_db.categoriesCache)..where((t) => t.userId.equals(_uid)))
+          .go();
+      await (_db.delete(_db.placesCache)..where((t) => t.userId.equals(_uid)))
           .go();
     });
   }
