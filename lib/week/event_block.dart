@@ -8,6 +8,10 @@ class EventBlock extends StatelessWidget {
   final CalendarEvent? event;
   final Todo? todo;
   final VoidCallback? onTap;
+
+  /// Hakt das To-do mit einem Tipp ab oder wieder auf. Ohne das blieb nur
+  /// der Umweg ueber den Status-Dialog.
+  final VoidCallback? onToggleDone;
   final double heightPerMinute;
   final bool isDropTarget;
 
@@ -16,6 +20,7 @@ class EventBlock extends StatelessWidget {
     this.event,
     this.todo,
     this.onTap,
+    this.onToggleDone,
     this.heightPerMinute = 1.0,
     this.isDropTarget = false,
   }) : assert(event != null || todo != null);
@@ -38,69 +43,97 @@ class EventBlock extends StatelessWidget {
     final showTime = height >= 36;
     final timeStr = _timeString();
 
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        height: height,
-        margin: const EdgeInsets.symmetric(horizontal: 1, vertical: 1),
-        clipBehavior: Clip.hardEdge,
-        decoration: BoxDecoration(
-          color: color.withValues(alpha: 0.2),
-          borderRadius: BorderRadius.circular(6),
-          border: isDropTarget
-              ? Border.all(color: Colors.white.withValues(alpha: 0.8), width: 2)
-              : Border.all(color: color, width: 1.5),
-        ),
-        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Row(
-              children: [
-                if (isFixed)
-                  const Padding(
-                    padding: EdgeInsets.only(right: 3),
-                    child: Icon(Icons.lock, size: 10, color: AppColors.fixedTag),
-                  ),
-                if (hasAddress)
-                  Padding(
-                    padding: const EdgeInsets.only(right: 3),
-                    child: Icon(Icons.location_on, size: 10, color: color.withValues(alpha: 0.8)),
-                  ),
-                Expanded(
-                  child: Text(
-                    title,
-                    style: TextStyle(
-                      fontSize: 12,
-                      color: color,
-                      fontWeight: FontWeight.w600,
-                      decoration: status == EventStatus.done
-                          ? TextDecoration.lineThrough
-                          : null,
+    return LayoutBuilder(builder: (context, constraints) {
+      // Eine Tagesspalte der Wochenansicht ist am Handy rund 52 px breit.
+      // Ein Haken in der Titelzeile liesse dort 17 px fuer den Titel uebrig
+      // — aus "Keller aufraeumen" wird "K". Darum wandert er bei schmalen
+      // Bloecken in eine eigene Zeile, und die Uhrzeit weicht: die ist auf
+      // 38 px ohnehin nicht lesbar.
+      final schmal = constraints.maxWidth < 64;
+      final hatHaken = onToggleDone != null;
+      // Schmal und kurz zugleich: dann bliebe nach Haken und Ortsnadel kein
+      // Zeichen Titel uebrig. Dort bleibt es beim Status-Dialog.
+      final hakenUnten = hatHaken && schmal && height >= 44;
+      final hakenInTitelzeile = hatHaken && !schmal;
+      final zeigeZeit = showTime && timeStr != null && !hakenUnten;
+
+      return GestureDetector(
+        onTap: onTap,
+        child: Container(
+          height: height,
+          margin: const EdgeInsets.symmetric(horizontal: 1, vertical: 1),
+          clipBehavior: Clip.hardEdge,
+          decoration: BoxDecoration(
+            color: color.withValues(alpha: 0.2),
+            borderRadius: BorderRadius.circular(6),
+            border: isDropTarget
+                ? Border.all(color: Colors.white.withValues(alpha: 0.8), width: 2)
+                : Border.all(color: color, width: 1.5),
+          ),
+          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Row(
+                children: [
+                  if (isFixed)
+                    const Padding(
+                      padding: EdgeInsets.only(right: 3),
+                      child: Icon(Icons.lock, size: 10, color: AppColors.fixedTag),
                     ),
-                    maxLines: (showTime || durationMinutes >= 45) ? 2 : 1,
-                    overflow: TextOverflow.ellipsis,
+                  if (hasAddress)
+                    Padding(
+                      padding: const EdgeInsets.only(right: 3),
+                      child: Icon(Icons.location_on, size: 10, color: color.withValues(alpha: 0.8)),
+                    ),
+                  Expanded(
+                    child: Text(
+                      title,
+                      style: TextStyle(
+                        fontSize: 12,
+                        // Das Theme gibt 1.43 vor: 17 px Zeile in einem Block,
+                        // der bei 20 Minuten nur 15 px Platz hat. Der Titel
+                        // wurde damit unten abgeschnitten.
+                        height: 1.15,
+                        color: color,
+                        fontWeight: FontWeight.w600,
+                        decoration: status == EventStatus.done
+                            ? TextDecoration.lineThrough
+                            : null,
+                      ),
+                      maxLines: (showTime || durationMinutes >= 45) ? 2 : 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
                   ),
-                ),
-                _statusIcon(status),
-              ],
-            ),
-            if (showTime && timeStr != null)
-              Text(
-                timeStr,
-                style: TextStyle(
-                  fontSize: 9,
-                  color: color.withValues(alpha: 0.85),
-                  fontWeight: FontWeight.w500,
-                ),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
+                  if (hakenInTitelzeile)
+                    _haken(status, color, height)
+                  else if (!hakenUnten)
+                    _statusIcon(status),
+                ],
               ),
-          ],
+              if (zeigeZeit)
+                Text(
+                  timeStr,
+                  style: TextStyle(
+                    fontSize: 9,
+                    height: 1.15,
+                    color: color.withValues(alpha: 0.85),
+                    fontWeight: FontWeight.w500,
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              if (hakenUnten)
+                Align(
+                  alignment: Alignment.centerRight,
+                  child: _haken(status, color, height),
+                ),
+            ],
+          ),
         ),
-      ),
-    );
+      );
+    });
   }
 
   String? _timeString() {
@@ -188,6 +221,28 @@ class EventBlock extends StatelessWidget {
       default:
         return AppColors.forCategory(category);
     }
+  }
+
+  /// Der Haken zum Antippen. Wird nur gebaut, wo Platz dafuer ist.
+  Widget _haken(EventStatus? status, Color color, double height) {
+    final erledigt = status == EventStatus.done;
+    // Ein 20-Minuten-Block ist nur 24 px hoch: dort darf der Haken keine
+    // Luft nach oben und unten nehmen, sonst laeuft die Zeile ueber.
+    final luft = height >= 36 ? 3.0 : 0.0;
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: onToggleDone,
+      child: Padding(
+        // Breiter als hoch: die Flaeche wird treffbar, ohne dem Titel
+        // Hoehe zu nehmen.
+        padding: EdgeInsets.fromLTRB(6, luft, 1, luft),
+        child: Icon(
+          erledigt ? Icons.check_circle : Icons.radio_button_unchecked,
+          size: 14,
+          color: erledigt ? AppColors.done : color.withValues(alpha: 0.7),
+        ),
+      ),
+    );
   }
 
   Widget _statusIcon(EventStatus? status) {

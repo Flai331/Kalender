@@ -48,6 +48,23 @@ Gerät (drift). Kein Server, kein Konto. Hauptbereiche:
 - Mehrtägige Events/Todos: overlap-basiertes Filtern (`startTime.isBefore(dayEnd) && endTime.isAfter(dayStart)`) + Clipping in Spalte
 - Auto-Shift (`_autoShiftOverdueTodos`): nach Shift `setState(() => _initStreams())` für sofortiges UI-Update
 
+### To-do abhaken (event_block.dart)
+- Der Haken im Block hakt mit einem Tipp ab, ein zweiter macht wieder auf.
+  `Todo.markDone()` / `Todo.reopen()` — `reopen()` setzt **auch**
+  `isCompleted: false`, sonst bleibt das To-do aus der Todo-Leiste und dem
+  Homescreen-Widget verschwunden (beide filtern darauf)
+- Der Platz entscheidet, wo der Haken sitzt: eine Tagesspalte der
+  Wochenansicht ist am Handy nur ~52 px breit. In der Titelzeile blieben dort
+  17 px Titel übrig. Also: breit (≥64 px) → Haken in der Titelzeile; schmal
+  und ≥44 px hoch → eigene Zeile darunter, Uhrzeit weicht; schmal und kurz →
+  gar kein Haken, es bleibt beim Status-Dialog
+- Ohne Verschiebung des Zeitplans zeigt das Abhaken ein "Rückgängig"; mit
+  Verschiebung nicht — die Folgetermine sind mitgewandert, ein halbes Zurück
+  wäre schlimmer als keins
+- `height: 1.15` an Titel und Uhrzeit: das Theme gibt 1.43 vor, womit die
+  Titelzeile 17 px hoch war und im 20-Minuten-Block (15 px) unten abgeschnitten
+  wurde — unsichtbar, weil `clipBehavior: Clip.hardEdge` sauber abschneidet
+
 ### Kalender-Abos (settings_screen.dart)
 - Der Schalter je Zeile blendet den Kalender **ein und aus**
   (`IcsSource.visible`). Ausgeblendet wird er gar nicht erst geholt

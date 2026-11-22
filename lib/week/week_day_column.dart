@@ -90,6 +90,7 @@ class WeekDayColumn extends StatefulWidget {
   final Function(CalendarEvent event, DateTime day, int hour, int minute) onEventDrop;
   final Function(CalendarEvent event) onEventTap;
   final Function(Todo todo) onTodoTap;
+  final Function(Todo todo) onTodoToggleDone;
   final Function(Todo todo, CalendarEvent event)? onTodoDroppedOnEvent;
   final List<CalendarEvent> allDayEvents;
   final bool showHeader;
@@ -107,6 +108,7 @@ class WeekDayColumn extends StatefulWidget {
     required this.onEventDrop,
     required this.onEventTap,
     required this.onTodoTap,
+    required this.onTodoToggleDone,
     this.onTodoDroppedOnEvent,
     this.allDayEvents = const [],
     this.showHeader = true,
@@ -588,6 +590,7 @@ class _WeekDayColumnState extends State<WeekDayColumn> {
           child: EventBlock(
             todo: todo,
             onTap: () => widget.onTodoTap(todo),
+            onToggleDone: () => widget.onTodoToggleDone(todo),
             heightPerMinute: _minuteHeight,
           ),
         ),

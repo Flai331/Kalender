@@ -665,6 +665,54 @@ class WeekScreenState extends State<WeekScreen> {
     );
   }
 
+  /// Hakt ein To-do ab: Status, Dauer-Lernwert und der Zeitplan dahinter.
+  Future<void> _markTodoDone(Todo todo, DateTime now) async {
+    await LocalService.saveTodo(_adaptTodoTime(todo.markDone(now)));
+
+    // Zeitplan automatisch anpassen (positiv = zu spät, negativ = früher)
+    final delta = ShiftService.computeDelta(todo: todo, actualEnd: now);
+    final verschoben = delta.abs() >= 2;
+    if (verschoben) {
+      await ShiftService.shiftAfterTodo(
+          completedTodo: todo, deltaMinutes: delta);
+    }
+    if (!mounted) return;
+
+    if (verschoben) {
+      // Hier kein "Rückgängig": die Folgetermine sind mitgewandert, ein
+      // halbes Zurueck waere schlimmer als keins.
+      final msg = delta < 0
+          ? '${(-delta)} min früher – Zeitplan vorgezogen'
+          : '$delta min später – Zeitplan nach hinten verschoben';
+      ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(msg), duration: const Duration(seconds: 2)));
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text('${todo.title} erledigt'),
+        duration: const Duration(seconds: 4),
+        action: SnackBarAction(
+          label: 'Rückgängig',
+          onPressed: () => LocalService.saveTodo(todo),
+        ),
+      ));
+    }
+  }
+
+  /// Macht ein erledigtes To-do wieder offen. `isCompleted` muss mit
+  /// zurueck, sonst bleibt es aus der Todo-Leiste verschwunden.
+  Future<void> _reopenTodo(Todo todo) async {
+    await LocalService.saveTodo(todo.reopen());
+  }
+
+  /// Der Haken im Block: ein Tipp erledigt, ein zweiter macht es wieder auf.
+  Future<void> _toggleTodoDone(Todo todo) async {
+    if (todo.status == TodoStatus.done) {
+      await _reopenTodo(todo);
+      return;
+    }
+    await _markTodoDone(todo, DateTime.now());
+  }
+
   Future<void> _onTodoTap(Todo todo) async {
     final result =
         await TodoStatusDialog.show(context: context, todo: todo);
@@ -692,27 +740,9 @@ class WeekScreenState extends State<WeekScreen> {
         updated = todo.copyWith(status: TodoStatus.started, pauseStart: null);
         await LocalService.saveTodo(updated);
       case 'done':
-        final withStatus = todo.copyWith(
-            status: TodoStatus.done, actualEnd: now, isCompleted: true);
-        updated = _adaptTodoTime(withStatus);
-        await LocalService.saveTodo(updated);
-        // Zeitplan automatisch anpassen (positiv = zu spät, negativ = früher)
-        final delta = ShiftService.computeDelta(todo: todo, actualEnd: now);
-        if (delta.abs() >= 2) {
-          await ShiftService.shiftAfterTodo(
-              completedTodo: todo, deltaMinutes: delta);
-          if (mounted) {
-            final msg = delta < 0
-                ? '${(-delta)} min früher – Zeitplan vorgezogen'
-                : '$delta min später – Zeitplan nach hinten verschoben';
-            ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(content: Text(msg), duration: const Duration(seconds: 2)));
-          }
-        }
+        await _markTodoDone(todo, now);
       case 'reopen':
-        updated = todo.copyWith(
-            status: TodoStatus.pending, actualStart: null, actualEnd: null);
-        await LocalService.saveTodo(updated);
+        await _reopenTodo(todo);
       case 'unschedule':
         updated = todo.copyWith(scheduledDate: null,
             scheduledStartHour: null, scheduledStartMinute: null);
@@ -1011,7 +1041,7 @@ class WeekScreenState extends State<WeekScreen> {
             children: [
               const Padding(
                 padding: EdgeInsets.only(left: 10, top: 4),
-                child: Text('TODOS – lange gedrückt halten & in Kalender ziehen',
+                child: Text('TODOS – Haken erledigt, lange halten & ziehen',
                     style: TextStyle(
                         color: AppColors.textDisabled,
                         fontSize: 9,
@@ -1056,7 +1086,10 @@ class WeekScreenState extends State<WeekScreen> {
                       ),
                       child: GestureDetector(
                         onTap: () => _onTodoTap(todo),
-                        child: _TodoChip(todo: todo),
+                        child: _TodoChip(
+                          todo: todo,
+                          onToggleDone: () => _toggleTodoDone(todo),
+                        ),
                       ),
                     );
                   },
@@ -1262,6 +1295,7 @@ class WeekScreenState extends State<WeekScreen> {
                                           onEventDrop: _onEventDrop,
                                           onEventTap: _onEventTap,
                                           onTodoTap: _onTodoTap,
+                                          onTodoToggleDone: _toggleTodoDone,
                                           onTodoDroppedOnEvent: _onTodoDroppedOnEvent,
                                         ),
                                       );
@@ -1372,6 +1406,7 @@ class WeekScreenState extends State<WeekScreen> {
                                         onEventDrop: _onEventDrop,
                                         onEventTap: _onEventTap,
                                         onTodoTap: _onTodoTap,
+                                        onTodoToggleDone: _toggleTodoDone,
                                         onTodoDroppedOnEvent: _onTodoDroppedOnEvent,
                                       ),
                                     ),
@@ -1915,34 +1950,52 @@ class _NowLine extends StatelessWidget {
 
 class _TodoChip extends StatelessWidget {
   final Todo todo;
-  const _TodoChip({required this.todo});
+
+  /// Ohne Rueckruf (im Schleppbild) bleibt der Haken ein reines Symbol.
+  final VoidCallback? onToggleDone;
+
+  const _TodoChip({required this.todo, this.onToggleDone});
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+      padding: const EdgeInsets.fromLTRB(4, 5, 10, 5),
       decoration: BoxDecoration(
         color: AppColors.card,
         borderRadius: BorderRadius.circular(8),
         border: Border.all(color: AppColors.primary.withValues(alpha: 0.4)),
       ),
-      child: Column(
+      child: Row(
         mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            todo.title,
-            style: const TextStyle(
-                color: AppColors.textPrimary,
-                fontSize: 12,
-                fontWeight: FontWeight.w600),
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
+          GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTap: onToggleDone,
+            child: const Padding(
+              padding: EdgeInsets.fromLTRB(4, 4, 6, 4),
+              child: Icon(Icons.radio_button_unchecked,
+                  size: 17, color: AppColors.textDisabled),
+            ),
           ),
-          Text(
-            '${todo.estimatedMinutes} min',
-            style: const TextStyle(
-                color: AppColors.textDisabled, fontSize: 10),
+          Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                todo.title,
+                style: const TextStyle(
+                    color: AppColors.textPrimary,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+              Text(
+                '${todo.estimatedMinutes} min',
+                style: const TextStyle(
+                    color: AppColors.textDisabled, fontSize: 10),
+              ),
+            ],
           ),
         ],
       ),

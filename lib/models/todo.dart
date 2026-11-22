@@ -148,6 +148,20 @@ class Todo {
 
   static const Object _unset = Object();
 
+  /// Abgehakt. `isCompleted` muss mitlaufen: danach richtet sich, ob das
+  /// To-do noch in der Leiste und im Homescreen-Widget auftaucht.
+  Todo markDone(DateTime now) =>
+      copyWith(status: TodoStatus.done, actualEnd: now, isCompleted: true);
+
+  /// Wieder offen. Ohne `isCompleted: false` bliebe es aus der Leiste
+  /// verschwunden, obwohl es nicht mehr als erledigt gilt.
+  Todo reopen() => copyWith(
+        status: TodoStatus.pending,
+        isCompleted: false,
+        actualStart: null,
+        actualEnd: null,
+      );
+
   Todo copyWith({
     String? id,
     String? title,
