@@ -30,6 +30,7 @@ import '../todos/todo_edit_screen.dart';
 import 'nachholen.dart';
 import 'terminbindung.dart';
 import 'planungsvorrat.dart';
+import 'randzug.dart';
 
 const _uuid = Uuid();
 
@@ -50,6 +51,13 @@ class WeekScreenState extends State<WeekScreen> {
   late DateTime _month;
   CalendarView _view = CalendarView.woche;
   final ScrollController _scrollController = ScrollController();
+
+  /// Der Rahmen um den scrollbaren Zeitbereich — von dort kommt das
+  /// Sichtfeld fuer den Sog am Rand.
+  final GlobalKey _zeitfeldKey = GlobalKey();
+
+  /// Zieht die Ansicht mit, wenn man etwas an ihre Kante haelt.
+  late final Randzug _randzug;
 
   // Daten-Streams
   Stream<List<CalendarEvent>>? _eventsStream;
@@ -166,6 +174,13 @@ class WeekScreenState extends State<WeekScreen> {
     _loadBlockingCats();
     SnapState.snapNotifier.addListener(_onSnapChanged);
     SnapState.isDraggingNotifier.addListener(_onSnapChanged);
+    _randzug = Randzug(
+      scroller: _scrollController,
+      sichtfeld: _sichtfeld,
+      stundenhoehe: () => _hourHeight,
+      nachziehen: SnapState.nachziehen,
+    );
+    SnapState.zugLaeuft.addListener(_zugGeaendert);
     // Neue An-/Abfahrtsvorgabe oder umbenannte Kategorie: sofort neu
     // zeichnen. Die Termine selbst haben sich nicht geaendert, der Stream
     // meldet also nichts.
@@ -183,6 +198,27 @@ class WeekScreenState extends State<WeekScreen> {
         _autoShiftOverdueTodos();
       }
     });
+  }
+
+  /// Das sichtbare Stueck Zeitachse auf dem Bildschirm.
+  ///
+  /// `null` heisst: gerade keins da — die Monatsansicht hat keine Zeitachse,
+  /// und vor dem ersten Bild steht noch nichts.
+  Rect? _sichtfeld() {
+    final box = _zeitfeldKey.currentContext?.findRenderObject() as RenderBox?;
+    if (box == null || !box.hasSize) return null;
+    return box.localToGlobal(Offset.zero) & box.size;
+  }
+
+  /// Der Finger ist weitergewandert. Nur waehrend eines Zuges interessant —
+  /// sonst waere jedes Wischen ein Sog.
+  void _zeigerBewegt(PointerMoveEvent e) {
+    if (!SnapState.zugLaeuft.value) return;
+    _randzug.zeiger(e.position);
+  }
+
+  void _zugGeaendert() {
+    if (!SnapState.zugLaeuft.value) _randzug.halt();
   }
 
   DateTime _getWeekStart(DateTime date) {
@@ -786,94 +822,106 @@ class WeekScreenState extends State<WeekScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: AppColors.background,
-      appBar: _buildAppBar(),
-      body: Stack(
-        children: [
-          Column(
-            children: [
-              if (_pendingChecklists.isNotEmpty) _buildChecklistBanner(),
-              Expanded(
-                child: GestureDetector(
-                  onHorizontalDragEnd: _onSwipe,
-                  child: switch (_view) {
-                    CalendarView.tag => _buildDayView(),
-                    CalendarView.woche => _buildWeekView(),
-                    CalendarView.monat => _buildMonthView(),
-                  },
-                ),
-              ),
-            ],
-          ),
-          // Snap-Level + Zeit Overlay
-          AnimatedBuilder(
-            animation: Listenable.merge([
-              SnapState.isDraggingNotifier,
-              SnapState.snapNotifier,
-              SnapState.currentTimeNotifier,
-            ]),
-            builder: (ctx, _) {
-              if (!SnapState.isDraggingNotifier.value) return const SizedBox.shrink();
-              final snap = SnapState.snapNotifier.value;
-              final time = SnapState.currentTimeNotifier.value;
-              return Positioned(
-                bottom: 80,
-                left: 0,
-                right: 0,
-                child: Center(
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-                    decoration: BoxDecoration(
-                      color: AppColors.primary,
-                      borderRadius: BorderRadius.circular(24),
-                      boxShadow: [BoxShadow(color: Colors.black38, blurRadius: 10)],
-                    ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        if (time.isNotEmpty) ...[
-                          Text(
-                            time,
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontSize: 20,
-                              fontWeight: FontWeight.w800,
-                              letterSpacing: 1,
-                            ),
-                          ),
-                          const SizedBox(width: 10),
-                          Container(width: 1, height: 20, color: Colors.white38),
-                          const SizedBox(width: 10),
-                        ],
-                        Text(
-                          snap == 1 ? '1 min' : '$snap min',
-                          style: const TextStyle(
-                            color: Colors.white70,
-                            fontSize: 13,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                      ],
-                    ),
+    // Der Horcher sitzt ueber dem ganzen Bildschirm, nicht nur ueber der
+    // Zeitachse: Zeigerereignisse gehen nach dem Aufsetzen immer denselben
+    // Weg wie beim ersten Druck. Saesse er nur um den Zeitbereich, bekaeme
+    // ein Zug, der unten in der Todo-Leiste anfaengt, nie einen Sog — und
+    // genau der braucht ihn am dringendsten.
+    //
+    // Der Finger selbst, nicht `details.offset` aus dem DragTarget: das
+    // meint die **obere Kante** des Gezogenen und steht bei feinem Raster
+    // hunderte Pixel ueber dem Finger.
+    return Listener(
+      onPointerMove: _zeigerBewegt,
+      child: Scaffold(
+        backgroundColor: AppColors.background,
+        appBar: _buildAppBar(),
+        body: Stack(
+          children: [
+            Column(
+              children: [
+                if (_pendingChecklists.isNotEmpty) _buildChecklistBanner(),
+                Expanded(
+                  child: GestureDetector(
+                    onHorizontalDragEnd: _onSwipe,
+                    child: switch (_view) {
+                      CalendarView.tag => _buildDayView(),
+                      CalendarView.woche => _buildWeekView(),
+                      CalendarView.monat => _buildMonthView(),
+                    },
                   ),
                 ),
-              );
-            },
-          ),
-        ],
-      ),
-      // Die Todo-Leiste sitzt im unteren Balken des Scaffolds, nicht als
-      // letztes Element der Spalte. Nur so hebt Flutter den Plus-Knopf von
-      // selbst darueber — vorher sass er genau auf dem letzten To-do und
-      // deckte es zu. Die Hoehe ergibt sich dabei von allein, egal ob die
-      // Leiste leer (52 px) oder gefuellt (72 px) ist.
-      bottomNavigationBar: _buildTodoPool(),
-      floatingActionButton: FloatingActionButton(
-        heroTag: 'week_fab',
-        onPressed: _addEvent,
-        backgroundColor: AppColors.primary,
-        child: const Icon(Icons.add, color: Colors.white),
+              ],
+            ),
+            // Snap-Level + Zeit Overlay
+            AnimatedBuilder(
+              animation: Listenable.merge([
+                SnapState.isDraggingNotifier,
+                SnapState.snapNotifier,
+                SnapState.currentTimeNotifier,
+              ]),
+              builder: (ctx, _) {
+                if (!SnapState.isDraggingNotifier.value) return const SizedBox.shrink();
+                final snap = SnapState.snapNotifier.value;
+                final time = SnapState.currentTimeNotifier.value;
+                return Positioned(
+                  bottom: 80,
+                  left: 0,
+                  right: 0,
+                  child: Center(
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                      decoration: BoxDecoration(
+                        color: AppColors.primary,
+                        borderRadius: BorderRadius.circular(24),
+                        boxShadow: [BoxShadow(color: Colors.black38, blurRadius: 10)],
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          if (time.isNotEmpty) ...[
+                            Text(
+                              time,
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 20,
+                                fontWeight: FontWeight.w800,
+                                letterSpacing: 1,
+                              ),
+                            ),
+                            const SizedBox(width: 10),
+                            Container(width: 1, height: 20, color: Colors.white38),
+                            const SizedBox(width: 10),
+                          ],
+                          Text(
+                            snap == 1 ? '1 min' : '$snap min',
+                            style: const TextStyle(
+                              color: Colors.white70,
+                              fontSize: 13,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                );
+              },
+            ),
+          ],
+        ),
+        // Die Todo-Leiste sitzt im unteren Balken des Scaffolds, nicht als
+        // letztes Element der Spalte. Nur so hebt Flutter den Plus-Knopf von
+        // selbst darueber — vorher sass er genau auf dem letzten To-do und
+        // deckte es zu. Die Hoehe ergibt sich dabei von allein, egal ob die
+        // Leiste leer (52 px) oder gefuellt (72 px) ist.
+        bottomNavigationBar: _buildTodoPool(),
+        floatingActionButton: FloatingActionButton(
+          heroTag: 'week_fab',
+          onPressed: _addEvent,
+          backgroundColor: AppColors.primary,
+          child: const Icon(Icons.add, color: Colors.white),
+        ),
       ),
     );
   }
@@ -1279,6 +1327,7 @@ class WeekScreenState extends State<WeekScreen> {
                 // Scrollbarer Zeitbereich
                 Expanded(
                   child: SingleChildScrollView(
+                    key: _zeitfeldKey,
                     controller: _scrollController,
                     physics: _isCtrlPressed ? const NeverScrollableScrollPhysics() : const ClampingScrollPhysics(),
                     child: Listener(
@@ -1392,6 +1441,7 @@ class WeekScreenState extends State<WeekScreen> {
                 // Scrollbarer Zeitbereich
                 Expanded(
                   child: SingleChildScrollView(
+                    key: _zeitfeldKey,
                     controller: _scrollController,
                     physics: _isCtrlPressed ? const NeverScrollableScrollPhysics() : const ClampingScrollPhysics(),
                     child: Listener(
@@ -1495,6 +1545,8 @@ class WeekScreenState extends State<WeekScreen> {
     _nowTimer?.cancel();
     SnapState.snapNotifier.removeListener(_onSnapChanged);
     SnapState.isDraggingNotifier.removeListener(_onSnapChanged);
+    SnapState.zugLaeuft.removeListener(_zugGeaendert);
+    _randzug.halt();
     TravelService.revision.removeListener(_onTravelChanged);
     CategoryService.revision.removeListener(_onTravelChanged);
     HardwareKeyboard.instance.removeHandler(_onKey);

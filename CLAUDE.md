@@ -137,6 +137,8 @@ Verschiebt überfällige pending Todos automatisch nach vorne:
 | Ranzoomen klappt gar nicht mehr, bis zum App-Neustart | Abgebrochener Zug ließ `SnapState` auf 1 Minute stehen; der nächste stand schon am Ende der Leiter | `SnapState.begin()` beim Start **jedes** Zuges, `stop()` an **jedem** Ende (auch `onDragEnd` der Todo-Leiste) |
 | PointerScrollEvent not found | Fehlende Imports | `flutter/gestures.dart` + `flutter/services.dart` |
 | Platzhalter beim Ziehen springt nicht mit, wenn die Leiter feiner rastet | Die Vorschau wurde nur in `onMove` gerechnet — die Leiter rastet aber auch, wenn der Finger stillsteht | Letzten Punkt merken (`_letzterPunkt`) und am `snapNotifier` hängen; dieselbe Rechnung füttert Vorschau, Zeit-Pille und Ablegen |
+| Am Rand gezogen passiert nichts, obwohl der Sog eingebaut ist | `isDraggingNotifier` als Bedingung genommen — die geht erst an, wenn der Finger 600 ms ruht | `SnapState.zugLaeuft`, gesetzt in `begin()`/`stop()` |
+| Die Ansicht läuft am Rand, die Zeit-Blase bleibt stehen | Ohne Fingerbewegung kommt kein `onMove`, die Vorschau rechnet also nicht neu | `nachziehen()` nach jedem Stück Lauf; die Spalte horcht auf `nachzugNotifier` |
 | Meldung kommt im alten Ton, obwohl die Stufe umgestellt wurde | Android übernimmt Wichtigkeit und Ton nur beim **Anlegen** des Kanals | Je Stufe ein eigener `channelId` (`abfahrt_dringend`, `abfahrt_alarm`, …) |
 | Abfahrt-Meldung kommt zweimal, einmal zur alten Uhrzeit | Ein übernommener Abo-Termin liegt lokal **und** kommt weiter aus dem Abo | `IcsService.fetchEventsOhneUebernommene()` statt `fetchEvents()` |
 | `exact_alarms_not_permitted` bricht die ganze Planung ab | Ab Android 14 ist `SCHEDULE_EXACT_ALARM` standardmäßig verweigert | `USE_EXACT_ALARM` im Manifest (gilt sofort) **und** Rückfall auf `inexactAllowWhileIdle` in `_stellen` |
@@ -315,6 +317,35 @@ verschobener fremder Dienst sperrte danach wieder den eigenen Tag.
 
 **Kein Migrationsschritt** — die Termine liegen als JSON im Cache, fehlendes
 `infoOnly` liest sich als `false`, Altbestand redet also weiter mit.
+
+## Der Sog am Rand (`week/randzug.dart`)
+
+Ein Zug endete am Bildschirmrand: wer um 9 Uhr anfasst und auf 18 Uhr will,
+musste loslassen, scrollen und neu anfassen — und beim Loslassen liegt das
+To-do schon irgendwo. Hält man es jetzt an die obere oder untere Kante,
+läuft die Ansicht dorthin weiter.
+
+Drei Dinge daran sind nicht beliebig:
+
+- **Das Tempo steht in Stunden je Sekunde**, nicht in Pixeln (0,5 am inneren
+  Rand der Zone bis 4,0 ganz außen). Dieselbe Pixelzahl heißt bei 60 px je
+  Stunde einen halben Tag und bei 720 px ein paar Minuten; der Lauf muss sich
+  nach der Zeitachse richten. Jenseits der Kante bleibt es beim schnellsten
+  Lauf — der Finger darf die Ansicht verlassen.
+- **Der Horcher sitzt über dem ganzen Scaffold**, nicht um den Zeitbereich.
+  Zeigerereignisse gehen nach dem Aufsetzen immer denselben Weg wie beim
+  ersten Druck; säße er enger, bekäme ein Zug aus der Todo-Leiste nie einen
+  Sog. Und er nimmt den **Finger**, nicht `details.offset` aus dem
+  DragTarget: das meint die obere Kante des Gezogenen und steht bei feinem
+  Raster hunderte Pixel darüber.
+- **Nach jedem Stück Lauf wird die Vorschau nachgezogen**
+  (`SnapState.nachziehen()` → `nachzugNotifier` → `_rasterGeaendert`). Der
+  Finger steht still, aber unter ihm ist eine andere Uhrzeit; ohne das
+  verspräche der Platzhalter die alte und abgelegt würde die neue.
+
+`SnapState.zugLaeuft` ist dafür eine **eigene** Flagge: `isDraggingNotifier`
+geht erst an, wenn der Finger einen Moment ruht (sie steuert Blase und
+Zoom-Leiter), und so lange darf der Sog nicht warten.
 
 ## Nur im Termin (`week/terminbindung.dart`)
 

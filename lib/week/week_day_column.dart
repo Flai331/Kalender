@@ -24,6 +24,21 @@ class SnapState {
   static final isDraggingNotifier = ValueNotifier<bool>(false);
   static final currentTimeNotifier = ValueNotifier<String>('');
 
+  /// Laeuft gerade ein Zug?
+  ///
+  /// Nicht dasselbe wie [isDraggingNotifier]: die geht erst an, wenn der
+  /// Finger einen Moment ruht (sie steuert die Blase und die Zoom-Leiter).
+  /// Diese hier gilt vom ersten Augenblick an — der Sog am Rand darf nicht
+  /// auf die Leiter warten.
+  static final zugLaeuft = ValueNotifier<bool>(false);
+
+  /// Zaehlt hoch, wenn die Ansicht unter dem stillstehenden Finger gelaufen
+  /// ist. Die Tagesspalte rechnet daraufhin ihre Vorschau neu: dieselbe
+  /// Stelle auf dem Glas ist jetzt eine andere Uhrzeit.
+  static final nachzugNotifier = ValueNotifier<int>(0);
+
+  static void nachziehen() => nachzugNotifier.value++;
+
   static int get current => snapNotifier.value;
 
   static void resume() {
@@ -53,13 +68,17 @@ class SnapState {
   /// Ohne das bleibt ein abgebrochener Zug auf 1 Minute stehen, und der
   /// naechste laesst sich gar nicht mehr heranzoomen — er stuende schon am
   /// Ende der Leiter, und `_runTimer` bricht sofort ab.
-  static void begin() => stop();
+  static void begin() {
+    stop();
+    zugLaeuft.value = true;
+  }
 
   static void stop() {
     _timer?.cancel();
     _index = 0;
     snapNotifier.value = _levels[0];
     isDraggingNotifier.value = false;
+    zugLaeuft.value = false;
     currentTimeNotifier.value = '';
   }
 
@@ -186,11 +205,15 @@ class _WeekDayColumnState extends State<WeekDayColumn> {
     // 08:27. Ohne diesen Horcher stuende in der Blase weiter 08:30 — und
     // abgelegt wuerde trotzdem auf 08:27.
     SnapState.snapNotifier.addListener(_rasterGeaendert);
+    // Laeuft die Ansicht am Rand weiter, ruehrt sich der Finger nicht — die
+    // Uhrzeit unter ihm aendert sich trotzdem.
+    SnapState.nachzugNotifier.addListener(_rasterGeaendert);
   }
 
   @override
   void dispose() {
     SnapState.snapNotifier.removeListener(_rasterGeaendert);
+    SnapState.nachzugNotifier.removeListener(_rasterGeaendert);
     _stillTimer?.cancel();
     _acceptTimer?.cancel();
     _einfuegestelle.dispose();
