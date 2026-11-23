@@ -324,4 +324,41 @@ void main() {
       await t.pumpAndSettle();
     });
   });
+
+  group('Ein To-do, das schon im Tag liegt', () {
+    testWidgets('zeigt die Stelle sofort — ohne Schonzeit', (t) async {
+      // Der Fall aus der Tagesansicht: ein Block, der schon zu diesem Tag
+      // gehoert, wird im Raster verschoben. Da ist nichts abzuwarten — der
+      // Tag ist eindeutig, die Stelle muss gleich stehen. Die 250 ms gelten
+      // nur fuer etwas, das noch zu keinem Tag gehoert.
+      final platziert = Todo(
+        id: 't9',
+        title: 'Wischen',
+        estimatedMinutes: 30,
+        scheduledDate: DateTime(2026, 11, 23),
+        scheduledStartHour: 9,
+        scheduledStartMinute: 0,
+        createdAt: DateTime(2026, 11, 20),
+      );
+      await baue(t, daten: platziert, todos: [platziert]);
+
+      // Der Block steht auf 9:00, also 60 px unter der Rasterkante.
+      const blockOben = 60.0;
+      final griff = t.getCenter(find.text('Wischen'));
+      final anker = griff.dy - blockOben;
+
+      final g = await t.startGesture(griff);
+      await t.pump(const Duration(milliseconds: 600));
+      await g.moveTo(Offset(150, 200 + anker));
+      await t.pump(const Duration(milliseconds: 100));
+
+      expect(find.byKey(stelle), findsOneWidget,
+          reason: 'der eigene Tag nimmt sofort an, ohne 250 ms zu warten');
+      expect(t.getRect(find.byKey(stelle)).top, 210, reason: '11:30');
+      expect(t.getRect(find.byKey(stelle)).height, 30);
+
+      await g.up();
+      await t.pumpAndSettle();
+    });
+  });
 }
