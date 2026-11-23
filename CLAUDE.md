@@ -139,6 +139,7 @@ Verschiebt überfällige pending Todos automatisch nach vorne:
 | Platzhalter beim Ziehen springt nicht mit, wenn die Leiter feiner rastet | Die Vorschau wurde nur in `onMove` gerechnet — die Leiter rastet aber auch, wenn der Finger stillsteht | Letzten Punkt merken (`_letzterPunkt`) und am `snapNotifier` hängen; dieselbe Rechnung füttert Vorschau, Zeit-Pille und Ablegen |
 | Am Rand gezogen passiert nichts, obwohl der Sog eingebaut ist | `isDraggingNotifier` als Bedingung genommen — die geht erst an, wenn der Finger 600 ms ruht | `SnapState.zugLaeuft`, gesetzt in `begin()`/`stop()` |
 | Die Ansicht läuft am Rand, die Zeit-Blase bleibt stehen | Ohne Fingerbewegung kommt kein `onMove`, die Vorschau rechnet also nicht neu | `nachziehen()` nach jedem Stück Lauf; die Spalte horcht auf `nachzugNotifier` |
+| Beim Ranzoomen rutscht das Gezogene aus dem Bild | Der Zoom hielt die Viewport-Mitte fest; wer unten hält, verliert sein To-do nach unten | `Zoomanker.anker` nimmt während eines Zuges den Finger |
 | Meldung kommt im alten Ton, obwohl die Stufe umgestellt wurde | Android übernimmt Wichtigkeit und Ton nur beim **Anlegen** des Kanals | Je Stufe ein eigener `channelId` (`abfahrt_dringend`, `abfahrt_alarm`, …) |
 | Abfahrt-Meldung kommt zweimal, einmal zur alten Uhrzeit | Ein übernommener Abo-Termin liegt lokal **und** kommt weiter aus dem Abo | `IcsService.fetchEventsOhneUebernommene()` statt `fetchEvents()` |
 | `exact_alarms_not_permitted` bricht die ganze Planung ab | Ab Android 14 ist `SCHEDULE_EXACT_ALARM` standardmäßig verweigert | `USE_EXACT_ALARM` im Manifest (gilt sofort) **und** Rückfall auf `inexactAllowWhileIdle` in `_stellen` |
@@ -346,6 +347,28 @@ Drei Dinge daran sind nicht beliebig:
 `SnapState.zugLaeuft` ist dafür eine **eigene** Flagge: `isDraggingNotifier`
 geht erst an, wenn der Finger einen Moment ruht (sie steuert Blase und
 Zoom-Leiter), und so lange darf der Sog nicht warten.
+
+## Woran der Zoom sich festhaelt (`week/zoomanker.dart`)
+
+Rastet die Leiter während eines Zuges feiner, dehnt sich der Tag unter dem
+Finger auseinander. Eine Stelle auf dem Glas muss ihre Uhrzeit behalten —
+alle anderen wandern.
+
+Früher war das die **Mitte des Sichtfeldes**. Richtig, solange niemand etwas
+hält. Während eines Zuges falsch: das Gezogene rutscht unter dem Finger weg,
+und je weiter es von der Mitte entfernt war, desto weiter — der Zoom
+vergrößert die Stunde davor statt der, auf die man zielt.
+
+Jetzt hält sich der Zoom am **Finger** fest (`Zoomanker.anker`, der Punkt
+kommt aus `Randzug.zeigerPunkt`). Das Gezogene bleibt liegen, wo es liegt,
+und das Raster wächst darum herum. Ohne laufenden Zug bleibt es bei der
+Mitte.
+
+`Zoomanker.neueStelle` ist die Umrechnung: `((stelle + anker) * faktor -
+anker)`, am Ende auf den Scrollbereich begrenzt. Der Anker wird **vor** dem
+`setState` abgegriffen — danach steht die Geometrie schon auf der neuen
+Stundenhöhe. Ein Finger außerhalb des Feldes (beim Sog am Rand der Normalfall)
+wird auf die Kante geholt, sonst katapultiert der Sprung die Ansicht weg.
 
 ## Nur im Termin (`week/terminbindung.dart`)
 

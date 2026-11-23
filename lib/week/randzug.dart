@@ -58,6 +58,10 @@ class Randzug {
 
   bool get laeuft => _lauf != null;
 
+  /// Wo der Finger zuletzt stand, solange der Zug laeuft — auch der Zoom
+  /// haelt sich daran fest.
+  Offset? get zeigerPunkt => _zeiger;
+
   /// Wo der Finger gerade ist. Der erste Aufruf setzt den Lauf in Gang; er
   /// haelt danach von allein durch, auch wenn der Finger still steht.
   void zeiger(Offset punkt) {

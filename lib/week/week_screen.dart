@@ -31,6 +31,7 @@ import 'nachholen.dart';
 import 'terminbindung.dart';
 import 'planungsvorrat.dart';
 import 'randzug.dart';
+import 'zoomanker.dart';
 
 const _uuid = Uuid();
 
@@ -111,19 +112,25 @@ class WeekScreenState extends State<WeekScreen> {
 
     final ratio      = newH / _hourHeight;
     final oldOffset  = _scrollController.hasClients ? _scrollController.offset : 0.0;
-    final viewportH  = _scrollController.hasClients
-        ? _scrollController.position.viewportDimension
-        : 0.0;
+
+    // Vor dem setState abgegriffen: nachher steht die Geometrie schon auf
+    // der neuen Stundenhoehe.
+    final anker = Zoomanker.anker(
+      zeigerPunkt: _randzug.zeigerPunkt,
+      sichtfeld: _sichtfeld(),
+      zugLaeuft: SnapState.zugLaeuft.value,
+    );
 
     setState(() => _hourHeight = newH);
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!_scrollController.hasClients) return;
-      // Viewport-Mitte bleibt auf gleicher Uhrzeit
-      final center    = oldOffset + viewportH / 2;
-      final newOffset = (center * ratio - viewportH / 2)
-          .clamp(0.0, _scrollController.position.maxScrollExtent);
-      _scrollController.jumpTo(newOffset);
+      _scrollController.jumpTo(Zoomanker.neueStelle(
+        stelle: oldOffset,
+        anker: anker,
+        faktor: ratio,
+        hoechstens: _scrollController.position.maxScrollExtent,
+      ));
     });
   }
 
