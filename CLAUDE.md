@@ -107,6 +107,8 @@ Verschiebt überfällige pending Todos automatisch nach vorne:
 
 ### Todo-Modell (models/todo.dart)
 - `dueWindowStartHour: int?`, `dueWindowEndHour: int?` — Erledigungszeitraum
+- `requiredCategory: String?`, `requiredCalendarId: String?` — die Bindung an
+  einen Termin (siehe „Nur im Termin")
 - In copyWith (_unset-Pattern), toJson, fromJson
 
 ### Todo bearbeiten
@@ -139,6 +141,8 @@ Verschiebt überfällige pending Todos automatisch nach vorne:
 | Abfahrt-Meldung kommt zweimal, einmal zur alten Uhrzeit | Ein übernommener Abo-Termin liegt lokal **und** kommt weiter aus dem Abo | `IcsService.fetchEventsOhneUebernommene()` statt `fetchEvents()` |
 | `exact_alarms_not_permitted` bricht die ganze Planung ab | Ab Android 14 ist `SCHEDULE_EXACT_ALARM` standardmäßig verweigert | `USE_EXACT_ALARM` im Manifest (gilt sofort) **und** Rückfall auf `inexactAllowWhileIdle` in `_stellen` |
 | Geplante Meldungen kommen nie, der Test-Knopf geht | Die beiden Empfänger des Plugins fehlten im Manifest — AlarmManager stellt den Wecker, aber niemand nimmt ab; `show()` braucht keinen und ging deshalb | `ScheduledNotificationReceiver` + `ScheduledNotificationBootReceiver` ins Manifest, bewacht von `test/manifest_test.dart` |
+| To-do „nur im Termin" landet im Dienstplan eines anderen Menschen | Importierte Termine tragen alle `category: 'work'`, und „nur zur Info" wurde bei der Gastgeber-Suche nicht geprüft | `Terminbindung.passt` lässt Info-Termine nur bei ausdrücklich gewähltem Kalender zu |
+| To-do findet nie einen Platz, Kalender sieht normal aus | Das gebundene Abo ist ausgeblendet oder entfernt — ausgeblendete Abos werden nicht geholt | Hinweis im To-do-Bildschirm; beim Entfernen löst `LocalService.loeseKalenderBindung` die Bindung |
 | Nachgeholtes To-do liegt über dem Termin von heute | Der Carry-over nahm die Uhrzeit von gestern mit; lag sie heute noch in der Zukunft, fasste der Shift sie nicht mehr an (`blockStart < nowMinutes` war falsch) | `Nachholen.plan()` vergibt die Uhrzeit neu, ab der Jetzt-Kante und um die echten Termine herum |
 
 
@@ -308,6 +312,53 @@ verschobener fremder Dienst sperrte danach wieder den eigenen Tag.
 
 **Kein Migrationsschritt** — die Termine liegen als JSON im Cache, fehlendes
 `infoOnly` liest sich als `false`, Altbestand redet also weiter mit.
+
+## Nur im Termin (`week/terminbindung.dart`)
+
+Manches lässt sich nur **während** eines Termins tun: die Abrechnung im
+Dienst, der Anruf im Büro. Ein To-do trägt dafür zwei Bedingungen, beide
+freiwillig, beide verengend:
+
+| Feld | Heißt |
+|---|---|
+| `requiredCategory` | nur Termine dieser Kategorie |
+| `requiredCalendarId` | nur Termine aus diesem Kalender |
+
+Die Kalender-Id ist die eines Abos oder `TravelService.ownCalendarId`
+(`'app'`) — **dieselbe Id, unter der ein Kalender seine An-/Abfahrtszeiten
+hat**, also `TravelService.calendarIdOf(event)`. Kein zweites Id-System.
+
+Gilt nur in den Planungsmodi `categoryEvent` und `opportunistic`
+(`Terminbindung.giltFuer`). Wer den Modus wegstellt, verliert beide
+Bedingungen — sonst stünde am To-do eine Bedingung, die niemand mehr sieht.
+
+`Terminbindung` ist reine Rechnung: kein Bildschirm, keine Datenbank, keine
+Uhr. `week_screen._findNextValidSlot` fragt nur noch `gastgeber(...)`.
+
+**Der Sonderfall, der die Regel erklärt:** importierte Termine tragen **alle**
+die Kategorie `work` (`_parseIcs` setzt sie hart). Ein To-do „im Termin,
+Kategorie Arbeit" würde damit auch im Dienstplan eines anderen Menschen
+landen. Darum beherbergt ein Termin **nur zur Kenntnis** nur dann, wenn der
+Kalender ausdrücklich gewählt ist — „das mache ich, während sie arbeitet" ist
+eine zulässige Ansage, ein Versehen über die Kategorie nicht. Dafür bekommt
+`_timedEventsOnDay` das Flag `mitNurInfo`; für freie Zeit bleibt es bei
+`false`.
+
+Ein To-do auf einen Termin **ziehen** setzt beides
+(`week_screen._onTodoDroppedOnEvent`): Kategorie **und** Kalender des
+Termins. Vorher zählte danach jeder gleich kategorisierte Termin aus jedem
+Kalender.
+
+Wird ein Abo **entfernt**, löst `LocalService.loeseKalenderBindung(id)` die
+Bindung und die Einstellungen sagen, wie viele To-dos betroffen waren — sonst
+hängt ein To-do an einer Id, die es nicht mehr gibt, und findet nie wieder
+einen Platz. Ein **ausgeblendetes** Abo liefert ebenfalls keine Termine; der
+To-do-Bildschirm schreibt das unter die Auswahl, statt es die Planung
+ausbaden zu lassen.
+
+**Abgehakt wird trotzdem überall.** Die Bindung steuert, wohin die App das
+To-do *plant*, nicht was man selbst darf: Haken und Ziehen von Hand bleiben
+frei.
 
 ## Serien-Erinnerungen
 

@@ -15,6 +15,7 @@ import '../services/backup_service.dart';
 import '../services/daylight_service.dart';
 import '../services/feedback_service.dart';
 import '../services/ics_service.dart';
+import '../services/local_service.dart';
 import '../services/reminder_service.dart';
 import '../services/travel_service.dart';
 import '../models/travel_times.dart';
@@ -745,7 +746,17 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   Future<void> _removeSource(String id) async {
     await IcsService.removeSource(id);
+    // To-dos, die nur in Terminen dieses Kalenders erledigt werden durften,
+    // haengen sonst an einer Id, die es nicht mehr gibt.
+    final geloest = await LocalService.loeseKalenderBindung(id);
     await _loadSources();
+    if (!mounted || geloest == 0) return;
+    showInfoSnack(
+        context,
+        geloest == 1
+            ? 'Ein To-do war an diesen Kalender gebunden — die Bindung ist weg.'
+            : '$geloest To-dos waren an diesen Kalender gebunden — die '
+                'Bindungen sind weg.');
   }
 
   InputDecoration _inputDeco(String hint) => InputDecoration(

@@ -28,6 +28,7 @@ import '../week/event_edit_screen.dart';
 import '../week/travel_override_dialog.dart';
 import '../todos/todo_edit_screen.dart';
 import 'nachholen.dart';
+import 'terminbindung.dart';
 
 const _uuid = Uuid();
 
@@ -1529,6 +1530,10 @@ class WeekScreenState extends State<WeekScreen> {
       scheduledStartMinute: newStart % 60,
       contextMode: TodoContextMode.opportunistic,
       requiredCategory: event.category,
+      // Auf den Dienstplan gezogen heisst: in **diesem** Kalender. Ohne das
+      // wuerde ein gleich kategorisierter Termin aus einem anderen Kalender
+      // auch zaehlen.
+      requiredCalendarId: TravelService.calendarIdOf(event),
     );
     await LocalService.saveTodo(updated);
   }
@@ -1549,7 +1554,14 @@ class WeekScreenState extends State<WeekScreen> {
         .any((e) => _blockingAllDayCats.contains(e.category));
   }
 
-  List<CalendarEvent> _timedEventsOnDay(DateTime day) {
+  /// Die Termine eines Tages, die Zeit belegen.
+  ///
+  /// [mitNurInfo] nur fuer die Suche nach einem **Gastgeber**: ein To-do,
+  /// das an einen Kalender gebunden ist, darf auch waehrend eines Termins
+  /// nur zur Kenntnis erledigt werden ([Terminbindung.passt] entscheidet).
+  /// Fuer freie Zeit bleibt es bei false.
+  List<CalendarEvent> _timedEventsOnDay(DateTime day,
+      {bool mitNurInfo = false}) {
     final icsFiltered = _icsEvents.where((e) => !_overriddenIcsIds.contains(e.id));
     final seen = <String>{};
     return TravelService.resolveAll([..._events, ...icsFiltered]
@@ -1557,7 +1569,7 @@ class WeekScreenState extends State<WeekScreen> {
         // Hiermit sucht die App freie Zeit. Ein Termin nur zur Kenntnis
         // belegt keine — sonst waere der Tag eines anderen Menschen auf
         // einmal der eigene.
-        .where((e) => !e.infoOnly)
+        .where((e) => mitNurInfo || !e.infoOnly)
         .where((e) =>
             !e.isAllDay &&
             e.startTime.year == day.year &&
@@ -1609,16 +1621,14 @@ class WeekScreenState extends State<WeekScreen> {
       if (startMinute < winStart) startMinute = winStart;
 
       // Kontext-Modus
-      if (todo.contextMode == TodoContextMode.categoryEvent ||
-          todo.contextMode == TodoContextMode.opportunistic) {
-        if (todo.requiredCategory == null) {
+      if (Terminbindung.giltFuer(todo.contextMode)) {
+        if (!Terminbindung.gebunden(todo)) {
           day = day.add(const Duration(days: 1));
           startMinute = 0;
           continue;
         }
-        final matchEvents = _timedEventsOnDay(day)
-            .where((e) => e.category == todo.requiredCategory)
-            .toList();
+        final matchEvents = Terminbindung.gastgeber(
+            _timedEventsOnDay(day, mitNurInfo: true), todo);
 
         for (final ev in matchEvents) {
           final evStart = ev.startTime.hour * 60 + ev.startTime.minute;

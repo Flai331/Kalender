@@ -33,6 +33,10 @@ class AppColors {
   static const Color fixedTag = Color(0xFFFF5252);
   static const Color flexible = Color(0xFF6C63FF);
 
+  /// Fuer Hinweise, die den Benutzer auf eine Einstellung stossen, die so
+  /// nicht funktionieren kann — kein Fehler, aber auch nicht in Ordnung.
+  static const Color warning = Color(0xFFFFB74D);
+
   // Methode: Kategorie → Farbe
   //
   // Die Farbe kommt aus den Kategorien des Benutzers. Die Konstanten darueber

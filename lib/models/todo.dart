@@ -80,6 +80,18 @@ class Todo {
   final int? dueWindowEndHour;   // späteste Endzeit (z.B. 22)
   final TodoContextMode contextMode;
   final String? requiredCategory;   // für categoryEvent + opportunistic
+
+  /// Der Kalender, in dessen Terminen dieses To-do erledigt werden darf.
+  ///
+  /// Die Id ist die eines Abonnements, oder `'app'` fuer die eigenen Termine
+  /// ([TravelService.ownCalendarId]) — dieselbe Id, unter der ein Kalender
+  /// seine An- und Abfahrtszeiten hat. `null` heisst: der Kalender ist
+  /// gleichgueltig, nur die Kategorie zaehlt (so war es immer).
+  ///
+  /// Gilt wie [requiredCategory] nur bei `categoryEvent` und
+  /// `opportunistic`. Beides zusammen verengt: Termin aus **diesem**
+  /// Kalender **und** mit dieser Kategorie.
+  final String? requiredCalendarId;
   final List<int>? allowedWeekdays;        // null=alle; [1..5]=Mo-Fr (1=Mo,7=So)
   final DaylightMode daylightMode;
   final List<SubTask> subTasks;
@@ -113,6 +125,7 @@ class Todo {
     this.dueWindowEndHour,
     this.contextMode = TodoContextMode.anyTime,
     this.requiredCategory,
+    this.requiredCalendarId,
     this.allowedWeekdays,
     this.daylightMode = DaylightMode.none,
     this.subTasks = const [],
@@ -190,6 +203,7 @@ class Todo {
     Object? dueWindowEndHour = _unset,
     TodoContextMode? contextMode,
     Object? requiredCategory = _unset,
+    Object? requiredCalendarId = _unset,
     Object? allowedWeekdays = _unset,
     DaylightMode? daylightMode,
     List<SubTask>? subTasks,
@@ -223,6 +237,7 @@ class Todo {
       dueWindowEndHour: dueWindowEndHour == _unset ? this.dueWindowEndHour : dueWindowEndHour as int?,
       contextMode: contextMode ?? this.contextMode,
       requiredCategory: requiredCategory == _unset ? this.requiredCategory : requiredCategory as String?,
+      requiredCalendarId: requiredCalendarId == _unset ? this.requiredCalendarId : requiredCalendarId as String?,
       allowedWeekdays: allowedWeekdays == _unset ? this.allowedWeekdays : allowedWeekdays as List<int>?,
       daylightMode: daylightMode ?? this.daylightMode,
       subTasks: subTasks ?? this.subTasks,
@@ -258,6 +273,7 @@ class Todo {
         'dueWindowEndHour': dueWindowEndHour,
         'contextMode': contextMode.name,
         'requiredCategory': requiredCategory,
+        'requiredCalendarId': requiredCalendarId,
         'allowedWeekdays': allowedWeekdays,
         'daylightMode': daylightMode.name,
         'subTasks': subTasks.map((s) => s.toJson()).toList(),
@@ -313,6 +329,7 @@ class Todo {
           orElse: () => TodoContextMode.anyTime,
         ),
         requiredCategory: json['requiredCategory'] as String?,
+        requiredCalendarId: json['requiredCalendarId'] as String?,
         allowedWeekdays: (json['allowedWeekdays'] as List<dynamic>?)
             ?.map((e) => (e as num).toInt())
             .toList(),

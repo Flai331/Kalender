@@ -305,6 +305,20 @@ class LocalService {
     return changed;
   }
 
+  /// Loest die Bindung an einen Kalender und gibt die Zahl der geaenderten
+  /// To-dos zurueck. Gedacht fuer das Entfernen eines Abonnements: ohne das
+  /// haengt ein To-do an einem Kalender, den es nicht mehr gibt, und findet
+  /// nie wieder einen Platz.
+  static Future<int> loeseKalenderBindung(String kalenderId) async {
+    var changed = 0;
+    for (final todo in await getAllTodos()) {
+      if (todo.requiredCalendarId != kalenderId) continue;
+      await saveTodo(todo.copyWith(requiredCalendarId: null));
+      changed++;
+    }
+    return changed;
+  }
+
   /// Alle Todos des angemeldeten Benutzers aus dem Cache.
   static Future<List<Todo>> _allTodos() async {
     final rows = await (_db.select(_db.todosCache)

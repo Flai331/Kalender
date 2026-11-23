@@ -8,7 +8,10 @@ import '../widgets/category_picker.dart';
 import '../models/todo.dart';
 import '../models/calendar_event.dart';
 import '../services/departure_reminder_service.dart';
+import '../services/ics_service.dart';
 import '../services/local_service.dart';
+import '../services/travel_service.dart';
+import '../models/ics_source.dart';
 import '../widgets/feedback_button.dart';
 import '../widgets/save_feedback.dart';
 
@@ -38,11 +41,27 @@ class _TodoEditScreenState extends State<TodoEditScreen> {
   int? _windowEndHour;
   late TodoContextMode _contextMode;
   String? _requiredCategory;
+  String? _requiredCalendarId;
+  List<IcsSource> _kalender = const [];
   late List<int> _allowedWeekdays;
   late DaylightMode _daylightMode;
   late List<SubTask> _subTasks;
 
   bool get _isNew => widget.todo == null;
+
+  /// Haengt das To-do an einem Kalender, der ausgeblendet ist? Von dort
+  /// kommen keine Termine, und dann findet die Planung nie einen Platz.
+  bool get _ausgeblendeteWahl =>
+      _kalender.any((s) => s.id == _requiredCalendarId && !s.visible);
+
+  /// Die Abos fuer die Kalender-Auswahl. Solange die Liste fehlt, stehen
+  /// dort nur „Alle Kalender" und „Eigene Termine"; ausgewaehlt bleibt, was
+  /// am To-do steht.
+  Future<void> _kalenderLaden() async {
+    final quellen = await IcsService.getSources();
+    if (!mounted) return;
+    setState(() => _kalender = quellen);
+  }
 
   @override
   void initState() {
@@ -61,6 +80,8 @@ class _TodoEditScreenState extends State<TodoEditScreen> {
     _windowEndHour = t?.dueWindowEndHour;
     _contextMode = t?.contextMode ?? TodoContextMode.anyTime;
     _requiredCategory = t?.requiredCategory;
+    _requiredCalendarId = t?.requiredCalendarId;
+    _kalenderLaden();
     _allowedWeekdays = List.from(t?.allowedWeekdays ?? []);
     _daylightMode = t?.daylightMode ?? DaylightMode.none;
     _subTasks = List.from(t?.subTasks ?? []);
@@ -100,6 +121,7 @@ class _TodoEditScreenState extends State<TodoEditScreen> {
       dueWindowEndHour: _windowEndHour,
       contextMode: _contextMode,
       requiredCategory: _requiredCategory,
+      requiredCalendarId: _requiredCalendarId,
       allowedWeekdays: _allowedWeekdays.isEmpty ? null : _allowedWeekdays,
       daylightMode: _daylightMode,
       repeatConfig: widget.todo?.repeatConfig,
@@ -301,17 +323,41 @@ class _TodoEditScreenState extends State<TodoEditScreen> {
               if (m != TodoContextMode.categoryEvent &&
                   m != TodoContextMode.opportunistic) {
                 _requiredCategory = null;
+                _requiredCalendarId = null;
               }
             }),
           ),
           if (_contextMode == TodoContextMode.categoryEvent ||
               _contextMode == TodoContextMode.opportunistic) ...[
-            const SizedBox(height: 8),
+            const SizedBox(height: 10),
+            // Ohne Beschriftung stand hier eine Reihe Kategorien ohne Frage
+            // dazu — und seit der Kalender darunter steht, erst recht.
+            const Text('Nur in Terminen dieser Kategorie',
+                style:
+                    TextStyle(color: AppColors.textSecondary, fontSize: 12)),
+            const SizedBox(height: 6),
             CategoryPicker(
               selected: _requiredCategory,
               allowNone: true,
               onChanged: (c) => setState(() => _requiredCategory = c),
             ),
+            const SizedBox(height: 10),
+            const Text('Nur in Terminen aus diesem Kalender',
+                style:
+                    TextStyle(color: AppColors.textSecondary, fontSize: 12)),
+            const SizedBox(height: 6),
+            _KalenderPicker(
+              selected: _requiredCalendarId,
+              kalender: _kalender,
+              onChanged: (id) => setState(() => _requiredCalendarId = id),
+            ),
+            if (_ausgeblendeteWahl) ...[
+              const SizedBox(height: 6),
+              const Text(
+                  'Dieser Kalender ist ausgeblendet und liefert keine '
+                  'Termine — damit findet das To-do keinen Platz.',
+                  style: TextStyle(color: AppColors.warning, fontSize: 11)),
+            ],
           ],
           const SizedBox(height: 12),
           _SectionLabel('Erlaubte Wochentage'),
@@ -803,6 +849,50 @@ class _ContextModePicker extends StatelessWidget {
   }
 }
 
+
+/// Welcher Kalender die Termine stellen darf, in denen das To-do erledigt
+/// wird. „Alle Kalender" ist keine Bindung — dann zaehlt nur die Kategorie.
+class _KalenderPicker extends StatelessWidget {
+  final String? selected;
+  final List<IcsSource> kalender;
+  final ValueChanged<String?> onChanged;
+
+  const _KalenderPicker({
+    required this.selected,
+    required this.kalender,
+    required this.onChanged,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final eintraege = <(String?, String)>[
+      (null, 'Alle Kalender'),
+      (TravelService.ownCalendarId, 'Eigene Termine'),
+      for (final s in kalender) (s.id, s.name),
+    ];
+    return Wrap(
+      spacing: 8,
+      runSpacing: 6,
+      children: eintraege.map((e) {
+        final (id, label) = e;
+        final isSelected = selected == id;
+        return ChoiceChip(
+          label: Text(label),
+          selected: isSelected,
+          onSelected: (_) => onChanged(id),
+          selectedColor: AppColors.primary.withValues(alpha: 0.3),
+          backgroundColor: AppColors.card,
+          labelStyle: TextStyle(
+            color: isSelected ? AppColors.primary : AppColors.textSecondary,
+            fontSize: 13,
+          ),
+          side: BorderSide(
+              color: isSelected ? AppColors.primary : AppColors.divider),
+        );
+      }).toList(),
+    );
+  }
+}
 
 class _WeekdayPicker extends StatelessWidget {
   final List<int> selected;
