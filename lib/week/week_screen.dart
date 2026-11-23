@@ -27,6 +27,7 @@ import '../week/event_status_dialog.dart';
 import '../week/event_edit_screen.dart';
 import '../week/travel_override_dialog.dart';
 import '../todos/todo_edit_screen.dart';
+import 'nachholen.dart';
 
 const _uuid = Uuid();
 
@@ -58,6 +59,10 @@ class WeekScreenState extends State<WeekScreen> {
   List<Todo> _todos = [];
   /// Tag, fuer den zuletzt Liegengebliebenes nachgeholt wurde.
   DateTime? _carriedOverFor;
+
+  /// Der zuletzt bekannte Stand der echten Termine von heute.
+  /// Siehe [_belegteZeitenHeute].
+  (DateTime, List<Zeitblock>)? _belegtHeute;
   List<Todo> _unscheduled = [];
   List<YearlyChecklist> _pendingChecklists = [];
   List<IcsSource> _icsSources = [];
@@ -1667,25 +1672,59 @@ class WeekScreenState extends State<WeekScreen> {
 
   // ── Auto-Shift ─────────────────────────────────────────────────────────────
 
-  /// Holt offene To-dos aus vergangenen Tagen auf heute.
+  /// Die belegten Abschnitte von heute — auch wenn die Ansicht woanders steht.
+  ///
+  /// `_events` und `_icsEvents` halten nur den **sichtbaren** Zeitraum.
+  /// Blaettert man eine Woche weiter, waeren die heutigen Termine weg, und
+  /// der Shift legte das naechste To-do mitten in den Dienst. Darum merkt
+  /// sich die Ansicht den letzten Stand von heute und nimmt ihn, solange sie
+  /// keinen besseren hat.
+  List<Zeitblock> _belegteZeitenHeute(DateTime today) {
+    final sichtbar =
+        !today.isBefore(_visibleStart) && today.isBefore(_visibleEnd);
+    if (sichtbar) {
+      _belegtHeute = (today, Nachholen.belegteZeiten(_timedEventsOnDay(today)));
+    }
+    final gemerkt = _belegtHeute;
+    return (gemerkt != null && gemerkt.$1 == today) ? gemerkt.$2 : const [];
+  }
+
+  /// Holt offene To-dos aus vergangenen Tagen auf heute — und zwar auf
+  /// **jetzt**.
   ///
   /// Ohne das bleiben sie liegen, wo sie waren: der Auto-Shift unten sieht nur
   /// den heutigen Tag an, und um Mitternacht ist ein unerledigtes To-do nicht
   /// mehr "heute". Gerade das, was man liegen laesst, verschwaende damit nach
   /// hinten aus dem Blick.
   ///
+  /// **Die alte Uhrzeit kommt nicht mit.** Dass etwas gestern um neun dran
+  /// war, sagt nichts darueber, was heute um neun los ist — lag da ein Termin,
+  /// deckte das nachgeholte To-do ihn zu, und weil es noch in der Zukunft lag,
+  /// fasste der Shift es auch nicht mehr an. [Nachholen.plan] reiht sie
+  /// stattdessen ab der Jetzt-Linie auf und laesst die echten Termine frei.
+  ///
   /// Laeuft einmal beim Oeffnen und danach einmal je Tageswechsel — oefter
   /// waere es eine Abfrage ohne Ergebnis.
-  Future<void> _carryOverOpenTodos(DateTime today) async {
+  Future<void> _carryOverOpenTodos(
+      DateTime today, List<Zeitblock> belegt) async {
     if (_carriedOverFor == today) return;
     _carriedOverFor = today; // vor dem await: der Timer ruft jede Minute
     final stale = await LocalService.getOpenTodosBefore(today);
     if (stale.isEmpty) return;
 
-    for (final todo in stale) {
-      // Die Uhrzeit bleibt. Ist sie heute schon vorbei, raeumt der Shift
-      // unten das To-do ohnehin nach vorne.
-      await LocalService.saveTodo(todo.copyWith(scheduledDate: today));
+    final jetzt = DateTime.now();
+    final plaetze = Nachholen.plan(
+      todos: stale,
+      belegt: belegt,
+      jetztMinute: jetzt.hour * 60 + jetzt.minute,
+    );
+    final nachId = {for (final t in stale) t.id: t};
+    for (final platz in plaetze) {
+      await LocalService.saveTodo(nachId[platz.id]!.copyWith(
+        scheduledDate: today,
+        scheduledStartHour: platz.stunde,
+        scheduledStartMinute: platz.minute,
+      ));
     }
 
     if (!mounted) return;
@@ -1693,8 +1732,8 @@ class WeekScreenState extends State<WeekScreen> {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
         content: Text(stale.length == 1
-            ? 'Ein liegengebliebenes To-do auf heute geholt.'
-            : '${stale.length} liegengebliebene To-dos auf heute geholt.'),
+            ? 'Ein liegengebliebenes To-do auf jetzt geholt.'
+            : '${stale.length} liegengebliebene To-dos auf jetzt geholt.'),
       ));
     });
   }
@@ -1704,7 +1743,11 @@ class WeekScreenState extends State<WeekScreen> {
     final today = DateTime(now.year, now.month, now.day);
     final nowMinutes = now.hour * 60 + now.minute;
 
-    await _carryOverOpenTodos(today);
+    // Einmal gerechnet und von beiden benutzt: holt das Nachholen die To-dos
+    // auf andere Zeiten als der Shift gleich darauf, schoebe jeder Durchgang
+    // sie aufs Neue hin und her.
+    final belegt = _belegteZeitenHeute(today);
+    await _carryOverOpenTodos(today, belegt);
 
     // Aus der Datenbank, nicht aus _todos: _todos haelt die ANGEZEIGTE Woche.
     // Blaettert man eine Woche weiter, waeren die heutigen To-dos nicht darin
@@ -1725,25 +1768,12 @@ class WeekScreenState extends State<WeekScreen> {
         return aBlock.compareTo(bBlock);
       });
 
-    final todayEventTuples = _timedEventsOnDay(today)
-        .map(_eventBlock)
-        .toList();
+    int skipEvents(int pos, int totalDuration) =>
+        Nachholen.hinterTermine(pos, totalDuration, belegt);
 
-    int skipEvents(int pos, int totalDuration) {
-      bool changed = true;
-      while (changed) {
-        changed = false;
-        for (final ev in todayEventTuples) {
-          if (pos < ev.$2 && pos + totalDuration > ev.$1) {
-            pos = ev.$2;
-            changed = true;
-          }
-        }
-      }
-      return pos;
-    }
-
-    int runningMin = nowMinutes;
+    // Dieselbe Kante wie beim Nachholen: ein To-do, das exakt jetzt anfaengt,
+    // steht unter der Jetzt-Linie und sieht aus wie etwas fuer gleich.
+    int runningMin = Nachholen.fruehestens(nowMinutes);
     DateTime runningDate = today;
     bool shifted = false;
     int? prevOriginalBlockEnd;

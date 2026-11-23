@@ -90,7 +90,9 @@ Verschiebt überfällige pending Todos automatisch nach vorne:
 - **Trigger**: `blockStart < nowMinutes`
 - **Cascade-Stop**: gestartete/pausierte Todos werden nicht verschoben, setzen aber `runningMin = max(runningMin, blockEnd)` und resetten `shifted = false` → nachfolgende Todos werden nicht mehr gecascadet
 - **Lücken erhalten**: Originalabstand zwischen pending Todos bleibt erhalten
-- **Kalendereinträge überspringen**: `_skipEvents()` findet freie Zeitfenster
+- **Kalendereinträge überspringen**: `Nachholen.hinterTermine()` findet freie Zeitfenster
+- **Jetzt-Kante**: der Shift legt nichts vor `Nachholen.fruehestens(jetzt)` —
+  fünf Minuten vor der aktuellen Uhrzeit, siehe *Liegengebliebenes nachholen*
 
 ### Drag & Drop
 - `LongPressDraggable` + `DragTarget`
@@ -137,6 +139,7 @@ Verschiebt überfällige pending Todos automatisch nach vorne:
 | Abfahrt-Meldung kommt zweimal, einmal zur alten Uhrzeit | Ein übernommener Abo-Termin liegt lokal **und** kommt weiter aus dem Abo | `IcsService.fetchEventsOhneUebernommene()` statt `fetchEvents()` |
 | `exact_alarms_not_permitted` bricht die ganze Planung ab | Ab Android 14 ist `SCHEDULE_EXACT_ALARM` standardmäßig verweigert | `USE_EXACT_ALARM` im Manifest (gilt sofort) **und** Rückfall auf `inexactAllowWhileIdle` in `_stellen` |
 | Geplante Meldungen kommen nie, der Test-Knopf geht | Die beiden Empfänger des Plugins fehlten im Manifest — AlarmManager stellt den Wecker, aber niemand nimmt ab; `show()` braucht keinen und ging deshalb | `ScheduledNotificationReceiver` + `ScheduledNotificationBootReceiver` ins Manifest, bewacht von `test/manifest_test.dart` |
+| Nachgeholtes To-do liegt über dem Termin von heute | Der Carry-over nahm die Uhrzeit von gestern mit; lag sie heute noch in der Zukunft, fasste der Shift sie nicht mehr an (`blockStart < nowMinutes` war falsch) | `Nachholen.plan()` vergibt die Uhrzeit neu, ab der Jetzt-Kante und um die echten Termine herum |
 
 
 ## Was im Terminblock steht (`event_block.dart`)
@@ -325,6 +328,36 @@ nie aufgerufen: es wurde also nie eine Erinnerung eingeplant.
   verbunden" und keine Fallback-Regel konnte je greifen. `OutlookService` ist
   entfernt; `SeriesReminder.calendarSourceId` hält jetzt die Id der ICS-Quelle
   (alter JSON-Schlüssel `outlookCalendarId` wird noch gelesen)
+
+## Liegengebliebenes nachholen (`week/nachholen.dart`)
+
+Was gestern offen blieb, holt `_carryOverOpenTodos` auf heute — **auf jetzt**,
+nicht auf die alte Uhrzeit. Dass etwas gestern um neun dran war, sagt nichts
+darüber, was heute um neun los ist.
+
+- **Jetzt-Kante**: `Nachholen.fruehestens(jetzt)` = jetzt minus
+  `vorlauf` (5 Min.). Nicht auf die Minute genau, weil ein Block, der exakt
+  jetzt beginnt, *unter* der Jetzt-Linie steht und aussieht wie etwas für
+  gleich. Fünf Minuten darüber heißt „das ist jetzt dran"
+- **Nacheinander**: `Nachholen.plan()` reiht die liegengebliebenen To-dos ab
+  der Kante auf, mit dem ganzen Block (Anfahrt + Dauer + Heimweg), und gibt
+  die Uhrzeit des To-dos selbst zurück
+- **Um die Termine herum**: `Nachholen.belegteZeiten()` nimmt nur die
+  **echten** Termine. Was nur zur Kenntnis dasteht, belegt nichts — darüber
+  darf ein To-do liegen; Ganztägiges auch nicht, sonst wäre der Tag weg.
+  Der Schalter dafür steht je abonniertem Kalender in den Einstellungen und
+  je Termin im Termin-Dialog („Nur zur Info")
+- **Eine Rechnung für beide**: Nachholen und Auto-Shift benutzen dieselbe
+  Belegung und dieselbe Kante. Täten sie das nicht, schöbe jeder Durchgang
+  die To-dos aufs Neue hin und her
+- `_belegteZeitenHeute()` merkt sich den letzten Stand von heute. `_events`
+  und `_icsEvents` halten nur den **sichtbaren** Zeitraum — blättert man eine
+  Woche weiter, wären die heutigen Termine weg und der Shift legte das
+  nächste To-do mitten in den Dienst
+
+Tests: `test/nachholen_test.dart` (rein gerechnet, ohne Bildschirm und ohne
+Datenbank), `test/carry_over_test.dart` (welche To-dos überhaupt eingesammelt
+werden).
 
 ## Einfüge-Vorschau beim Ziehen (`week/week_day_column.dart`)
 
