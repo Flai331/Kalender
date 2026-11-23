@@ -141,6 +141,7 @@ Verschiebt überfällige pending Todos automatisch nach vorne:
 | Abfahrt-Meldung kommt zweimal, einmal zur alten Uhrzeit | Ein übernommener Abo-Termin liegt lokal **und** kommt weiter aus dem Abo | `IcsService.fetchEventsOhneUebernommene()` statt `fetchEvents()` |
 | `exact_alarms_not_permitted` bricht die ganze Planung ab | Ab Android 14 ist `SCHEDULE_EXACT_ALARM` standardmäßig verweigert | `USE_EXACT_ALARM` im Manifest (gilt sofort) **und** Rückfall auf `inexactAllowWhileIdle` in `_stellen` |
 | Geplante Meldungen kommen nie, der Test-Knopf geht | Die beiden Empfänger des Plugins fehlten im Manifest — AlarmManager stellt den Wecker, aber niemand nimmt ab; `show()` braucht keinen und ging deshalb | `ScheduledNotificationReceiver` + `ScheduledNotificationBootReceiver` ins Manifest, bewacht von `test/manifest_test.dart` |
+| „Kein passender Slot in 30 Tagen", obwohl nächste Woche ein Termin ist | Die Suche las `_events`/`_icsEvents` — die halten nur die **angezeigte** Woche | `Planungsvorrat` aus Datenbank + Abo-Puffer, unabhängig von der Ansicht |
 | To-do „nur im Termin" landet im Dienstplan eines anderen Menschen | Importierte Termine tragen alle `category: 'work'`, und „nur zur Info" wurde bei der Gastgeber-Suche nicht geprüft | `Terminbindung.passt` lässt Info-Termine nur bei ausdrücklich gewähltem Kalender zu |
 | To-do findet nie einen Platz, Kalender sieht normal aus | Das gebundene Abo ist ausgeblendet oder entfernt — ausgeblendete Abos werden nicht geholt | Hinweis im To-do-Bildschirm; beim Entfernen löst `LocalService.loeseKalenderBindung` die Bindung |
 | Nachgeholtes To-do liegt über dem Termin von heute | Der Carry-over nahm die Uhrzeit von gestern mit; lag sie heute noch in der Zukunft, fasste der Shift sie nicht mehr an (`blockStart < nowMinutes` war falsch) | `Nachholen.plan()` vergibt die Uhrzeit neu, ab der Jetzt-Kante und um die echten Termine herum |
@@ -355,6 +356,35 @@ hängt ein To-do an einer Id, die es nicht mehr gibt, und findet nie wieder
 einen Platz. Ein **ausgeblendetes** Abo liefert ebenfalls keine Termine; der
 To-do-Bildschirm schreibt das unter die Auswahl, statt es die Planung
 ausbaden zu lassen.
+
+### Den ersten Platz bekommt die App selbst
+
+Ein gebundenes To-do (`Terminbindung.brauchtErstenPlatz`) bleibt **nicht** in
+der Leiste unten liegen: `week_screen._planeGebundeneOhneZeit` legt es in den
+nächsten passenden Termin, einmal je Planungsdurchgang. Alles andere bleibt
+liegen — wann ein gewöhnliches To-do drankommt, entscheidet der Mensch.
+
+Findet die Suche in 30 Tagen keinen Termin, merkt sich `_noSlotTodos` das
+To-do, sonst liefe dieselbe 30-Tage-Suche jede Minute und die Meldung käme im
+Takt wieder.
+
+### Der Planungsvorrat (`week/planungsvorrat.dart`)
+
+`_events`/`_icsEvents` halten nur, was die Ansicht **zeigt** — eine Woche,
+im Monatsraster einen Monat. Die Platzsuche geht aber 30 Tage voraus und sah
+dahinter nur leere Tage: der Dienst nächsten Montag galt als nicht vorhanden
+(„kein Platz"), und „nur frei" hätte ein To-do mitten in einen Termin gelegt,
+von dem sie nichts wusste.
+
+Darum holt `_holeVorrat()` die Termine aus der **Datenbank**
+(`LocalService.getAllEvents`) und aus dem **Abo-Puffer**
+(`IcsService.gepufferteEvents`, 15 Minuten) — einmal je Durchgang, und nur
+wenn wirklich etwas zu planen ist (`_vorrat` ist sonst `null` und wird nie
+gebaut). Die Planung läuft jede Minute; ohne Puffer wäre das ein Netzabruf je
+Minute.
+
+`Planungsvorrat` selbst ist reine Rechnung: nach Tagen sortiert, Ganztägiges
+getrennt, `amTag(mitNurInfo:)` für die Gastgebersuche.
 
 **Abgehakt wird trotzdem überall.** Die Bindung steuert, wohin die App das
 To-do *plant*, nicht was man selbst darf: Haken und Ziehen von Hand bleiben

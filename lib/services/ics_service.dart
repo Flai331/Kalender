@@ -40,6 +40,40 @@ class IcsService {
     return ohneUebernommene(await fetchEvents(), uebernommen);
   }
 
+  // ── Puffer ─────────────────────────────────────────────────
+
+  /// Wie lange ein Abruf wiederverwendet wird.
+  static const Duration pufferFrist = Duration(minutes: 15);
+
+  static List<CalendarEvent> _puffer = const [];
+  static DateTime? _pufferStand;
+
+  /// Die Abo-Termine aus dem Puffer, hoechstens [pufferFrist] alt.
+  ///
+  /// Fuer alles, was **regelmaessig** rechnet statt zu zeichnen: die Planung
+  /// laeuft jede Minute, ein Abruf je Minute waere unverschaemt. Schlaegt der
+  /// Abruf fehl, bleibt der letzte Stand stehen — mit alten Terminen zu
+  /// rechnen ist besser, als den Kalender fuer leer zu halten.
+  static Future<List<CalendarEvent>> gepufferteEvents() async {
+    final stand = _pufferStand;
+    if (stand != null && DateTime.now().difference(stand) < pufferFrist) {
+      return _puffer;
+    }
+    try {
+      _puffer = await fetchEventsOhneUebernommene();
+      _pufferStand = DateTime.now();
+    } catch (_) {
+      // Letzter Stand bleibt.
+    }
+    return _puffer;
+  }
+
+  /// Nur fuer Tests und fuer „jetzt wirklich neu holen".
+  static void pufferLeeren() {
+    _puffer = const [];
+    _pufferStand = null;
+  }
+
   static const String _outlookAllowTodoDropKey = 'outlook_allow_todo_drop';
 
   static Future<bool> getOutlookAllowTodoDrop() async {

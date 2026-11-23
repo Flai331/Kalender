@@ -305,6 +305,22 @@ class LocalService {
     return changed;
   }
 
+  /// Offene To-dos **ohne jede Zeitangabe** — die aus der Leiste unten.
+  ///
+  /// Dieselbe Auswahl wie [unscheduledTodos], nur als einmalige Abfrage und
+  /// ohne die, die ohnehin niemand verschieben darf.
+  static Future<List<Todo>> getOpenTodosOhneZeit() async {
+    final todos = await getAllTodos();
+    return todos
+        .where((t) =>
+            t.scheduledDate == null &&
+            !t.isCompleted &&
+            t.status != TodoStatus.done &&
+            !t.isFixed)
+        .toList()
+      ..sort((a, b) => a.createdAt.compareTo(b.createdAt));
+  }
+
   /// Loest die Bindung an einen Kalender und gibt die Zahl der geaenderten
   /// To-dos zurueck. Gedacht fuer das Entfernen eines Abonnements: ohne das
   /// haengt ein To-do an einem Kalender, den es nicht mehr gibt, und findet

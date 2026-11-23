@@ -124,6 +124,48 @@ void main() {
     });
   });
 
+  group('Welche To-dos die App von selbst anfasst', () {
+    Todo ohneZeit(String id,
+            {bool erledigt = false,
+            TodoStatus status = TodoStatus.pending,
+            bool fest = false}) =>
+        Todo(
+          id: id,
+          title: id,
+          estimatedMinutes: 30,
+          isCompleted: erledigt,
+          status: status,
+          isFixed: fest,
+          createdAt: DateTime(2026, 11, 20),
+        );
+
+    test('die aus der Leiste, und nur die', () async {
+      await LocalService.saveTodo(ohneZeit('offen'));
+      await LocalService.saveTodo(ohneZeit('erledigt', erledigt: true));
+      await LocalService.saveTodo(
+          ohneZeit('abgehakt', status: TodoStatus.done));
+      await LocalService.saveTodo(ohneZeit('fest', fest: true));
+      await LocalService.saveTodo(ohneZeit('mitDatum').copyWith(
+        scheduledDate: DateTime(2026, 11, 23),
+        scheduledStartHour: 9,
+      ));
+
+      final offen = await LocalService.getOpenTodosOhneZeit();
+      expect(offen.map((t) => t.id), ['offen'],
+          reason: 'erledigt, abgehakt, fest und schon eingeplant bleiben '
+              'draussen');
+    });
+
+    test('in der Reihenfolge, in der sie angelegt wurden', () async {
+      await LocalService.saveTodo(ohneZeit('zweites')
+          .copyWith(createdAt: DateTime(2026, 11, 21)));
+      await LocalService.saveTodo(
+          ohneZeit('erstes').copyWith(createdAt: DateTime(2026, 11, 20)));
+      final offen = await LocalService.getOpenTodosOhneZeit();
+      expect(offen.map((t) => t.id), ['erstes', 'zweites']);
+    });
+  });
+
   group('Ein ausgeblendeter Kalender', () {
     testWidgets('wird als Sackgasse benannt', (t) async {
       // Ausgeblendete Abos werden nicht geholt. Ohne Hinweis sucht man den

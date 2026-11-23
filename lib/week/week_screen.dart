@@ -29,6 +29,7 @@ import '../week/travel_override_dialog.dart';
 import '../todos/todo_edit_screen.dart';
 import 'nachholen.dart';
 import 'terminbindung.dart';
+import 'planungsvorrat.dart';
 
 const _uuid = Uuid();
 
@@ -72,6 +73,10 @@ class WeekScreenState extends State<WeekScreen> {
   Timer? _nowTimer;
   List<String> _blockingAllDayCats = ['vacation'];
   final Set<String> _noSlotTodos = {};
+
+  /// Die Termine, mit denen der laufende Planungsdurchgang rechnet. Je
+  /// Durchgang einmal beschafft und nur, wenn wirklich etwas zu planen ist.
+  Planungsvorrat? _vorrat;
   final Set<String> _overriddenIcsIds = {};
   static const String _overriddenIcsKey = IcsService.overriddenKey;
 
@@ -1538,30 +1543,29 @@ class WeekScreenState extends State<WeekScreen> {
     await LocalService.saveTodo(updated);
   }
 
-  bool _dayBlockedByAllDay(DateTime day) {
-    // ICS-Events werden nur für die aktuelle Woche geladen.
-    // Ganztags-ICS-Events außerhalb der Woche blockieren daher nicht.
-    final icsFiltered = _icsEvents.where((e) => !_overriddenIcsIds.contains(e.id));
-    final allEventsOnDay = [..._events, ...icsFiltered].where((e) =>
-        e.isAllDay &&
-        // Nur zur Kenntnis: der Dienstplan eines anderen blockiert nicht
-        // den eigenen Tag.
-        !e.infoOnly &&
-        e.startTime.year == day.year &&
-        e.startTime.month == day.month &&
-        e.startTime.day == day.day);
-    return allEventsOnDay
-        .any((e) => _blockingAllDayCats.contains(e.category));
+  /// Die Termine fuer einen Planungsdurchgang — **nicht** nur die sichtbare
+  /// Woche.
+  ///
+  /// `_events` und `_icsEvents` halten, was die Ansicht zeigt. Die Suche
+  /// nach einem Platz geht bis zu 30 Tage voraus und sah dahinter nur leere
+  /// Tage: der naechste Dienst galt als nicht vorhanden. Darum hier aus der
+  /// Datenbank und aus dem Abo-Puffer, einmal je Durchgang.
+  Future<Planungsvorrat> _holeVorrat() async {
+    final bestand = _vorrat;
+    if (bestand != null) return bestand;
+    final lokal = await LocalService.getAllEvents();
+    final abos = await IcsService.gepufferteEvents();
+    final gesehen = <String>{};
+    final alle = [...lokal, ...abos]
+        .where((e) => !_overriddenIcsIds.contains(e.id))
+        .where((e) => gesehen.add(e.id))
+        .toList();
+    return _vorrat = Planungsvorrat.aus(TravelService.resolveAll(alle));
   }
 
-  /// Die Termine eines Tages, die Zeit belegen.
-  ///
-  /// [mitNurInfo] nur fuer die Suche nach einem **Gastgeber**: ein To-do,
-  /// das an einen Kalender gebunden ist, darf auch waehrend eines Termins
-  /// nur zur Kenntnis erledigt werden ([Terminbindung.passt] entscheidet).
-  /// Fuer freie Zeit bleibt es bei false.
-  List<CalendarEvent> _timedEventsOnDay(DateTime day,
-      {bool mitNurInfo = false}) {
+  /// Die Termine eines Tages aus der **angezeigten** Woche, die Zeit
+  /// belegen. Fuer die Planung gibt es den [Planungsvorrat].
+  List<CalendarEvent> _timedEventsOnDay(DateTime day) {
     final icsFiltered = _icsEvents.where((e) => !_overriddenIcsIds.contains(e.id));
     final seen = <String>{};
     return TravelService.resolveAll([..._events, ...icsFiltered]
@@ -1569,7 +1573,7 @@ class WeekScreenState extends State<WeekScreen> {
         // Hiermit sucht die App freie Zeit. Ein Termin nur zur Kenntnis
         // belegt keine — sonst waere der Tag eines anderen Menschen auf
         // einmal der eigene.
-        .where((e) => mitNurInfo || !e.infoOnly)
+        .where((e) => !e.infoOnly)
         .where((e) =>
             !e.isAllDay &&
             e.startTime.year == day.year &&
@@ -1581,7 +1585,8 @@ class WeekScreenState extends State<WeekScreen> {
   /// Gibt (day, minuteOfDay) des nächsten gültigen Slots zurück.
   /// Gibt null zurück wenn kein Slot in 30 Tagen gefunden.
   Future<(DateTime, int)?> _findNextValidSlot(
-      Todo todo, DateTime fromDay, int fromMinute) async {
+      Todo todo, DateTime fromDay, int fromMinute,
+      Planungsvorrat vorrat) async {
     DateTime day = fromDay;
     int startMinute = fromMinute;
     final total =
@@ -1598,7 +1603,7 @@ class WeekScreenState extends State<WeekScreen> {
       }
 
       // Ganztags-Block
-      if (_dayBlockedByAllDay(day)) {
+      if (vorrat.ganztagsGesperrt(day, _blockingAllDayCats)) {
         day = day.add(const Duration(days: 1));
         startMinute = 0;
         continue;
@@ -1627,8 +1632,8 @@ class WeekScreenState extends State<WeekScreen> {
           startMinute = 0;
           continue;
         }
-        final matchEvents = Terminbindung.gastgeber(
-            _timedEventsOnDay(day, mitNurInfo: true), todo);
+        final matchEvents =
+            Terminbindung.gastgeber(vorrat.amTag(day, mitNurInfo: true), todo);
 
         for (final ev in matchEvents) {
           final evStart = ev.startTime.hour * 60 + ev.startTime.minute;
@@ -1645,7 +1650,7 @@ class WeekScreenState extends State<WeekScreen> {
       }
 
       if (todo.contextMode == TodoContextMode.freeTime) {
-        final dayEvents = _timedEventsOnDay(day);
+        final dayEvents = vorrat.amTag(day);
         int pos = startMinute;
         bool found = false;
         for (int tries = 0; tries < 200; tries++) {
@@ -1748,6 +1753,40 @@ class WeekScreenState extends State<WeekScreen> {
     });
   }
 
+  /// Gibt gebundenen To-dos **ohne Zeit** ihren ersten Platz und meldet,
+  /// wie viele es waren.
+  ///
+  /// Was nur in einem Termin erledigt werden kann, soll nicht in der Leiste
+  /// unten liegen bleiben, bis man es von Hand hinzieht: der naechste
+  /// passende Termin steht ja fest. To-dos ohne Bindung bleiben liegen —
+  /// wann die drankommen, entscheidet man selbst.
+  Future<int> _planeGebundeneOhneZeit(
+      DateTime today, int nowMinutes, Set<String> ohnePlatz) async {
+    final offen = await LocalService.getOpenTodosOhneZeit();
+    var gelegt = 0;
+    for (final todo in offen) {
+      if (!Terminbindung.brauchtErstenPlatz(todo)) continue;
+      // Einmal erfolglos gesucht reicht: sonst rechnet jede Minute dieselbe
+      // Suche ueber 30 Tage, und die Meldung kaeme im Takt wieder.
+      if (_noSlotTodos.contains(todo.id)) continue;
+      final slot = await _findNextValidSlot(
+          todo, today, Nachholen.fruehestens(nowMinutes), await _holeVorrat());
+      if (slot == null) {
+        ohnePlatz.add(todo.id);
+        continue;
+      }
+      final (tag, minute) = slot;
+      final start = minute + todo.travelMinutesBefore;
+      await LocalService.saveTodo(todo.copyWith(
+        scheduledDate: tag,
+        scheduledStartHour: (start ~/ 60).clamp(0, 23),
+        scheduledStartMinute: start % 60,
+      ));
+      gelegt++;
+    }
+    return gelegt;
+  }
+
   Future<void> _autoShiftOverdueTodos() async {
     final now = DateTime.now();
     final today = DateTime(now.year, now.month, now.day);
@@ -1758,6 +1797,11 @@ class WeekScreenState extends State<WeekScreen> {
     // sie aufs Neue hin und her.
     final belegt = _belegteZeitenHeute(today);
     await _carryOverOpenTodos(today, belegt);
+
+    // Termine koennen sich seit dem letzten Durchgang geaendert haben.
+    _vorrat = null;
+    final newNoSlot = <String>{};
+    final neuGelegt = await _planeGebundeneOhneZeit(today, nowMinutes, newNoSlot);
 
     // Aus der Datenbank, nicht aus _todos: _todos haelt die ANGEZEIGTE Woche.
     // Blaettert man eine Woche weiter, waeren die heutigen To-dos nicht darin
@@ -1787,7 +1831,6 @@ class WeekScreenState extends State<WeekScreen> {
     DateTime runningDate = today;
     bool shifted = false;
     int? prevOriginalBlockEnd;
-    final newNoSlot = <String>{};
 
     for (final todo in todayTodos) {
       final todoMin =
@@ -1826,7 +1869,8 @@ class WeekScreenState extends State<WeekScreen> {
             prevOriginalBlockEnd = blockEnd;
             continue;
           }
-          final slot = await _findNextValidSlot(todo, runningDate, runningMin);
+          final slot = await _findNextValidSlot(
+              todo, runningDate, runningMin, await _holeVorrat());
           if (slot == null) {
             newNoSlot.add(todo.id);
             prevOriginalBlockEnd = blockEnd;
@@ -1906,7 +1950,8 @@ class WeekScreenState extends State<WeekScreen> {
       final scheduledEnd = todo.scheduledEndTime;
       if (scheduledEnd == null || !scheduledEnd.isBefore(now)) continue;
       // Todo ist überfällig — suche nächstes passendes Event
-      final slot = await _findNextValidSlot(todo, today, nowMinutes);
+      final slot = await _findNextValidSlot(
+          todo, today, nowMinutes, await _holeVorrat());
       if (slot == null) {
         _noSlotTodos.add(todo.id);
         continue;
@@ -1924,7 +1969,20 @@ class WeekScreenState extends State<WeekScreen> {
 
     // Verschobene To-dos muessen ihre Abfahrt-Meldung nachziehen, sonst
     // klingelt es zur alten Uhrzeit.
-    if (shifted) unawaited(DepartureReminderService.scheduleAll());
+    if (shifted || neuGelegt > 0) {
+      unawaited(DepartureReminderService.scheduleAll());
+    }
+
+    if (mounted && neuGelegt > 0) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text(neuGelegt == 1
+              ? 'Ein To-do in den naechsten passenden Termin gelegt.'
+              : '$neuGelegt To-dos in den naechsten passenden Termin gelegt.'),
+        ));
+      });
+    }
 
     if (!mounted) return;
 

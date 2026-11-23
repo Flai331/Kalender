@@ -61,6 +61,31 @@ void main() {
     });
   });
 
+  group('Wer von selbst einen Platz bekommt', () {
+    test('wer nur im Termin kann', () {
+      expect(
+          Terminbindung.brauchtErstenPlatz(todo(kalender: 'abo-dienstplan')),
+          isTrue);
+      expect(Terminbindung.brauchtErstenPlatz(todo(kategorie: 'work')), isTrue);
+    });
+
+    test('nicht, wer ueberall kann', () {
+      // Wann ein gewoehnliches To-do drankommt, entscheidet der Mensch.
+      final frei = Todo(
+        id: 't2',
+        title: 'Keller',
+        estimatedMinutes: 30,
+        contextMode: TodoContextMode.anyTime,
+        createdAt: DateTime(2026, 11, 20),
+      );
+      expect(Terminbindung.brauchtErstenPlatz(frei), isFalse);
+    });
+
+    test('nicht ohne Bedingung, auch im richtigen Modus', () {
+      expect(Terminbindung.brauchtErstenPlatz(todo()), isFalse);
+    });
+  });
+
   group('Welcher Termin beherbergen darf', () {
     test('ohne Bedingung keiner', () {
       // Sonst wuerde aus „nur im Termin" ein „irgendwann".

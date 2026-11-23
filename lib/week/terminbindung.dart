@@ -23,6 +23,15 @@ class Terminbindung {
       modus == TodoContextMode.categoryEvent ||
       modus == TodoContextMode.opportunistic;
 
+  /// Soll die App diesem To-do von sich aus einen **ersten** Platz geben?
+  ///
+  /// Nur, wenn es ohnehin nur in einem bestimmten Termin erledigt werden
+  /// kann: dann steht der naechste passende Termin fest, und das To-do muss
+  /// nicht in der Leiste liegen bleiben, bis man es hinzieht. Bei allem
+  /// anderen entscheidet man selbst, wann es drankommt.
+  static bool brauchtErstenPlatz(Todo todo) =>
+      giltFuer(todo.contextMode) && gebunden(todo);
+
   /// Darf [termin] dieses To-do beherbergen?
   ///
   /// [kategorie] und [kalenderId] sind die Bedingungen des To-dos; `null`
