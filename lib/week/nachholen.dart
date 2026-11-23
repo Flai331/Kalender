@@ -12,17 +12,22 @@ typedef Nachholplatz = ({String id, int stunde, int minute});
 /// Rein gerechnet — ohne Bildschirm, ohne Datenbank, ohne Uhr. Die
 /// Wochenansicht fragt nur noch nach dem Platz und schreibt ihn hin.
 class Nachholen {
-  /// Wie weit **vor** der aktuellen Uhrzeit das Nachgeholte anfaengt.
+  /// Wie weit **nach** der aktuellen Uhrzeit das Nachgeholte anfaengt.
   ///
-  /// Nicht auf die Minute genau: was exakt jetzt beginnt, steht unter der
-  /// Jetzt-Linie und sieht aus wie etwas fuer gleich. Fuenf Minuten darueber
-  /// heisst „das ist jetzt dran".
+  /// Nicht auf die Minute genau, und nicht davor: ein Block, der schon
+  /// angefangen hat, haengt hinter der Jetzt-Linie und sieht aus wie etwas
+  /// Verpasstes. Was man noch vor sich hat, gehoert unter die Linie — fuenf
+  /// Minuten Luft heisst „als Naechstes dran".
   static const int vorlauf = 5;
 
   /// Die frueheste Minute, auf die heute etwas gelegt wird.
+  ///
+  /// Nach hinten begrenzt: kurz vor Mitternacht gibt es kein „fuenf Minuten
+  /// spaeter" mehr, und im Nirgendwo soll nichts landen.
   static int fruehestens(int jetztMinute) {
-    final fruehe = jetztMinute - vorlauf;
-    return fruehe < 0 ? 0 : fruehe;
+    const letzte = 24 * 60 - 1;
+    final spaet = jetztMinute + vorlauf;
+    return spaet > letzte ? letzte : spaet;
   }
 
   /// Welche Abschnitte des Tages wirklich belegt sind.
@@ -71,7 +76,7 @@ class Nachholen {
 
   /// Wo die liegengebliebenen To-dos heute anfangen.
   ///
-  /// Der Reihe nach ab [jetztMinute] minus [vorlauf], eines hinter dem
+  /// Der Reihe nach ab [jetztMinute] plus [vorlauf], eines hinter dem
   /// anderen, mit einem Bogen um die echten Termine. Die alte Uhrzeit zaehlt
   /// nicht mehr: dass etwas gestern um neun dran war, sagt nichts darueber,
   /// was heute um neun los ist.

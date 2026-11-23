@@ -1937,8 +1937,8 @@ class WeekScreenState extends State<WeekScreen> {
     int skipEvents(int pos, int totalDuration) =>
         Nachholen.hinterTermine(pos, totalDuration, belegt);
 
-    // Dieselbe Kante wie beim Nachholen: ein To-do, das exakt jetzt anfaengt,
-    // steht unter der Jetzt-Linie und sieht aus wie etwas fuer gleich.
+    // Dieselbe Kante wie beim Nachholen: das Nachgerueckte gehoert vor einen,
+    // nicht hinter die Jetzt-Linie.
     int runningMin = Nachholen.fruehestens(nowMinutes);
     DateTime runningDate = today;
     bool shifted = false;

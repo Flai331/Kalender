@@ -153,6 +153,7 @@ Verschiebt überfällige pending Todos automatisch nach vorne:
 | Vorlage schleppt den Stand eines fremden Termins mit (gestartet, 7 Minuten Pause) | `felder` ist das ganze `toJson()` des Modells | Alles Einmalige gehört in `Vorlage._nurEinmalig` — bei jedem neuen Modell-Feld mitdenken |
 | Vorschlagsliste erscheint beim ersten Antippen des leeren Feldes nicht | `RawAutocomplete` rechnet die Vorschläge erst, wenn der Text sich **ändert** | Gewollt: Vorschläge beim Tippen. Soll es anders sein, braucht es einen eigenen `OverlayPortal` |
 | Vorlagen fehlen nach dem Einspielen einer Sicherung | `VorlagenService` hält die Liste im Speicher | `VorlagenService.neuLaden()` am Ende von `BackupService.restore`, wie `TravelService.load()` |
+| Nachgeschobenes To-do hängt 5 Minuten hinter der Jetzt-Linie statt davor | `Nachholen.fruehestens` zog `vorlauf` **ab**, damit die Linie durch den Block schneidet | `jetzt + vorlauf`; ein Block, der schon läuft, sieht aus wie etwas Verpasstes |
 | Gebundenes To-do springt zurück, nachdem man es von Hand danebengezogen hat | Es hat keinen Gastgeber mehr — genau das ist das Zeichen zum Neusuchen | Gewollt. Soll es stehen bleiben, muss es **fest** sein; feste To-dos fasst die App nie an |
 
 
@@ -559,10 +560,13 @@ Was gestern offen blieb, holt `_carryOverOpenTodos` auf heute — **auf jetzt**,
 nicht auf die alte Uhrzeit. Dass etwas gestern um neun dran war, sagt nichts
 darüber, was heute um neun los ist.
 
-- **Jetzt-Kante**: `Nachholen.fruehestens(jetzt)` = jetzt minus
-  `vorlauf` (5 Min.). Nicht auf die Minute genau, weil ein Block, der exakt
-  jetzt beginnt, *unter* der Jetzt-Linie steht und aussieht wie etwas für
-  gleich. Fünf Minuten darüber heißt „das ist jetzt dran"
+- **Jetzt-Kante**: `Nachholen.fruehestens(jetzt)` = jetzt **plus**
+  `vorlauf` (5 Min.), nach hinten auf 23:59 begrenzt. Nicht davor: ein Block,
+  der schon angefangen hat, hängt hinter der Jetzt-Linie und sieht aus wie
+  etwas Verpasstes. Gerechnet wird mit dem **ganzen** Block — auch die
+  Anfahrt liegt damit in der Zukunft, sonst wäre man schon zu spät los.
+  Der Auto-Shift benutzt dieselbe Kante, das To-do steht also immer 0–5
+  Minuten **vor** der Jetzt-Linie und springt alle fünf Minuten nach
 - **Nacheinander**: `Nachholen.plan()` reiht die liegengebliebenen To-dos ab
   der Kante auf, mit dem ganzen Block (Anfahrt + Dauer + Heimweg), und gibt
   die Uhrzeit des To-dos selbst zurück

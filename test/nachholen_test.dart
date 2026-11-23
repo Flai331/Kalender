@@ -55,15 +55,17 @@ void main() {
       '${p.minute.toString().padLeft(2, '0')}';
 
   group('Die Jetzt-Kante', () {
-    test('liegt fuenf Minuten vor jetzt', () {
+    test('liegt fuenf Minuten nach jetzt', () {
+      // Was man noch vor sich hat, gehoert unter die Jetzt-Linie. Ein Block,
+      // der schon angefangen hat, sieht aus wie etwas Verpasstes.
       expect(Nachholen.vorlauf, 5);
-      expect(Nachholen.fruehestens(8 * 60), 8 * 60 - 5);
+      expect(Nachholen.fruehestens(8 * 60), 8 * 60 + 5);
     });
 
     test('faellt nicht aus dem Tag heraus', () {
-      // Kurz nach Mitternacht gibt es kein "fuenf Minuten davor" mehr.
-      expect(Nachholen.fruehestens(2), 0);
-      expect(Nachholen.fruehestens(0), 0);
+      // Kurz vor Mitternacht gibt es kein "fuenf Minuten spaeter" mehr.
+      expect(Nachholen.fruehestens(24 * 60 - 2), 24 * 60 - 1);
+      expect(Nachholen.fruehestens(24 * 60 - 1), 24 * 60 - 1);
     });
   });
 
@@ -122,18 +124,18 @@ void main() {
   group('Nachholen', () {
     test('die alte Uhrzeit zaehlt nicht mehr', () {
       final platz = plane([todo('gestern')]).single;
-      expect(uhr(platz), '07:55');
+      expect(uhr(platz), '08:05');
       expect(platz.stunde, isNot(9), reason: 'gestern neun Uhr ist vorbei');
     });
 
     test('mehrere reihen sich hintereinander', () {
       final plaetze =
           plane([todo('erst', dauer: 30), todo('dann', dauer: 45)]);
-      expect(plaetze.map(uhr), ['07:55', '08:25']);
+      expect(plaetze.map(uhr), ['08:05', '08:35']);
     });
 
     test('ein echter Termin wird umgangen', () {
-      // Zwischen 07:55 und dem Dienst um 08:00 passt keine halbe Stunde.
+      // Die Kante liegt schon im Dienst (08:00-12:00) — dahinter also.
       final plaetze = plane([todo('waesche', dauer: 30)],
           belegt: Nachholen.belegteZeiten([termin()]));
       expect(uhr(plaetze.single), '12:00');
@@ -142,15 +144,15 @@ void main() {
     test('ein Termin nur zur Kenntnis wird nicht umgangen', () {
       final plaetze = plane([todo('waesche', dauer: 30)],
           belegt: Nachholen.belegteZeiten([termin(nurInfo: true)]));
-      expect(uhr(plaetze.single), '07:55',
+      expect(uhr(plaetze.single), '08:05',
           reason: 'darueber darf das To-do liegen');
     });
 
     test('die Anfahrt zaehlt mit, steht aber nicht in der Uhrzeit', () {
-      // Der Block faengt 07:55 an, losgefahren wird dann — das To-do selbst
+      // Der Block faengt 08:05 an, losgefahren wird dann — das To-do selbst
       // ist 20 Minuten spaeter dran.
       final platz = plane([todo('sport', dauer: 30, hin: 20)]).single;
-      expect(uhr(platz), '08:15');
+      expect(uhr(platz), '08:25');
     });
 
     test('der Heimweg haelt den Platz fuer das naechste frei', () {
@@ -158,7 +160,7 @@ void main() {
         todo('erst', dauer: 30, zurueck: 15),
         todo('dann', dauer: 30),
       ]);
-      expect(plaetze.map(uhr), ['07:55', '08:40']);
+      expect(plaetze.map(uhr), ['08:05', '08:50']);
     });
 
     test('ein voller Tag draengt nicht aus dem Tag heraus', () {
@@ -166,6 +168,17 @@ void main() {
           plane([todo('irgendwas')], belegt: const [(0, 24 * 60)]);
       expect(uhr(plaetze.single), '23:59',
           reason: 'lieber ganz unten am Tag als im Nirgendwo');
+    });
+
+    test('nichts faengt vor jetzt an', () {
+      // Nicht nur die Uhrzeit des To-dos: der ganze Block, Anfahrt
+      // eingerechnet, liegt unter der Jetzt-Linie. Sonst haengt die
+      // Anfahrt in der Vergangenheit und man ist schon zu spaet los.
+      const jetzt = 8 * 60;
+      final platz =
+          plane([todo('sport', dauer: 30, hin: 20)], jetzt: jetzt).single;
+      final blockAnfang = platz.stunde * 60 + platz.minute - 20;
+      expect(blockAnfang, greaterThan(jetzt));
     });
 
     test('nichts liegengeblieben, nichts zu tun', () {
