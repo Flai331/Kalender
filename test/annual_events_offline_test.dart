@@ -252,7 +252,8 @@ void main() {
       expect(raw.select('SELECT week_key FROM week_notes_cache').length, 1);
     });
 
-    test('eine v1-DB kommt in einem Lauf bis v6 durch', () async {
+    test('eine v1-DB kommt in einem Lauf bis zum heutigen Stand durch',
+        () async {
       final raw = _openV1Database();
       db = AppDatabase.forTesting(NativeDatabase.opened(raw));
       await db.customSelect('SELECT 1').get();
@@ -264,7 +265,10 @@ void main() {
 
       expect(tables, contains('week_notes_cache'));
       expect(tables, contains('categories_cache'));
+      expect(tables, contains('places_cache'));
+      expect(tables, contains('vorlagen_cache'));
       expect(tables, isNot(contains('sync_queue')));
+      expect(raw.userVersion, db.schemaVersion);
     });
   });
 

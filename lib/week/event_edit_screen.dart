@@ -12,9 +12,12 @@ import '../services/place_reminder_service.dart';
 import '../services/place_service.dart';
 import '../services/travel_service.dart';
 import '../models/travel_times.dart';
+import '../models/vorlage.dart';
+import '../services/vorlagen_service.dart';
 import '../widgets/feedback_button.dart';
 import '../widgets/save_feedback.dart';
 import '../widgets/travel_time_picker.dart';
+import '../widgets/vorlagen_feld.dart';
 
 const _uuid = Uuid();
 
@@ -131,6 +134,91 @@ class _EventEditScreenState extends State<EventEditScreen> {
     });
   }
 
+  /// Der Termin, wie er gerade im Formular steht — noch ungespeichert.
+  ///
+  /// Beim Bearbeiten muss es `copyWith` sein und nicht ein neuer Termin:
+  /// nur so bleiben Stand, gestoppte Zeiten, Outlook-Kennung,
+  /// Kalenderfarbe, Abo-Herkunft und die Serien-Notiz erhalten — alles
+  /// Dinge, die im Formular gar nicht vorkommen.
+  CalendarEvent _bauen() {
+    final address =
+        _addressCtrl.text.trim().isEmpty ? null : _addressCtrl.text.trim();
+    final base = widget.event;
+    if (base != null) {
+      return base.copyWith(
+        title: _titleCtrl.text.trim(),
+        description: _descCtrl.text.trim(),
+        startTime: _startTime,
+        endTime: _endTime,
+        category: _category,
+        isFixed: _isFixed,
+        repeatType: _repeatType,
+        source: 'app',
+        address: address,
+        placeGroup: _placeGroup,
+        infoOnly: _infoOnly,
+        travelBeforeOverride: _travelBefore,
+        travelAfterOverride: _travelAfter,
+      );
+    }
+    return CalendarEvent(
+      id: _uuid.v4(),
+      title: _titleCtrl.text.trim(),
+      description: _descCtrl.text.trim(),
+      startTime: _startTime,
+      endTime: _endTime,
+      category: _category,
+      isFixed: _isFixed,
+      repeatType: _repeatType,
+      source: 'app',
+      address: address,
+      placeGroup: _placeGroup,
+      infoOnly: _infoOnly,
+      travelBeforeOverride: _travelBefore,
+      travelAfterOverride: _travelAfter,
+    );
+  }
+
+  /// Merkt sich den Termin als Vorlage — ohne ihn in den Kalender zu
+  /// legen. Der Titel ist zugleich der Name, unter dem sie wieder
+  /// auftaucht.
+  Future<void> _alsVorlage() async {
+    final name = _titleCtrl.text.trim();
+    if (name.isEmpty) {
+      showInfoSnack(context, 'Bitte einen Titel eingeben.');
+      return;
+    }
+    await VorlagenService.ausTermin(_bauen());
+    if (!mounted) return;
+    showInfoSnack(context, 'Vorlage „$name" gespeichert.');
+  }
+
+  /// Eine Vorlage aus der Vorschlagsliste legt sich ueber das Formular.
+  ///
+  /// Der Beginn bleibt stehen, wo er steht — nur das Ende rueckt auf die
+  /// Dauer der Vorlage. Wer den Termin schon auf 14 Uhr gelegt hat und
+  /// dann „Dienst Spaet" waehlt, will 14 bis 22 Uhr.
+  void _vorlageUebernehmen(Vorlage v) {
+    final neu = v.aufTermin(_bauen());
+    setState(() {
+      _descCtrl.text = neu.description;
+      _addressCtrl.text = neu.address ?? '';
+      _startTime = neu.startTime;
+      _endTime = neu.endTime;
+      _category = neu.category;
+      _isFixed = neu.isFixed;
+      _repeatType = neu.repeatType;
+      _travelBefore = neu.travelBeforeOverride;
+      _travelAfter = neu.travelAfterOverride;
+      _infoOnly = neu.infoOnly;
+      // Eine Gruppe, die es nicht mehr gibt, soll nicht stumm am Termin
+      // haengen bleiben.
+      _placeGroup =
+          _placeGroups.contains(neu.placeGroup) ? neu.placeGroup : null;
+      _inherited = TravelService.inheritedFor(neu);
+    });
+  }
+
   Future<void> _save() async {
     if (_saving) return;
     if (_titleCtrl.text.trim().isEmpty) {
@@ -138,43 +226,7 @@ class _EventEditScreenState extends State<EventEditScreen> {
       return;
     }
     setState(() => _saving = true);
-    final address = _addressCtrl.text.trim().isEmpty ? null : _addressCtrl.text.trim();
-    final base = widget.event;
-    final CalendarEvent event;
-    if (base != null) {
-      event = base.copyWith(
-        title: _titleCtrl.text.trim(),
-        description: _descCtrl.text.trim(),
-        startTime: _startTime,
-        endTime: _endTime,
-        category: _category,
-        isFixed: _isFixed,
-        repeatType: _repeatType,
-        source: 'app',
-        address: address,
-        placeGroup: _placeGroup,
-        infoOnly: _infoOnly,
-        travelBeforeOverride: _travelBefore,
-        travelAfterOverride: _travelAfter,
-      );
-    } else {
-      event = CalendarEvent(
-        id: _uuid.v4(),
-        title: _titleCtrl.text.trim(),
-        description: _descCtrl.text.trim(),
-        startTime: _startTime,
-        endTime: _endTime,
-        category: _category,
-        isFixed: _isFixed,
-        repeatType: _repeatType,
-        source: 'app',
-        address: address,
-        placeGroup: _placeGroup,
-        infoOnly: _infoOnly,
-        travelBeforeOverride: _travelBefore,
-        travelAfterOverride: _travelAfter,
-      );
-    }
+    final event = _bauen();
     // Speichert in die lokale Datenbank, aus der die Ansichten lesen.
     bool ok = false;
     try {
@@ -231,10 +283,12 @@ class _EventEditScreenState extends State<EventEditScreen> {
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
-          _Field(
+          VorlagenFeld(
             controller: _titleCtrl,
+            art: Vorlagenart.termin,
             label: 'Titel',
             hint: 'Termintitel...',
+            gewaehlt: _vorlageUebernehmen,
           ),
           const SizedBox(height: 12),
           _Field(
@@ -323,6 +377,25 @@ class _EventEditScreenState extends State<EventEditScreen> {
             tileColor: AppColors.card,
             shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(10)),
+          ),
+          const SizedBox(height: 20),
+          OutlinedButton.icon(
+            onPressed: _alsVorlage,
+            icon: const Icon(Icons.bookmark_add_outlined, size: 18),
+            label: const Text('Als Vorlage speichern'),
+            style: OutlinedButton.styleFrom(
+              foregroundColor: AppColors.textPrimary,
+              side: const BorderSide(color: AppColors.card),
+              padding: const EdgeInsets.symmetric(vertical: 14),
+            ),
+          ),
+          const Padding(
+            padding: EdgeInsets.fromLTRB(4, 6, 4, 0),
+            child: Text(
+              'Alles Eingestellte wird unter dem Titel gemerkt. Beim '
+              'nächsten Mal genügt es, den Titel zu tippen.',
+              style: TextStyle(color: AppColors.textSecondary, fontSize: 12),
+            ),
           ),
         ],
       ),

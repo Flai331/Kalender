@@ -12,8 +12,11 @@ import '../services/ics_service.dart';
 import '../services/local_service.dart';
 import '../services/travel_service.dart';
 import '../models/ics_source.dart';
+import '../models/vorlage.dart';
+import '../services/vorlagen_service.dart';
 import '../widgets/feedback_button.dart';
 import '../widgets/save_feedback.dart';
+import '../widgets/vorlagen_feld.dart';
 
 const _uuid = Uuid();
 
@@ -87,6 +90,83 @@ class _TodoEditScreenState extends State<TodoEditScreen> {
     _subTasks = List.from(t?.subTasks ?? []);
   }
 
+  /// Das To-do, wie es gerade im Formular steht — noch ungespeichert.
+  ///
+  /// Die `widget.todo?.…`-Rueckfaelle sind das Wichtige daran: Stand,
+  /// gestoppte Zeiten, Platz im Kalender, Outlook-Kennungen und die
+  /// Serien-Einstellung kommen vom bestehenden To-do, weil sie im Formular
+  /// nicht vorkommen.
+  Todo _bauen() => Todo(
+        id: widget.todo?.id ?? _uuid.v4(),
+        title: _titleCtrl.text.trim(),
+        description: _descCtrl.text.trim(),
+        estimatedMinutes: _estimatedMinutes,
+        repeatType: _repeatType,
+        isFixed: _isFixed,
+        category: _category,
+        createdAt: widget.todo?.createdAt ?? DateTime.now(),
+        scheduledDate: widget.todo?.scheduledDate,
+        scheduledStartHour: widget.todo?.scheduledStartHour,
+        scheduledStartMinute: widget.todo?.scheduledStartMinute,
+        status: widget.todo?.status ?? TodoStatus.pending,
+        isCompleted: widget.todo?.isCompleted ?? false,
+        actualStart: widget.todo?.actualStart,
+        actualEnd: widget.todo?.actualEnd,
+        pausedMinutes: widget.todo?.pausedMinutes ?? 0,
+        pauseStart: widget.todo?.pauseStart,
+        outlookTaskId: widget.todo?.outlookTaskId,
+        outlookListId: widget.todo?.outlookListId,
+        address:
+            _addressCtrl.text.trim().isEmpty ? null : _addressCtrl.text.trim(),
+        travelMinutesBefore: _travelBefore,
+        travelMinutesAfter: _travelAfter,
+        dueWindowStartHour: _windowStartHour,
+        dueWindowEndHour: _windowEndHour,
+        contextMode: _contextMode,
+        requiredCategory: _requiredCategory,
+        requiredCalendarId: _requiredCalendarId,
+        allowedWeekdays: _allowedWeekdays.isEmpty ? null : _allowedWeekdays,
+        daylightMode: _daylightMode,
+        repeatConfig: widget.todo?.repeatConfig,
+        subTasks: _subTasks,
+      );
+
+  /// Merkt sich das To-do als Vorlage — ohne es auf die Liste zu setzen.
+  Future<void> _alsVorlage() async {
+    final name = _titleCtrl.text.trim();
+    if (name.isEmpty) {
+      showInfoSnack(context, 'Bitte einen Titel eingeben.');
+      return;
+    }
+    await VorlagenService.ausTodo(_bauen());
+    if (!mounted) return;
+    showInfoSnack(context, 'Vorlage „$name" gespeichert.');
+  }
+
+  /// Eine Vorlage aus der Vorschlagsliste legt sich ueber das Formular.
+  /// Ein etwaiger Platz im Kalender bleibt, wo er ist.
+  void _vorlageUebernehmen(Vorlage v) {
+    final neu = v.aufTodo(_bauen());
+    setState(() {
+      _descCtrl.text = neu.description;
+      _addressCtrl.text = neu.address ?? '';
+      _estimatedMinutes = neu.estimatedMinutes;
+      _repeatType = neu.repeatType;
+      _isFixed = neu.isFixed;
+      _category = neu.category;
+      _travelBefore = neu.travelMinutesBefore;
+      _travelAfter = neu.travelMinutesAfter;
+      _windowStartHour = neu.dueWindowStartHour;
+      _windowEndHour = neu.dueWindowEndHour;
+      _contextMode = neu.contextMode;
+      _requiredCategory = neu.requiredCategory;
+      _requiredCalendarId = neu.requiredCalendarId;
+      _allowedWeekdays = List.of(neu.allowedWeekdays ?? const []);
+      _daylightMode = neu.daylightMode;
+      _subTasks = List.of(neu.subTasks);
+    });
+  }
+
   Future<void> _save() async {
     if (_saving) return;
     if (_titleCtrl.text.trim().isEmpty) {
@@ -94,39 +174,7 @@ class _TodoEditScreenState extends State<TodoEditScreen> {
       return;
     }
     setState(() => _saving = true);
-    final todo = Todo(
-      id: widget.todo?.id ?? _uuid.v4(),
-      title: _titleCtrl.text.trim(),
-      description: _descCtrl.text.trim(),
-      estimatedMinutes: _estimatedMinutes,
-      repeatType: _repeatType,
-      isFixed: _isFixed,
-      category: _category,
-      createdAt: widget.todo?.createdAt ?? DateTime.now(),
-      scheduledDate: widget.todo?.scheduledDate,
-      scheduledStartHour: widget.todo?.scheduledStartHour,
-      scheduledStartMinute: widget.todo?.scheduledStartMinute,
-      status: widget.todo?.status ?? TodoStatus.pending,
-      isCompleted: widget.todo?.isCompleted ?? false,
-      actualStart: widget.todo?.actualStart,
-      actualEnd: widget.todo?.actualEnd,
-      pausedMinutes: widget.todo?.pausedMinutes ?? 0,
-      pauseStart: widget.todo?.pauseStart,
-      outlookTaskId: widget.todo?.outlookTaskId,
-      outlookListId: widget.todo?.outlookListId,
-      address: _addressCtrl.text.trim().isEmpty ? null : _addressCtrl.text.trim(),
-      travelMinutesBefore: _travelBefore,
-      travelMinutesAfter: _travelAfter,
-      dueWindowStartHour: _windowStartHour,
-      dueWindowEndHour: _windowEndHour,
-      contextMode: _contextMode,
-      requiredCategory: _requiredCategory,
-      requiredCalendarId: _requiredCalendarId,
-      allowedWeekdays: _allowedWeekdays.isEmpty ? null : _allowedWeekdays,
-      daylightMode: _daylightMode,
-      repeatConfig: widget.todo?.repeatConfig,
-      subTasks: _subTasks,
-    );
+    final todo = _bauen();
     // Speichert in die lokale Datenbank, aus der die Ansichten lesen.
     bool ok = false;
     try {
@@ -226,7 +274,13 @@ class _TodoEditScreenState extends State<TodoEditScreen> {
         padding: const EdgeInsets.all(16),
         children: [
           // Titel
-          _Field(controller: _titleCtrl, label: 'Titel', hint: 'Was ist zu tun?'),
+          VorlagenFeld(
+            controller: _titleCtrl,
+            art: Vorlagenart.todo,
+            label: 'Titel',
+            hint: 'Was ist zu tun?',
+            gewaehlt: _vorlageUebernehmen,
+          ),
           const SizedBox(height: 12),
           _Field(
               controller: _descCtrl,
@@ -419,6 +473,25 @@ class _TodoEditScreenState extends State<TodoEditScreen> {
               ],
             ),
           ],
+          const SizedBox(height: 20),
+          OutlinedButton.icon(
+            onPressed: _alsVorlage,
+            icon: const Icon(Icons.bookmark_add_outlined, size: 18),
+            label: const Text('Als Vorlage speichern'),
+            style: OutlinedButton.styleFrom(
+              foregroundColor: AppColors.textPrimary,
+              side: const BorderSide(color: AppColors.card),
+              padding: const EdgeInsets.symmetric(vertical: 14),
+            ),
+          ),
+          const Padding(
+            padding: EdgeInsets.fromLTRB(4, 6, 4, 0),
+            child: Text(
+              'Alles Eingestellte wird unter dem Titel gemerkt. Beim '
+              'nächsten Mal genügt es, den Titel zu tippen.',
+              style: TextStyle(color: AppColors.textSecondary, fontSize: 12),
+            ),
+          ),
         ],
       ),
     );

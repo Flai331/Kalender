@@ -10,6 +10,7 @@ import '../models/annual_event.dart';
 import '../models/series_reminder.dart';
 import '../models/yearly_checklist.dart';
 import '../models/place.dart';
+import '../models/vorlage.dart';
 import '../models/week_note.dart';
 import '../models/app_category.dart';
 
@@ -571,6 +572,40 @@ class LocalService {
         );
   }
 
+  // ── Vorlagen ──────────────────────────────────────────────────────────────
+
+  static Future<List<Vorlage>> getVorlagen() async {
+    final rows = await (_db.select(_db.vorlagenCache)
+          ..where((c) => c.userId.equals(_uid)))
+        .get();
+    if (rows.isEmpty) return [];
+    try {
+      return (jsonDecode(rows.first.data) as List)
+          .map((e) => Vorlage.fromJson(e as Map<String, dynamic>))
+          .toList();
+    } catch (_) {
+      // Lieber keine Vorlagen als ein Absturz beim Oeffnen.
+      return [];
+    }
+  }
+
+  static Future<void> saveVorlagen(List<Vorlage> items) =>
+      _writeVorlagen(items);
+
+  /// Wie [saveVorlagen]; eigener Name fuer das Einspielen einer Sicherung.
+  static Future<void> seedVorlagen(List<Vorlage> items) =>
+      _writeVorlagen(items);
+
+  static Future<void> _writeVorlagen(List<Vorlage> items) async {
+    await _db.into(_db.vorlagenCache).insertOnConflictUpdate(
+          VorlagenCacheCompanion(
+            userId: Value(_uid),
+            data: Value(jsonEncode(items.map((v) => v.toJson()).toList())),
+            updatedAt: Value(DateTime.now().millisecondsSinceEpoch),
+          ),
+        );
+  }
+
   // ── Alles loeschen ────────────────────────────────────────────────────────
 
   /// Raeumt alle Daten dieses Benutzers weg.
@@ -597,6 +632,8 @@ class LocalService {
       await (_db.delete(_db.categoriesCache)..where((t) => t.userId.equals(_uid)))
           .go();
       await (_db.delete(_db.placesCache)..where((t) => t.userId.equals(_uid)))
+          .go();
+      await (_db.delete(_db.vorlagenCache)..where((t) => t.userId.equals(_uid)))
           .go();
     });
   }

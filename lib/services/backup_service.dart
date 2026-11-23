@@ -12,11 +12,13 @@ import '../models/calendar_event.dart';
 import '../models/place.dart';
 import '../models/series_reminder.dart';
 import '../models/todo.dart';
+import '../models/vorlage.dart';
 import '../models/week_note.dart';
 import '../models/yearly_checklist.dart';
 import 'category_service.dart';
 import 'local_service.dart';
 import 'travel_service.dart';
+import 'vorlagen_service.dart';
 
 /// Was in einer Sicherung steckt — zum Anzeigen, bevor etwas passiert.
 class BackupSummary {
@@ -29,6 +31,7 @@ class BackupSummary {
   final int notizen;
   final int kategorien;
   final int orte;
+  final int vorlagen;
   final int einstellungen;
 
   const BackupSummary({
@@ -41,6 +44,7 @@ class BackupSummary {
     required this.notizen,
     required this.kategorien,
     this.orte = 0,
+    this.vorlagen = 0,
     required this.einstellungen,
   });
 
@@ -54,6 +58,7 @@ class BackupSummary {
         if (notizen > 0) '$notizen Wochennotizen',
         if (kategorien > 0) '$kategorien Kategorien',
         if (orte > 0) '$orte Orte',
+        if (vorlagen > 0) '$vorlagen Vorlagen',
         if (einstellungen > 0) '$einstellungen Einstellungen',
       ];
 }
@@ -143,6 +148,8 @@ class BackupService {
               .toList(),
       'places':
           (await LocalService.getPlaces()).map((p) => p.toJson()).toList(),
+      'vorlagen':
+          (await LocalService.getVorlagen()).map((v) => v.toJson()).toList(),
       'settings': await _settings(),
     };
     return const JsonEncoder.withIndent('  ').convert(daten);
@@ -371,6 +378,7 @@ class BackupService {
       notizen: zaehle('weekNotes'),
       kategorien: zaehle('categories'),
       orte: zaehle('places'),
+      vorlagen: zaehle('vorlagen'),
       einstellungen: einstellungen is Map ? einstellungen.length : 0,
     );
   }
@@ -397,6 +405,7 @@ class BackupService {
         .whereType<AppCategory>()
         .toList();
     final places = liste('places').map(Place.fromJson).toList();
+    final vorlagen = liste('vorlagen').map(Vorlage.fromJson).toList();
 
     await LocalService.clearAll();
     await LocalService.seedEvents(events);
@@ -409,6 +418,7 @@ class BackupService {
       await LocalService.seedCategories(categories);
     }
     await LocalService.seedPlaces(places);
+    await LocalService.seedVorlagen(vorlagen);
 
     final einstellungen = daten['settings'];
     if (einstellungen is Map) {
@@ -419,6 +429,7 @@ class BackupService {
     // zeigte die App die alten Kategorien und Fahrzeiten weiter.
     await TravelService.load();
     await CategoryService.load();
+    await VorlagenService.neuLaden();
   }
 
   // ── Einstellungen ─────────────────────────────────────────────────────────

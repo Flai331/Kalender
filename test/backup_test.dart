@@ -8,11 +8,13 @@ import 'package:kalender/models/calendar_event.dart';
 import 'package:kalender/models/place.dart';
 import 'package:kalender/models/series_reminder.dart';
 import 'package:kalender/models/todo.dart';
+import 'package:kalender/models/vorlage.dart';
 import 'package:kalender/models/week_note.dart';
 import 'package:kalender/models/yearly_checklist.dart';
 import 'package:kalender/services/backup_service.dart';
 import 'package:kalender/services/category_service.dart';
 import 'package:kalender/services/local_service.dart';
+import 'package:kalender/services/vorlagen_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 /// Die App speichert auf dem Geraet. Geht das Geraet kaputt, ist alles weg —
@@ -28,6 +30,7 @@ void main() {
     db = AppDatabase.forTesting(NativeDatabase.memory());
     await LocalService.init(db);
     CategoryService.resetForTesting();
+    VorlagenService.resetForTesting();
     await CategoryService.load();
   });
   tearDown(() async => db.close());
@@ -93,6 +96,15 @@ void main() {
         ],
       ),
     ]);
+    await VorlagenService.ausTermin(CalendarEvent(
+      id: 'vorlage-quelle',
+      title: 'Dienst Spät',
+      startTime: DateTime(2026, 11, 20, 14),
+      endTime: DateTime(2026, 11, 20, 22),
+      category: 'work',
+      travelBeforeOverride: 20,
+      travelAfterOverride: 10,
+    ));
     await CategoryService.update('work', label: 'Dienst');
     await CategoryService.add('Ehrenamt', 0xFF00BCD4);
 
@@ -119,6 +131,7 @@ void main() {
       expect(daten['weekNotes'], hasLength(1));
       expect(daten['categories'], hasLength(5));
       expect(daten['places'], hasLength(1));
+      expect(daten['vorlagen'], hasLength(1));
       expect(daten['settings'], isA<Map>());
     });
 
@@ -173,6 +186,25 @@ void main() {
       expect(ort.group, 'Fitnessstudio');
       expect(ort.latitude, closeTo(53.5511, 0.0001));
       expect(ort.hours.single.toMinute, 1200);
+    });
+
+    test('Vorlagen kommen mit allem Eingestellten zurueck', () async {
+      await bestand();
+      final text = await BackupService.build();
+      await LocalService.clearAll();
+      VorlagenService.resetForTesting();
+      expect(await LocalService.getVorlagen(), isEmpty);
+
+      await BackupService.restore(BackupService.parse(text));
+
+      // Eine Vorlage ist Handarbeit wie ein Ort: Dauer, Fahrzeiten und
+      // Kategorie stellt man nicht zweimal ein.
+      final v = (await VorlagenService.fuer(Vorlagenart.termin)).single;
+      expect(v.name, 'Dienst Spät');
+      expect(v.dauerMinuten, 480);
+      expect(v.felder['travelBeforeOverride'], 20);
+      expect(v.felder['travelAfterOverride'], 10);
+      expect(v.felder['category'], 'work');
     });
 
     test('Kategorien kommen mit Namen und Farbe zurueck', () async {

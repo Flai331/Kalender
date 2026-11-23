@@ -20,6 +20,9 @@ import '../services/reminder_service.dart';
 import '../services/travel_service.dart';
 import '../models/travel_times.dart';
 import '../services/update_service.dart';
+import '../models/vorlage.dart';
+import '../services/vorlagen_service.dart';
+import '../vorlagen/vorlagen_screen.dart';
 import '../widgets/save_feedback.dart';
 import '../widgets/feedback_button.dart';
 import '../widgets/travel_time_picker.dart';
@@ -41,6 +44,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   List<AutoSicherung> _autoStaende = [];
   DateTime? _letzteManuelle;
   String _orteZeile = 'Wird geladen …';
+  String _vorlagenZeile = 'Wird geladen …';
   int _vorlaufMinuten = PlaceReminderService.defaultLeadMinutes;
 
   bool _abfahrtAn = true;
@@ -58,6 +62,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     _loadConstraintSettings();
     _loadBackupInfo();
     _ladeOrteZeile();
+    _ladeVorlagenZeile();
     _ladeAbfahrt();
     // Echten versionCode holen, statt der beim Bauen eingetragenen Konstante.
     UpdateService.refreshInstalledBuild().then((_) {
@@ -417,6 +422,27 @@ class _SettingsScreenState extends State<SettingsScreen> {
           ],
         ),
       );
+
+  Future<void> _openVorlagen() async {
+    await Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => const VorlagenScreen()),
+    );
+    if (!mounted) return;
+    await _ladeVorlagenZeile();
+  }
+
+  Future<void> _ladeVorlagenZeile() async {
+    final liste = await VorlagenService.laden();
+    if (!mounted) return;
+    final termine = liste.where((v) => v.art == Vorlagenart.termin).length;
+    final todos = liste.length - termine;
+    setState(() {
+      _vorlagenZeile = liste.isEmpty
+          ? 'Noch keine Vorlagen'
+          : '$termine für Termine, $todos für To-dos';
+    });
+  }
 
   Future<void> _openCategories() async {
     await Navigator.push(
@@ -1292,6 +1318,35 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 onAction: (_checkingUpdate || _updateProgress != null)
                     ? () {}
                     : _checkForUpdate,
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+
+          // Vorlagen
+          _Section(
+            title: 'Vorlagen',
+            children: [
+              _ActionTile(
+                icon: Icons.bookmark_outline,
+                iconColor: AppColors.primary,
+                title: 'Vorlagen verwalten',
+                subtitle: _vorlagenZeile,
+                actionLabel: 'Öffnen',
+                actionColor: AppColors.primary,
+                onAction: _openVorlagen,
+              ),
+              const Padding(
+                padding: EdgeInsets.fromLTRB(16, 0, 16, 12),
+                child: Text(
+                  'Ein Termin oder To-do, das immer gleich aussieht — '
+                  'Dauer, An- und Abfahrt, Kategorie —, wird einmal '
+                  'eingestellt und mit „Als Vorlage speichern" gemerkt. '
+                  'Beim Tippen im Titelfeld erscheint es dann als '
+                  'Vorschlag, auch bei Tippfehlern.',
+                  style: TextStyle(
+                      color: AppColors.textSecondary, fontSize: 12),
+                ),
               ),
             ],
           ),

@@ -149,6 +149,10 @@ Verschiebt überfällige pending Todos automatisch nach vorne:
 | To-do findet nie einen Platz, Kalender sieht normal aus | Das gebundene Abo ist ausgeblendet oder entfernt — ausgeblendete Abos werden nicht geholt | Hinweis im To-do-Bildschirm; beim Entfernen löst `LocalService.loeseKalenderBindung` die Bindung |
 | Nachgeholtes To-do liegt über dem Termin von heute | Der Carry-over nahm die Uhrzeit von gestern mit; lag sie heute noch in der Zukunft, fasste der Shift sie nicht mehr an (`blockStart < nowMinutes` war falsch) | `Nachholen.plan()` vergibt die Uhrzeit neu, ab der Jetzt-Kante und um die echten Termine herum |
 | Gebundenes To-do bleibt stehen, wenn der Dienst verschoben wird, und klebt dann an der Jetzt-Linie | Es wurde erst beim Überfälligwerden neu geplant; auf einem Tag ohne Termin schob der Auto-Shift es stattdessen Minute für Minute mit | `_folgeDemTermin` prüft je Durchgang `Terminbindung.stehtIn` und sucht sofort den nächsten Gastgeber |
+| Umbenannte Vorlage setzt weiter den alten Titel | `title` stand in `felder` **und** in `name` | `_gesiebt` wirft `title` weg, `aufTermin`/`aufTodo` setzen ihn aus `name` |
+| Vorlage schleppt den Stand eines fremden Termins mit (gestartet, 7 Minuten Pause) | `felder` ist das ganze `toJson()` des Modells | Alles Einmalige gehört in `Vorlage._nurEinmalig` — bei jedem neuen Modell-Feld mitdenken |
+| Vorschlagsliste erscheint beim ersten Antippen des leeren Feldes nicht | `RawAutocomplete` rechnet die Vorschläge erst, wenn der Text sich **ändert** | Gewollt: Vorschläge beim Tippen. Soll es anders sein, braucht es einen eigenen `OverlayPortal` |
+| Vorlagen fehlen nach dem Einspielen einer Sicherung | `VorlagenService` hält die Liste im Speicher | `VorlagenService.neuLaden()` am Ende von `BackupService.restore`, wie `TravelService.load()` |
 | Gebundenes To-do springt zurück, nachdem man es von Hand danebengezogen hat | Es hat keinen Gastgeber mehr — genau das ist das Zeichen zum Neusuchen | Gewollt. Soll es stehen bleiben, muss es **fest** sein; feste To-dos fasst die App nie an |
 
 
@@ -197,6 +201,9 @@ Orts-Liste als JSON, wie bei den Kategorien — die Rangliste gehört zur Liste,
 nicht zum einzelnen Ort. `CalendarEvent.placeGroup` brauchte **keine**
 Migration, Termine liegen als JSON-Blob in `events_cache.data`.
 
+Schema v8 bringt `vorlagen_cache`, genauso gebaut: eine Zeile je Benutzer mit
+allen Vorlagen als JSON-Liste.
+
 Zeitraum-Abfragen (`eventsForRange`, `todosForRange`) nehmen alles mit, was in
 den Zeitraum **hineinreicht**, nicht nur was darin beginnt — sonst fehlt eine
 Reise über den Monatswechsel im zweiten Monat.
@@ -222,9 +229,9 @@ Migrationen sind in `test/annual_events_offline_test.dart` getestet
 (alte DB per rohem sqlite3 anlegen, dann `AppDatabase.forTesting(...)` öffnen).
 Getestet werden v1→v2, v2→v3, v3→v4, v4→v5, v5→v6 und der Sprung v1→v6.
 
-Aktueller Stand (Schema v6): `events_cache`, `todos_cache`,
+Aktueller Stand (Schema v8): `events_cache`, `todos_cache`,
 `annual_events_cache`, `series_reminders_cache`, `yearly_checklists_cache`,
-`week_notes_cache`, `categories_cache`.
+`week_notes_cache`, `categories_cache`, `places_cache`, `vorlagen_cache`.
 
 Netz braucht die App nur für drei Dinge, alle ohne Konto:
 - ICS-Abos (`IcsService`) — auch die Outlook-Kalender kommen so herein,
@@ -318,6 +325,60 @@ verschobener fremder Dienst sperrte danach wieder den eigenen Tag.
 
 **Kein Migrationsschritt** — die Termine liegen als JSON im Cache, fehlendes
 `infoOnly` liest sich als `false`, Altbestand redet also weiter mit.
+
+## Vorlagen (`models/vorlage.dart`, `services/vorlagen_service.dart`, `vorlagen/`)
+
+„Dienst Spät" ist immer acht Stunden lang, hat 20 Minuten Anfahrt und zehn
+zurück, Kategorie Arbeit. Das jedes Mal neu einzustellen ist Arbeit für
+nichts — die Vorlage trägt es, der Titel ruft es ab.
+
+**Ein JSON-Beutel, keine Felderliste.** `Vorlage.felder` ist das `toJson()`
+des Modells **minus** `_nurEinmalig` (Kennung, Zeiten, Stand, gestoppte
+Zeiten, Herkunft, Outlook-/ICS-Kennungen). Damit trägt eine Vorlage alles,
+was man einstellen kann, auch das, was es heute noch nicht gibt: ein neues
+Einstell-Feld am Modell ist ohne Zutun dabei. Der Preis steht in
+`_nurEinmalig`: ein neues Feld, das **nicht** in eine Vorlage gehört, muss
+dort eingetragen werden.
+
+**Der Titel steht nur in `name`.** `_gesiebt` wirft `title` aus den Feldern,
+`aufTermin`/`aufTodo` setzen ihn aus `name`. Stünde er an beiden Stellen,
+setzte eine umbenannte Vorlage weiter den alten Titel.
+
+**Die Dauer ist eine Einstellung, Start und Ende sind es nicht.**
+`dauerMinuten` gibt es nur beim Termin (ein To-do hat `estimatedMinutes`).
+`aufTermin` lässt den gewählten Beginn stehen und rückt nur das Ende: wer den
+Termin auf 14 Uhr gelegt hat und dann „Dienst Spät" wählt, will 14–22 Uhr.
+`aufTodo` lässt `scheduledDate`/`-Hour`/`-Minute` und `createdAt` stehen.
+
+**Die Suche verzeiht (`vorlagen/vorlagensuche.dart`).** `bewertung` gibt
+Stufen, klein ist besser: 0 genau, 1 Anfang, 2 Wortanfang, 3 enthalten,
+`4+d` Tippfehler am Anfang, `7+d` Tippfehler in einem späteren Wort, `null`
+passt nicht. Die Nachsicht wächst mit der Eingabe (`nachsicht`: ein Fehler je
+vier Zeichen, höchstens drei) — unter vier Zeichen wird nichts verziehen,
+sonst passt bei „Di" die halbe Liste. `abstand` ist Damerau-Levenshtein: zwei
+vertauschte Nachbarn sind **ein** Fehler, weil genau das beim Tippen
+passiert. `schlicht` macht ä→ae, ö→oe, ü→ue, ß→ss und wirft alles weg, was
+kein Buchstabe und keine Zahl ist. Reine Rechnung — keine Datenbank, keine
+Uhr, kein Bildschirm.
+
+**Wo es im Bildschirm hängt.** `widgets/vorlagen_feld.dart` ist das Titelfeld
+(ein `RawAutocomplete`, das den `_titleCtrl` des Bildschirms weiterbenutzt).
+Gewählt wird über `gewaehlt:`; der Bildschirm füllt sein Formular dann aus
+`v.aufTermin(_bauen())` bzw. `v.aufTodo(_bauen())`. `_bauen()` gibt das
+Modell, wie es gerade im Formular steht — **ohne** zu speichern; `_save()`
+benutzt dasselbe `_bauen()`, damit beide nie auseinanderlaufen. Angelegt
+werden Vorlagen unten im Termin- bzw. To-do-Bildschirm („Als Vorlage
+speichern"), verwaltet in den Einstellungen (`vorlagen/vorlagen_screen.dart`:
+umbenennen, löschen).
+
+**Gleicher Name derselben Art ersetzt.** Wer „Dienst Spät" zum zweiten Mal
+speichert, bessert nach; Kennung und Benutzt-Zähler bleiben. Zwei
+gleichnamige Vorschläge wären im Dropdown nicht zu unterscheiden — darum gibt
+`umbenennen` `false`, wenn der Name schon belegt ist.
+
+Tests: `test/vorlagen_test.dart` (Modell und Speicher),
+`test/vorlagensuche_test.dart` (die Suche),
+`test/vorlagen_feld_test.dart` (das Dropdown).
 
 ## Der Sog am Rand (`week/randzug.dart`)
 

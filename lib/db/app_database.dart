@@ -94,6 +94,18 @@ class PlacesCache extends Table {
   Set<Column> get primaryKey => {userId};
 }
 
+/// Die Vorlagen fuer Termine und To-dos — EINE Zeile je Benutzer mit der
+/// ganzen Liste, wie bei den Kategorien und Orten. Sie werden immer
+/// zusammen gelesen (die Vorschlagsliste braucht alle) und sind wenige.
+class VorlagenCache extends Table {
+  TextColumn get userId => text()();
+  TextColumn get data => text()();
+  IntColumn get updatedAt => integer()();
+
+  @override
+  Set<Column> get primaryKey => {userId};
+}
+
 @DriftDatabase(tables: [
   EventsCache,
   TodosCache,
@@ -103,6 +115,7 @@ class PlacesCache extends Table {
   WeekNotesCache,
   CategoriesCache,
   PlacesCache,
+  VorlagenCache,
 ])
 class AppDatabase extends _$AppDatabase {
   AppDatabase() : super(_openConnection());
@@ -111,7 +124,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase.forTesting(super.executor);
 
   @override
-  int get schemaVersion => 7;
+  int get schemaVersion => 8;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -147,6 +160,11 @@ class AppDatabase extends _$AppDatabase {
           // v7: Orte mit Oeffnungszeiten. Neu, es gibt nichts zu uebernehmen.
           if (from < 7) {
             await m.createTable(placesCache);
+          }
+          // v8: Vorlagen fuer Termine und To-dos. Neu, es gibt nichts zu
+          // uebernehmen.
+          if (from < 8) {
+            await m.createTable(vorlagenCache);
           }
         },
       );
