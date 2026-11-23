@@ -59,6 +59,54 @@ class Terminbindung {
     return true;
   }
 
+  /// Von wann bis wann ein eingeplantes To-do den Tag belegt — An- und
+  /// Abfahrt eingerechnet.
+  ///
+  /// Die Fahrzeit gehoert dazu, weil die Platzsuche sie mit einrechnet: was
+  /// in einen Termin gelegt wird, passt dort mitsamt Hin- und Rueckweg
+  /// hinein. `null`, wenn das To-do gar keine Zeit hat.
+  static (DateTime, DateTime)? block(Todo todo) {
+    final tag = todo.scheduledDate;
+    final stunde = todo.scheduledStartHour;
+    if (tag == null || stunde == null) return null;
+    final start = DateTime(
+        tag.year, tag.month, tag.day, stunde, todo.scheduledStartMinute ?? 0);
+    return (
+      start.subtract(Duration(minutes: todo.travelMinutesBefore)),
+      start.add(Duration(
+          minutes: todo.estimatedMinutes + todo.travelMinutesAfter)),
+    );
+  }
+
+  /// Liegt [todo] mit seinem ganzen Block in einem Termin, der es beherbergen
+  /// darf?
+  ///
+  /// Nicht aus Neugier gefragt: wird ein Dienst verschoben — von Hand oder
+  /// weil das Abonnement einen neuen Plan liefert —, bliebe das To-do sonst
+  /// an der alten Stelle stehen. Mitten im Nichts, obwohl es nur im Termin
+  /// erledigt werden kann. Wer keinen Gastgeber mehr hat, bekommt einen
+  /// neuen gesucht.
+  ///
+  /// [termine] sind die Termine, die ueberhaupt in Frage kommen. Der
+  /// Aufrufer nimmt den Tag des To-dos **und den davor**: eine Nachtschicht
+  /// faengt am Vortag an und steht dort im Vorrat.
+  static bool stehtIn(Todo todo, List<CalendarEvent> termine) {
+    final b = block(todo);
+    if (b == null) return false;
+    final (von, bis) = b;
+    for (final termin in termine) {
+      if (!passt(termin,
+          kategorie: todo.requiredCategory,
+          kalenderId: todo.requiredCalendarId)) {
+        continue;
+      }
+      if (!termin.startTime.isAfter(von) && !termin.endTime.isBefore(bis)) {
+        return true;
+      }
+    }
+    return false;
+  }
+
   /// Die Termine eines Tages, die [todo] beherbergen duerfen — in der
   /// Reihenfolge, in der sie hereinkommen.
   static List<CalendarEvent> gastgeber(

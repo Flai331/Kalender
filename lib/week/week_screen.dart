@@ -1787,6 +1787,58 @@ class WeekScreenState extends State<WeekScreen> {
     return gelegt;
   }
 
+  /// Ein gebundenes To-do folgt seinem Termin.
+  ///
+  /// Wird der Dienst verschoben — von Hand oder weil das Abonnement einen
+  /// neuen Plan liefert —, stand das To-do bisher weiter an der alten Stelle
+  /// und wartete darauf, ueberfaellig zu werden. Es gehoert aber in *den
+  /// Termin*: hat es keinen Gastgeber mehr, bekommt es sofort den naechsten.
+  ///
+  /// Gesucht wird ab jetzt, nicht ab dem alten Tag — ruecken die Termine
+  /// vor, soll es mit nach vorn, nicht in die Vergangenheit.
+  ///
+  /// Nicht angefasst wird, was laeuft oder pausiert — daran sitzt gerade
+  /// jemand — und was als fest markiert ist; das filtert schon die Abfrage.
+  Future<int> _folgeDemTermin(
+      DateTime today, int nowMinutes, Set<String> ohnePlatz) async {
+    final geplant = (await LocalService.getOpenTodosMitZeitAb(today))
+        .where((t) =>
+            Terminbindung.brauchtErstenPlatz(t) &&
+            t.status == TodoStatus.pending &&
+            !_noSlotTodos.contains(t.id))
+        .toList();
+    if (geplant.isEmpty) return 0;
+
+    final vorrat = await _holeVorrat();
+    var gefolgt = 0;
+    for (final todo in geplant) {
+      final tag = todo.scheduledDate!;
+      // Der Vortag muss mit: eine Nachtschicht faengt dort an und steht im
+      // Vorrat unter ihrem Anfangstag.
+      final infrage = [
+        ...vorrat.amTag(addDays(tag, -1), mitNurInfo: true),
+        ...vorrat.amTag(tag, mitNurInfo: true),
+      ];
+      if (Terminbindung.stehtIn(todo, infrage)) continue;
+
+      final slot = await _findNextValidSlot(
+          todo, today, Nachholen.fruehestens(nowMinutes), vorrat);
+      if (slot == null) {
+        ohnePlatz.add(todo.id);
+        continue;
+      }
+      final (slotTag, slotMin) = slot;
+      final start = slotMin + todo.travelMinutesBefore;
+      await LocalService.saveTodo(todo.copyWith(
+        scheduledDate: slotTag,
+        scheduledStartHour: (start ~/ 60).clamp(0, 23),
+        scheduledStartMinute: start % 60,
+      ));
+      gefolgt++;
+    }
+    return gefolgt;
+  }
+
   Future<void> _autoShiftOverdueTodos() async {
     final now = DateTime.now();
     final today = DateTime(now.year, now.month, now.day);
@@ -1802,6 +1854,7 @@ class WeekScreenState extends State<WeekScreen> {
     _vorrat = null;
     final newNoSlot = <String>{};
     final neuGelegt = await _planeGebundeneOhneZeit(today, nowMinutes, newNoSlot);
+    final gefolgt = await _folgeDemTermin(today, nowMinutes, newNoSlot);
 
     // Aus der Datenbank, nicht aus _todos: _todos haelt die ANGEZEIGTE Woche.
     // Blaettert man eine Woche weiter, waeren die heutigen To-dos nicht darin
@@ -1969,17 +2022,25 @@ class WeekScreenState extends State<WeekScreen> {
 
     // Verschobene To-dos muessen ihre Abfahrt-Meldung nachziehen, sonst
     // klingelt es zur alten Uhrzeit.
-    if (shifted || neuGelegt > 0) {
+    if (shifted || neuGelegt > 0 || gefolgt > 0) {
       unawaited(DepartureReminderService.scheduleAll());
     }
 
-    if (mounted && neuGelegt > 0) {
+    if (mounted && (neuGelegt > 0 || gefolgt > 0)) {
+      final saetze = <String>[
+        if (neuGelegt == 1)
+          'Ein To-do in den nächsten passenden Termin gelegt.'
+        else if (neuGelegt > 1)
+          '$neuGelegt To-dos in den nächsten passenden Termin gelegt.',
+        if (gefolgt == 1)
+          'Ein To-do ist seinem Termin gefolgt.'
+        else if (gefolgt > 1)
+          '$gefolgt To-dos sind ihrem Termin gefolgt.',
+      ];
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-          content: Text(neuGelegt == 1
-              ? 'Ein To-do in den naechsten passenden Termin gelegt.'
-              : '$neuGelegt To-dos in den naechsten passenden Termin gelegt.'),
+          content: Text(saetze.join(' ')),
         ));
       });
     }

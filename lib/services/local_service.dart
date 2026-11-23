@@ -321,6 +321,37 @@ class LocalService {
       ..sort((a, b) => a.createdAt.compareTo(b.createdAt));
   }
 
+  /// Offene To-dos **mit** Uhrzeit, ab [day] aufwaerts.
+  ///
+  /// Der Auto-Shift sieht nur den heutigen Tag an. Ein To-do, das im Dienst
+  /// naechsten Mittwoch steht, muss aber mitkommen, wenn der Dienst sich
+  /// verschiebt — dafuer braucht es auch die kuenftigen Tage.
+  ///
+  /// Feste To-dos sind ausgenommen: "fest" heisst, dass die App sie nicht
+  /// verschiebt.
+  static Future<List<Todo>> getOpenTodosMitZeitAb(DateTime day) async {
+    final start = DateTime(day.year, day.month, day.day);
+    final todos = await _allTodos();
+    return todos
+        .where((t) =>
+            t.scheduledDate != null &&
+            !t.scheduledDate!.isBefore(start) &&
+            t.scheduledStartHour != null &&
+            !t.isCompleted &&
+            t.status != TodoStatus.done &&
+            !t.isFixed)
+        .toList()
+      ..sort((a, b) {
+        final byDay = a.scheduledDate!.compareTo(b.scheduledDate!);
+        if (byDay != 0) return byDay;
+        final am =
+            a.scheduledStartHour! * 60 + (a.scheduledStartMinute ?? 0);
+        final bm =
+            b.scheduledStartHour! * 60 + (b.scheduledStartMinute ?? 0);
+        return am.compareTo(bm);
+      });
+  }
+
   /// Loest die Bindung an einen Kalender und gibt die Zahl der geaenderten
   /// To-dos zurueck. Gedacht fuer das Entfernen eines Abonnements: ohne das
   /// haengt ein To-do an einem Kalender, den es nicht mehr gibt, und findet

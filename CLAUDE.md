@@ -145,6 +145,8 @@ Verschiebt überfällige pending Todos automatisch nach vorne:
 | To-do „nur im Termin" landet im Dienstplan eines anderen Menschen | Importierte Termine tragen alle `category: 'work'`, und „nur zur Info" wurde bei der Gastgeber-Suche nicht geprüft | `Terminbindung.passt` lässt Info-Termine nur bei ausdrücklich gewähltem Kalender zu |
 | To-do findet nie einen Platz, Kalender sieht normal aus | Das gebundene Abo ist ausgeblendet oder entfernt — ausgeblendete Abos werden nicht geholt | Hinweis im To-do-Bildschirm; beim Entfernen löst `LocalService.loeseKalenderBindung` die Bindung |
 | Nachgeholtes To-do liegt über dem Termin von heute | Der Carry-over nahm die Uhrzeit von gestern mit; lag sie heute noch in der Zukunft, fasste der Shift sie nicht mehr an (`blockStart < nowMinutes` war falsch) | `Nachholen.plan()` vergibt die Uhrzeit neu, ab der Jetzt-Kante und um die echten Termine herum |
+| Gebundenes To-do bleibt stehen, wenn der Dienst verschoben wird, und klebt dann an der Jetzt-Linie | Es wurde erst beim Überfälligwerden neu geplant; auf einem Tag ohne Termin schob der Auto-Shift es stattdessen Minute für Minute mit | `_folgeDemTermin` prüft je Durchgang `Terminbindung.stehtIn` und sucht sofort den nächsten Gastgeber |
+| Gebundenes To-do springt zurück, nachdem man es von Hand danebengezogen hat | Es hat keinen Gastgeber mehr — genau das ist das Zeichen zum Neusuchen | Gewollt. Soll es stehen bleiben, muss es **fest** sein; feste To-dos fasst die App nie an |
 
 
 ## Was im Terminblock steht (`event_block.dart`)
@@ -367,6 +369,32 @@ liegen — wann ein gewöhnliches To-do drankommt, entscheidet der Mensch.
 Findet die Suche in 30 Tagen keinen Termin, merkt sich `_noSlotTodos` das
 To-do, sonst liefe dieselbe 30-Tage-Suche jede Minute und die Meldung käme im
 Takt wieder.
+
+### Das To-do folgt seinem Termin
+
+Ein gebundenes To-do gehört in **den Termin**, nicht an die Stelle, an der
+der Termin mal lag. Verschiebt man den Dienst — von Hand oder weil das
+Abonnement einen neuen Plan liefert —, blieb es früher dort stehen und
+wartete darauf, überfällig zu werden; auf einem Tag ohne Termin hing es dann
+an der Jetzt-Linie und wanderte Minute für Minute mit.
+
+`week_screen._folgeDemTermin` prüft darum je Durchgang:
+`Terminbindung.stehtIn(todo, …)` — liegt der Block noch ganz in einem
+Termin, der ihn beherbergen darf? Wenn nicht, sucht `_findNextValidSlot`
+**ab jetzt** den nächsten. Angesehen werden alle offenen To-dos mit Uhrzeit
+ab heute (`LocalService.getOpenTodosMitZeitAb`), nicht nur die von heute: der
+Dienst, der sich verschiebt, kann nächste Woche sein.
+
+Drei Dinge, die dabei leicht schiefgehen:
+
+- Der Block zählt **An- und Abfahrt mit**, genau wie die Platzsuche. Sonst
+  gälte ein To-do als zuhause, dessen Anfahrt längst vor dem Termin beginnt.
+- Der Aufrufer reicht auch die Termine des **Vortags** herein. Eine
+  Nachtschicht steht im Vorrat unter ihrem Anfangstag; ohne das wäre ein
+  To-do um 2 Uhr morgens heimatlos und spränge weg.
+- Nicht angefasst wird, was läuft oder pausiert, und was **fest** ist. „Fest"
+  ist damit der Weg, ein gebundenes To-do absichtlich außerhalb eines Termins
+  stehen zu lassen — sonst holt der nächste Durchgang es zurück.
 
 ### Der Planungsvorrat (`week/planungsvorrat.dart`)
 
