@@ -133,6 +133,11 @@ Verschiebt überfällige pending Todos automatisch nach vorne:
 | IcsSource not found | Fehlender Import | `import '../models/ics_source.dart'` |
 | Speichern-Knopf reagiert nicht mehr | `_saving = true` vor dem `await`, Exception (z.B. offline) → Flag wird nie zurückgesetzt | `try/finally` + `guardedAction()` aus `widgets/save_feedback.dart` |
 | Speichern schlägt still fehl | `await …save…()` ohne try/catch — Nutzer sieht keine Meldung | `guardedAction()` zeigt SnackBar + schreibt ins Protokoll |
+| Sofortige Meldung kommt, geplante nicht | `show()` braucht keinen Wecker, `zonedSchedule` den ganzen Weg über AlarmManager, Empfänger und Kanal | *Wecker-Diagnose* in den Einstellungen — sie unterscheidet „nichts geplant" von „nichts gestellt" von „Kanal stumm" von „nur verschoben" |
+| Probe nach 15 Sekunden bleibt aus, kommt aber später | Weckgenau nicht erlaubt → `inexactAllowWhileIdle`, Android bündelt und verschiebt | Weckweise des Test-Knopfs lesen; Recht unter Android → Apps → Kalender → „Weckerzeiten und Erinnerungen" |
+| Ein kaputter Termin, und kein Wecker steht mehr | `_einmalPlanen` hatte **ein** try um die ganze Schleife | je Meldung ein eigenes try/catch |
+| Kanal lauter stellen wirkt nicht | Wichtigkeit eines Kanals steht ab Anlage fest | je Stufe ein eigener `channelId` (`abfahrt_<id>`) |
+| Diagnose stürzt ab, statt zu berichten | `getNotificationChannels()` wirft bei unbekannter Wichtigkeit; ohne Plattform wirft jeder Plugin-Aufruf | jede Nachfrage in `ReminderService` fängt selbst und gibt `null`/leer |
 | Termin/Todo landet nicht in der Ansicht | Screen schreibt nicht über `LocalService` | `LocalService.saveEvent/saveTodo` (wie in `week_screen.dart`) |
 | To-do verschwindet nach dem Löschen einer Liste | `listeId` zeigt auf eine Liste, die es nicht mehr gibt | `ListenService.echteListe` fällt auf die Standardliste zurück; `loeschen` hängt zusätzlich wirklich um |
 | „Neuer Ordner" legt nichts an | Ein Ordner ist nur der Name an seinen Listen — ohne Liste gibt es ihn nicht | Ordner im Menü einer Liste anlegen (`inOrdner`), nicht für sich |
@@ -743,6 +748,56 @@ später über `DepartureReminderService.probeStellen()`, in der eingestellten
 Stufe und über deren echten Kanal. Kommt die erste und die zweite nicht,
 liegt es nicht am Recht, sondern am Wecker. Die Probe trägt eine Kennung aus
 `'__probe__'`, die keiner echten Meldung in die Quere kommt.
+
+### Wecker-Diagnose (`DepartureReminderService.diagnose` / `bericht`)
+
+„Der Wecker geht nicht" heißt **vier verschiedene Dinge**, und von außen sehen
+sie gleich aus:
+
+1. Es war nichts geplant — kein Termin der nächsten 7 Tage hat eine
+   Anfahrtszeit. Ohne Anfahrt gibt es nichts loszufahren, das ist die
+   häufigste und harmloseste Ursache.
+2. Es wurde nichts gestellt — `zonedSchedule` ist fehlgeschlagen.
+3. Der Wecker steht, aber der Kanal ist in den Android-Einstellungen leise
+   oder blockiert; die Meldung wird gezeigt und ist doch nicht da.
+4. Der Wecker steht nur **ungefähr** (`inexactAllowWhileIdle`) — Android legt
+   ungenaue Wecker zusammen und darf sie um viele Minuten verschieben. Eine
+   Probe „in 15 Sekunden" kommt dann erst viel später und sieht wie ein
+   Ausfall aus.
+
+`diagnose()` fragt für jeden dieser Punkte **Android selbst** und gibt einen
+`Weckerbefund` zurück; `bericht(befund, now:)` macht daraus Text — rein
+gerechnet, ohne Plugin und ohne Datenbank, darum zeilenweise testbar und
+geeignet für den Fehlerbericht. In den Einstellungen hängt der Knopf
+*Wecker-Diagnose* daran (mit *Kopieren*).
+
+Die drei Fragen stehen in `ReminderService` und **werfen nie** — eine Diagnose,
+die selbst abstürzt, hilft niemandem, und auf anderen Plattformen gibt es die
+Antworten gar nicht:
+
+| Frage | Antwort | Was ein `null`/leer heißt |
+|-------|---------|---------------------------|
+| `darfMelden()` | `bool?` | `null` = Android hat nicht geantwortet, **nicht** „nein" |
+| `geplanteKennungen()` | `Set<int>` | leer = es steht kein einziger Wecker |
+| `kanal(id)` | `Kanalbefund?` | `null` = Kanal gibt es nicht, in der Stufe hat es noch nie geklingelt |
+
+Kanäle entstehen erst, wenn die erste Meldung darin **gezeigt** wird — „noch
+nicht angelegt" ist deshalb eine Aussage über die Vergangenheit, kein Fehler.
+`getNotificationChannels()` des Plugins stolpert außerdem über jede
+Wichtigkeit, die es nicht kennt (`firstWhere` ohne `orElse`); darum liegt die
+Abfrage in `try`.
+
+`_stellen()` gibt jetzt eine `Weckweise` zurück (`genau`, `ungenau`,
+`garnicht`) und merkt die letzte in `ReminderService.zuletztGestellt`. Damit
+sagt der Test-Knopf, **wie** gestellt wurde, statt es zu verschweigen — der
+Rückfall auf ungenau stand vorher nur im Protokoll.
+
+`_einmalPlanen()` gibt jeder einzelnen Meldung ihr eigenes `try`. Vorher nahm
+die erste, die Android ablehnte, alle übrigen mit: der Durchgang brach ab, die
+Liste der gestellten Wecker wurde nicht einmal geschrieben, und ein einziger
+kaputter Termin ließ den ganzen Wecker verstummen. Vermerkt wird nur, was
+wirklich steht (`weise != garnicht`) — sonst gilt beim nächsten Durchgang als
+„schon gestellt", was nie stand, und bekommt nie wieder einen Versuch.
 
 ## Imports week_screen.dart
 ```dart

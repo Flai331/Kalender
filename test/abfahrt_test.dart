@@ -327,4 +327,227 @@ void main() {
       }
     });
   });
+
+  // ── Diagnose ─────────────────────────────────────────────────────────────
+  //
+  // „Der Wecker geht nicht" kann vier verschiedene Dinge heissen, und von
+  // aussen sehen sie gleich aus: nichts geplant, nichts gestellt, Kanal
+  // stumm, oder die Meldung kommt nur spaeter. Der Bericht muss sie
+  // auseinanderhalten — sonst sucht man wieder im Dunkeln.
+
+  group('Wecker-Diagnose', () {
+    const kanalDa = (
+      id: 'abfahrt_dringend',
+      name: 'Losfahren (Dringend)',
+      wichtigkeit: 4,
+      ton: true,
+      rutteln: true,
+    );
+
+    Abfahrt eintrag(String id, {int stunde = 7}) => (
+          id: id,
+          titel: 'Termin $id',
+          los: DateTime(2026, 11, 23, stunde, 40),
+          start: DateTime(2026, 11, 23, stunde + 1, 0),
+          fahrt: 20,
+          at: DateTime(2026, 11, 23, stunde, 35),
+        );
+
+    Weckerbefund befund({
+      bool an = true,
+      int vorlauf = 5,
+      ReminderUrgency stufe = ReminderUrgency.dringend,
+      bool? darfMelden = true,
+      Kanalbefund? kanal = kanalDa,
+      List<Abfahrt> geplant = const [],
+      Set<int>? gestellt,
+      bool probeSteht = false,
+      Weckweise? weise = Weckweise.genau,
+    }) =>
+        (
+          an: an,
+          vorlauf: vorlauf,
+          stufe: stufe,
+          darfMelden: darfMelden,
+          kanal: kanal,
+          geplant: geplant,
+          // Ohne Angabe steht alles Geplante auch wirklich beim Wecker.
+          gestellt: gestellt ??
+              geplant
+                  .map((a) => DepartureReminderService.notificationId(a.id))
+                  .toSet(),
+          probeSteht: probeSteht,
+          weise: weise,
+        );
+
+    String text(Weckerbefund b) =>
+        DepartureReminderService.bericht(b, now: jetzt);
+
+    test('der Schalter kommt vor allem anderen', () {
+      final t = text(befund(an: false, geplant: [eintrag('a')]));
+      expect(t, contains('Schalter: aus'));
+      expect(t, contains('Befund: Der Schalter steht auf aus'));
+    });
+
+    test('ohne Erlaubnis kommt nichts an', () {
+      final t = text(befund(darfMelden: false, geplant: [eintrag('a')]));
+      expect(t, contains('Melden erlaubt: nein'));
+      expect(t, contains('lässt die App nicht melden'));
+    });
+
+    test('keine Antwort von Android ist nicht dasselbe wie nein', () {
+      final t = text(befund(darfMelden: null, geplant: [eintrag('a')]));
+      expect(t, contains('Melden erlaubt: keine Antwort von Android'));
+      expect(t, isNot(contains('lässt die App nicht melden')),
+          reason: 'wer nicht antwortet, hat nicht verboten');
+    });
+
+    test('ein blockierter Kanal stellt den Wecker und zeigt nichts', () {
+      final t = text(befund(
+        kanal: (
+          id: 'abfahrt_dringend',
+          name: 'Losfahren (Dringend)',
+          wichtigkeit: 0,
+          ton: false,
+          rutteln: false,
+        ),
+        geplant: [eintrag('a')],
+      ));
+      expect(t, contains('blockiert'));
+      expect(t, contains('Befund: Der Kanal'));
+    });
+
+    test('einen Kanal, den es nicht gibt, hat noch nie geklingelt', () {
+      final t = text(befund(kanal: null, geplant: [eintrag('a')]));
+      expect(t, contains('noch nicht angelegt'));
+    });
+
+    test('ohne Anfahrt gibt es nichts zu melden', () {
+      final t = text(befund());
+      expect(t, contains('Geplant: 0'));
+      expect(t, contains('Anfahrtszeit'),
+          reason: 'das ist die haeufigste harmlose Ursache und muss '
+              'dastehen, bevor jemand nach Fehlern sucht');
+    });
+
+    test('geplant, aber kein Wecker: dann liegt es am Stellen', () {
+      final t = text(befund(geplant: [eintrag('a')], gestellt: const {}));
+      expect(t, contains('KEIN Wecker'));
+      expect(t, contains('Das Stellen schlägt fehl'));
+    });
+
+    test('nur ein Teil steht', () {
+      final zwei = [eintrag('a'), eintrag('b', stunde: 9)];
+      final t = text(befund(
+        geplant: zwei,
+        gestellt: {DepartureReminderService.notificationId('a')},
+      ));
+      expect(t, contains('Geplant: 2, davon beim Wecker: 1'));
+      expect(t, contains('Nur 1 von 2'));
+    });
+
+    test('ungenau gestellt erklaert die ausgebliebene Probe', () {
+      final t = text(
+          befund(geplant: [eintrag('a')], weise: Weckweise.ungenau));
+      expect(t, contains('Letzte Meldung gestellt: ungefähr'));
+      expect(t, contains('nur ungefähr'));
+      expect(t, contains('15'),
+          reason: 'genau das ist die Erklaerung fuer den Test-Knopf');
+    });
+
+    test('steht alles weckgenau, verschluckt es das Handy', () {
+      final t = text(befund(geplant: [eintrag('a')]));
+      expect(t, contains('Die Wecker stehen alle'));
+      expect(t, contains('Akkusparen'));
+    });
+
+    test('jede Meldung steht mit Uhrzeit und Zustand im Bericht', () {
+      final t = text(befund(geplant: [eintrag('a')]));
+      expect(
+          t,
+          contains('heute 07:35 — Termin a '
+              '(Abfahrt 07:40, Termin 08:00): Wecker steht'));
+    });
+
+    test('lange Listen werden abgekuerzt', () {
+      final viele = [
+        for (var i = 0; i < 8; i++) eintrag('e$i', stunde: 7 + i),
+      ];
+      final t = text(befund(geplant: viele));
+      expect(t, contains('Geplant: 8'));
+      expect(t, contains('und 3 weitere'));
+    });
+
+    test('stehen() zaehlt nur die geplanten, nicht fremde Wecker', () {
+      final b = befund(
+        geplant: [eintrag('a')],
+        gestellt: {DepartureReminderService.notificationId('a'), 4711},
+      );
+      expect(DepartureReminderService.stehen(b), 1);
+      expect(text(b), contains('Wecker insgesamt gestellt: 2'));
+    });
+
+    test('Vorlauf, Stufe und Kanal stehen oben', () {
+      final t = text(befund(vorlauf: 20, stufe: ReminderUrgency.alarm));
+      expect(t, contains('Vorlauf: 20 Min.'));
+      expect(t, contains('Stufe: Wie ein Wecker (Kanal abfahrt_alarm)'));
+    });
+  });
+
+  group('Wie gestellt wurde', () {
+    test('was in der Vergangenheit liegt, wird gar nicht gestellt', () async {
+      // Vor jedem Zugriff aufs Plugin: darum laeuft das auch ohne Android.
+      final weise = await ReminderService.scheduleAt(
+        id: 1,
+        title: 'Vorbei',
+        body: 'schon vorbei',
+        scheduledAt: DateTime.now().subtract(const Duration(minutes: 1)),
+      );
+      expect(weise, Weckweise.garnicht);
+    });
+
+    test('ohne gestellte Meldung weiss niemand von einer Weckweise', () {
+      expect(ReminderService.zuletztGestellt, isNull);
+    });
+
+    test('die Stufen tragen ihre Beschriftung mit', () {
+      expect(Weckweise.genau.label, 'weckgenau');
+      expect(Weckweise.ungenau.label, 'ungefähr');
+      expect(Weckweise.garnicht.label, 'gar nicht gestellt');
+    });
+  });
+
+  group('Nachfragen stuerzen nicht ab', () {
+    // Ohne Android antwortet das Plugin mit einem Fehler. Eine Diagnose, die
+    // daran stirbt, hilft niemandem — darum faengt jede Frage ihren Fehler
+    // selbst, und das muss auch so bleiben.
+    test('darf melden? ohne Plattform: keine Antwort', () async {
+      expect(await ReminderService.darfMelden(), isNull);
+    });
+
+    test('gestellte Kennungen ohne Plattform: leer statt Fehler', () async {
+      expect(await ReminderService.geplanteKennungen(), isEmpty);
+    });
+
+    test('Kanal ohne Plattform: unbekannt statt Fehler', () async {
+      expect(await ReminderService.kanal('abfahrt_dringend'), isNull);
+    });
+
+    test('die ganze Diagnose laeuft auch ohne Android durch', () async {
+      SharedPreferences.setMockInitialValues({
+        DepartureReminderService.prefAn: true,
+        DepartureReminderService.prefLead: 7,
+        DepartureReminderService.prefUrgency: 'alarm',
+      });
+      final b = await DepartureReminderService.diagnose();
+      expect(b.an, isTrue);
+      expect(b.vorlauf, 7);
+      expect(b.stufe, ReminderUrgency.alarm);
+      expect(b.gestellt, isEmpty);
+      expect(b.probeSteht, isFalse);
+      // Der Bericht muss aus dem Befund in jedem Fall herauskommen.
+      expect(DepartureReminderService.bericht(b, now: jetzt),
+          contains('Wecker zum Losfahren'));
+    });
+  });
 }

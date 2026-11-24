@@ -26,6 +26,38 @@ typedef Abfahrt = ({
   DateTime at,
 });
 
+/// Was der Wecker zum Losfahren gerade wirklich tut.
+///
+/// Gesammelt, nicht geraten: die Einstellung kommt aus den Vorgaben, der
+/// Plan aus [DepartureReminderService.plan], und ob ein Wecker steht, sagt
+/// Android selbst. Genau daran scheiterte die Suche bisher — „es kommt
+/// nichts" kann heissen, dass nichts geplant war, dass das Stellen
+/// fehlschlug, dass der Kanal stumm ist oder dass die Meldung noch kommt.
+/// Vier verschiedene Dinge, und von aussen sahen sie gleich aus.
+typedef Weckerbefund = ({
+  bool an,
+  int vorlauf,
+  ReminderUrgency stufe,
+
+  /// Ob die App melden darf. `null`: Android hat nicht geantwortet.
+  bool? darfMelden,
+
+  /// Der Kanal zur eingestellten Stufe — null, wenn es ihn noch nicht gibt.
+  Kanalbefund? kanal,
+
+  /// Was gemeldet werden soll.
+  List<Abfahrt> geplant,
+
+  /// Welche Kennungen wirklich beim Wecker stehen — auch fremde.
+  Set<int> gestellt,
+
+  /// Ob die Probe aus dem Test-Knopf noch aussteht.
+  bool probeSteht,
+
+  /// Wie die letzte Meldung gestellt wurde ([ReminderService.zuletztGestellt]).
+  Weckweise? weise,
+});
+
 /// Meldet sich, bevor man losfahren muss.
 ///
 /// Nicht vor dem **Termin** — vor der **Abfahrt**. Wer um 8:00 anfangen muss
@@ -138,9 +170,9 @@ class DepartureReminderService {
   /// dieser Weg lief lange ins Leere, ohne dass es auffiel — die
   /// Test-Meldung in den Einstellungen benutzte `show()` und brauchte ihn
   /// gar nicht.
-  static Future<void> probeStellen(ReminderUrgency stufe,
+  static Future<Weckweise> probeStellen(ReminderUrgency stufe,
       {Duration warte = const Duration(seconds: 15)}) async {
-    await ReminderService.scheduleAt(
+    return ReminderService.scheduleAt(
       id: probeId,
       title: 'Probe: Losfahren',
       body: 'So meldet sich „${stufe.label}". Echte Hinweise kommen genauso.',
@@ -304,18 +336,30 @@ class DepartureReminderService {
 
         for (final a in termine) {
           final id = notificationId(a.id);
-          neu.add(id);
-          await ReminderService.scheduleAt(
-            id: id,
-            title: a.titel,
-            body: body(a),
-            scheduledAt: a.at,
-            channelId: channelId(stufe),
-            channelName: 'Losfahren (${stufe.label})',
-            channelDescription:
-                'Meldet sich, bevor man zu einem Termin losfahren muss.',
-            urgency: stufe,
-          );
+          try {
+            final weise = await ReminderService.scheduleAt(
+              id: id,
+              title: a.titel,
+              body: body(a),
+              scheduledAt: a.at,
+              channelId: channelId(stufe),
+              channelName: 'Losfahren (${stufe.label})',
+              channelDescription:
+                  'Meldet sich, bevor man zu einem Termin losfahren muss.',
+              urgency: stufe,
+            );
+            // Nur was wirklich steht, wird vermerkt. Sonst gilt beim
+            // naechsten Durchgang als „schon gestellt", was nie stand, und
+            // bekommt nie wieder einen Versuch.
+            if (weise != Weckweise.garnicht) neu.add(id);
+          } catch (e) {
+            // Eine Meldung, die Android ablehnt, darf nicht alle anderen
+            // mitnehmen: vorher brach der ganze Durchgang hier ab, die Liste
+            // der gestellten Wecker wurde nicht einmal geschrieben — und ein
+            // einziger kaputter Termin liess den Wecker verstummen.
+            FeedbackService.log(
+                'Abfahrt-Meldung fuer "${a.titel}" nicht stellbar: $e');
+          }
         }
       }
 
@@ -349,6 +393,178 @@ class DepartureReminderService {
       FeedbackService.log('Abo-Termine fuer die Abfahrt nicht geladen: $e');
     }
     return _ics;
+  }
+
+  // ── Diagnose ─────────────────────────────────────────────────────────────
+
+  /// Fragt alles ab, was erklaeren kann, warum nichts klingelt.
+  ///
+  /// Wirft nicht: jede Frage an Android faengt ihre Fehler selbst, und ohne
+  /// Datenbank bleibt der Plan eben leer. Eine Diagnose, die abstuerzt, ist
+  /// schlimmer als keine.
+  static Future<Weckerbefund> diagnose() async {
+    final prefs = await SharedPreferences.getInstance();
+    final vorlauf = prefs.getInt(prefLead) ?? defaultLeadMinutes;
+    final stufe = _stufeAus(prefs);
+
+    var termine = const <Abfahrt>[];
+    try {
+      termine = plan(
+        events: TravelService.resolveAll(
+            [...await LocalService.getAllEvents(), ...await _icsTermine()]),
+        todos: await LocalService.getAllTodos(),
+        now: DateTime.now(),
+        leadMinutes: vorlauf,
+      );
+    } catch (e) {
+      FeedbackService.log('Diagnose: Plan nicht berechenbar: $e');
+    }
+
+    final gestellt = await ReminderService.geplanteKennungen();
+    return (
+      an: prefs.getBool(prefAn) ?? true,
+      vorlauf: vorlauf,
+      stufe: stufe,
+      darfMelden: await ReminderService.darfMelden(),
+      kanal: await ReminderService.kanal(channelId(stufe)),
+      geplant: termine,
+      gestellt: gestellt,
+      probeSteht: gestellt.contains(probeId),
+      weise: ReminderService.zuletztGestellt,
+    );
+  }
+
+  /// Wie viele der geplanten Meldungen wirklich beim Wecker stehen.
+  static int stehen(Weckerbefund b) => b.geplant
+      .where((a) => b.gestellt.contains(notificationId(a.id)))
+      .length;
+
+  /// Der Befund als Text — zum Lesen und zum Mitschicken.
+  ///
+  /// Rein gerechnet, ohne Android und ohne Datenbank: so ist jede Zeile
+  /// pruefbar, und derselbe Text taugt im Fehlerbericht.
+  static String bericht(Weckerbefund b, {required DateTime now}) {
+    final z = <String>[
+      'Wecker zum Losfahren',
+      'Schalter: ${b.an ? 'an' : 'aus'}',
+      'Vorlauf: ${b.vorlauf} Min. vor der Abfahrt',
+      'Stufe: ${b.stufe.label} (Kanal ${channelId(b.stufe)})',
+      'Melden erlaubt: ${_jaNein(b.darfMelden)}',
+      _kanalZeile(b.kanal),
+    ];
+
+    final offen = stehen(b);
+    z.add('Geplant: ${b.geplant.length}, davon beim Wecker: $offen');
+    for (final a in b.geplant.take(_zeilen)) {
+      final steht = b.gestellt.contains(notificationId(a.id));
+      z.add('  ${_wann(a.at, now)} — ${a.titel} '
+          '(Abfahrt ${_hm(a.los)}, Termin ${_hm(a.start)}): '
+          '${steht ? 'Wecker steht' : 'KEIN Wecker'}');
+    }
+    if (b.geplant.length > _zeilen) {
+      z.add('  … und ${b.geplant.length - _zeilen} weitere');
+    }
+    z.add('Wecker insgesamt gestellt: ${b.gestellt.length}');
+    z.add('Letzte Meldung gestellt: ${b.weise?.label ?? 'seit dem Start '
+        'keine'}');
+    z.add('Probe aus dem Test-Knopf: '
+        '${b.probeSteht ? 'steht noch' : 'steht nicht'}');
+    z.add('');
+    z.add('Befund: ${_befund(b, offen)}');
+    return z.join('\n');
+  }
+
+  /// Wie viele Zeilen der Bericht einzeln aufzaehlt.
+  static const int _zeilen = 5;
+
+  static String _jaNein(bool? wert) => wert == null
+      ? 'keine Antwort von Android'
+      : wert
+          ? 'ja'
+          : 'nein';
+
+  static String _kanalZeile(Kanalbefund? k) {
+    if (k == null) {
+      return 'Kanal: noch nicht angelegt — in dieser Stufe hat es noch nie '
+          'geklingelt';
+    }
+    final aus = [
+      if (!k.ton) 'Ton aus',
+      if (!k.rutteln) 'Vibration aus',
+    ];
+    return 'Kanal: ${_wichtig(k.wichtigkeit)}'
+        '${aus.isEmpty ? '' : ', ${aus.join(', ')}'}';
+  }
+
+  /// Was eine Kanal-Wichtigkeit bedeutet. Android gibt die Zahl zurueck, die
+  /// der Benutzer in den Systemeinstellungen gesetzt hat — nicht die, die
+  /// die App beim Anlegen wollte.
+  static String _wichtig(int wert) => switch (wert) {
+        0 => 'blockiert — so kommt nichts an',
+        1 => 'minimal, nur in der Leiste',
+        2 => 'leise, ohne Ton',
+        3 => 'normal, mit Ton',
+        4 => 'hoch, mit Ton und Einblendung',
+        5 => 'höchste',
+        _ => 'unbekannt ($wert)',
+      };
+
+  /// Wann etwas ist, kurz genug fuer eine Zeile.
+  static String _wann(DateTime t, DateTime now) {
+    final tage = DateTime(t.year, t.month, t.day)
+        .difference(DateTime(now.year, now.month, now.day))
+        .inDays;
+    if (tage == 0) return 'heute ${_hm(t)}';
+    if (tage == 1) return 'morgen ${_hm(t)}';
+    return '${t.day}.${t.month}. ${_hm(t)}';
+  }
+
+  /// Der Satz, auf den es ankommt.
+  ///
+  /// Die Reihenfolge ist die Reihenfolge der Ursachen: was weiter vorn steht,
+  /// macht alles Weitere ohnehin wirkungslos. Ein ausgeschalteter Schalter
+  /// erklaert ein leeres Ergebnis vollstaendig, ein blockierter Kanal
+  /// erklaert einen stehenden Wecker, der nichts zeigt.
+  static String _befund(Weckerbefund b, int gestellt) {
+    if (!b.an) {
+      return 'Der Schalter steht auf aus — es wird nichts gemeldet.';
+    }
+    if (b.darfMelden == false) {
+      return 'Android lässt die App nicht melden. In den '
+          'Android-Einstellungen unter „Benachrichtigungen" erlauben.';
+    }
+    final k = b.kanal;
+    if (k != null && k.wichtigkeit == 0) {
+      return 'Der Kanal „${k.name}" ist in den Android-Einstellungen '
+          'blockiert. Der Wecker wird dann gestellt, aber nichts gezeigt.';
+    }
+    if (b.geplant.isEmpty) {
+      return 'Es gibt nichts zu melden: kein Termin und kein To-do in den '
+          'nächsten 7 Tagen hat eine Anfahrtszeit. Ohne Anfahrt gibt es '
+          'nichts loszufahren — die Zeit steht am Termin selbst oder als '
+          'Vorgabe beim Kalender.';
+    }
+    if (gestellt == 0) {
+      return 'Nichts davon steht beim Wecker. Das Stellen schlägt fehl — der '
+          'Grund steht im Protokoll unter „Fehler melden".';
+    }
+    if (b.weise == Weckweise.ungenau) {
+      return 'Die Wecker stehen, aber nur ungefähr: weckgenaue Meldungen '
+          'sind nicht erlaubt. Android legt sie dann mit anderen zusammen '
+          'und darf sie um viele Minuten verschieben — eine Probe nach 15 '
+          'Sekunden kommt so erst viel später. Erlauben unter '
+          'Android-Einstellungen → Apps → Kalender → „Weckerzeiten und '
+          'Erinnerungen".';
+    }
+    if (gestellt < b.geplant.length) {
+      return 'Nur $gestellt von ${b.geplant.length} Meldungen stehen beim '
+          'Wecker. Die übrigen hat Android abgelehnt; der Grund steht im '
+          'Protokoll.';
+    }
+    return 'Die Wecker stehen alle, und zwar weckgenau. Kommt trotzdem '
+        'nichts, verschluckt es das Handy: Kanal leiser gestellt, oder das '
+        'Akkusparen hält die App an. Unter Android-Einstellungen → Apps → '
+        'Kalender → Akku auf „Unbeschränkt" stellen.';
   }
 
   /// Nimmt die Meldung zu einem Eintrag zurueck — beim Loeschen.

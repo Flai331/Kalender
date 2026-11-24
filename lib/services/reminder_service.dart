@@ -11,6 +11,44 @@ import 'feedback_service.dart';
 import 'ics_service.dart';
 import 'local_service.dart';
 
+/// Wie eine geplante Meldung beim Handy angekommen ist.
+///
+/// Der Unterschied ist nicht kosmetisch: eine ungenaue Meldung legt Android
+/// mit anderen zusammen und darf sie um Minuten verschieben. Als Hinweis
+/// taugt das, als Wecker nicht. Wer stellt, soll das erfahren koennen —
+/// bisher stand der Rueckfall nur im Protokoll, und wer auf eine Meldung
+/// wartete, hielt eine verschobene fuer eine ausgefallene.
+enum Weckweise {
+  /// Gar nicht gestellt: der Zeitpunkt lag schon in der Vergangenheit.
+  garnicht('gar nicht gestellt'),
+
+  /// Auf die Minute, ueber den Wecker des Systems.
+  genau('weckgenau'),
+
+  /// Ungefaehr — Android darf verschieben, auch um mehr als eine
+  /// Viertelstunde. Die Beschriftung steht in der Diagnose und im Hinweis am
+  /// Test-Knopf, darum mit richtigem Umlaut.
+  ungenau('ungefähr');
+
+  const Weckweise(this.label);
+
+  /// Was in der Diagnose und im Hinweis steht.
+  final String label;
+}
+
+/// Was Android ueber einen Kanal weiss.
+///
+/// Nur die Felder, die erklaeren koennen, warum nichts zu hoeren war. Die
+/// Wichtigkeit steht als Zahl drin, weil Android genau die zurueckgibt:
+/// 0 heisst blockiert, 2 leise, 3 normal, 4 klingelt und blendet ein.
+typedef Kanalbefund = ({
+  String id,
+  String name,
+  int wichtigkeit,
+  bool ton,
+  bool rutteln,
+});
+
 class ReminderService {
   static final FlutterLocalNotificationsPlugin _notifications =
       FlutterLocalNotificationsPlugin();
@@ -44,11 +82,14 @@ class ReminderService {
     }
   }
 
+  /// Der Android-Teil des Plugins. Alles, was nur dort Sinn hat, geht
+  /// darueber — und ist auf anderen Plattformen und im Test einfach null.
+  static AndroidFlutterLocalNotificationsPlugin? get _android =>
+      _notifications.resolvePlatformSpecificImplementation<
+          AndroidFlutterLocalNotificationsPlugin>();
+
   static Future<void> requestPermissions() async {
-    await _notifications
-        .resolvePlatformSpecificImplementation<
-            AndroidFlutterLocalNotificationsPlugin>()
-        ?.requestNotificationsPermission();
+    await _android?.requestNotificationsPermission();
   }
 
   /// Alle aktiven Serien-Erinnerungen evaluieren und Notifications planen.
@@ -231,7 +272,9 @@ class ReminderService {
   ///
   /// Offen fuer andere Dienste (die Ortsvorschlaege und die
   /// Abfahrt-Erinnerung nutzen es), darum mit eigenem Kanal und Nutzlast.
-  static Future<void> scheduleAt({
+  ///
+  /// Gibt zurueck, wie es geklappt hat — siehe [Weckweise].
+  static Future<Weckweise> scheduleAt({
     required int id,
     required String title,
     required String body,
@@ -242,14 +285,14 @@ class ReminderService {
     String channelDescription = 'Kalender-gesteuerte Erinnerungen',
     ReminderUrgency urgency = ReminderUrgency.dringend,
   }) async {
-    if (scheduledAt.isBefore(DateTime.now())) return;
+    if (scheduledAt.isBefore(DateTime.now())) return Weckweise.garnicht;
     final androidDetails = androidFuer(
       urgency,
       channelId: channelId,
       channelName: channelName,
       channelDescription: channelDescription,
     );
-    await _stellen(
+    return _stellen(
       id: id,
       title: title,
       body: body,
@@ -258,6 +301,15 @@ class ReminderService {
       payload: payload,
     );
   }
+
+  static Weckweise? _zuletzt;
+
+  /// Wie die zuletzt geplante Meldung beim Handy ankam.
+  ///
+  /// `null`, wenn seit dem Start der App keine gestellt wurde. Steht hier
+  /// [Weckweise.ungenau], erklaert das eine Meldung, die „nicht kommt": sie
+  /// kommt, nur spaeter — Android legt ungenaue Wecker zusammen.
+  static Weckweise? get zuletztGestellt => _zuletzt;
 
   /// Ob schon einmal gemeldet wurde, dass es nur ungenau geht. Einmal je
   /// App-Lauf genügt — sonst stehen bei zwanzig Terminen zwanzig gleiche
@@ -272,7 +324,7 @@ class ReminderService {
   /// verweigern; das Plugin wirft dann `exact_alarms_not_permitted`. Eine
   /// Meldung, die ein paar Minuten später kommt, ist besser als keine — und
   /// vor allem besser als ein Fehler, der die ganze Planung abbricht.
-  static Future<void> _stellen({
+  static Future<Weckweise> _stellen({
     required int id,
     required String title,
     required String body,
@@ -295,6 +347,7 @@ class ReminderService {
 
     try {
       await versuch(AndroidScheduleMode.exactAllowWhileIdle);
+      return _zuletzt = Weckweise.genau;
     } on PlatformException catch (e) {
       if (e.code != 'exact_alarms_not_permitted') rethrow;
       if (!_ungenauGemeldet) {
@@ -303,6 +356,7 @@ class ReminderService {
             'Erinnerungen kommen ungefähr statt genau zur Zeit.');
       }
       await versuch(AndroidScheduleMode.inexactAllowWhileIdle);
+      return _zuletzt = Weckweise.ungenau;
     }
   }
 
@@ -320,6 +374,64 @@ class ReminderService {
       body,
       const NotificationDetails(android: androidDetails),
     );
+  }
+
+  // ── Nachfragen ───────────────────────────────────────────────────────────
+  //
+  // Drei Fragen an Android, mit denen sich „es kommt nichts" auseinander
+  // nehmen laesst. Keine wirft: eine Diagnose, die selbst abstuerzt, hilft
+  // niemandem, und auf anderen Plattformen gibt es die Antworten gar nicht.
+
+  /// Ob die App ueberhaupt melden darf.
+  ///
+  /// `null`, wenn Android nicht antwortet — das ist etwas anderes als „nein"
+  /// und soll im Befund auch anders dastehen.
+  static Future<bool?> darfMelden() async {
+    try {
+      return await _android?.areNotificationsEnabled();
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// Die Kennungen der Meldungen, die wirklich beim Wecker stehen.
+  ///
+  /// Der entscheidende Blick. Steht hier nichts, wurde nie ein Wecker
+  /// gestellt — dann liegt es am Stellen. Steht die Kennung hier und es
+  /// klingelt trotzdem nicht, liegt es am Kanal oder am Akkusparen des
+  /// Herstellers. Ohne diese Liste ist beides dasselbe „geht nicht".
+  static Future<Set<int>> geplanteKennungen() async {
+    try {
+      final offen = await _notifications.pendingNotificationRequests();
+      return offen.map((r) => r.id).toSet();
+    } catch (_) {
+      return const {};
+    }
+  }
+
+  /// Was Android ueber einen Kanal weiss — null, wenn es ihn nicht gibt.
+  ///
+  /// Kanaele entstehen erst, wenn die erste Meldung darin **gezeigt** wird.
+  /// „Noch nicht da" heisst also: in dieser Stufe hat es noch nie geklingelt.
+  static Future<Kanalbefund?> kanal(String id) async {
+    try {
+      final alle = await _android?.getNotificationChannels();
+      for (final k in alle ?? const <AndroidNotificationChannel>[]) {
+        if (k.id != id) continue;
+        return (
+          id: k.id,
+          name: k.name,
+          wichtigkeit: k.importance.value,
+          ton: k.playSound,
+          rutteln: k.enableVibration,
+        );
+      }
+      return null;
+    } catch (_) {
+      // Das Plugin stolpert ueber jede Wichtigkeit, die es nicht kennt.
+      // Dann wissen wir es eben nicht — und sagen das auch so.
+      return null;
+    }
   }
 
   static Future<void> cancelAll() async {

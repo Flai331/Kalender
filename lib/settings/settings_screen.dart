@@ -1,6 +1,7 @@
 ﻿import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart' show PlatformException;
+import 'package:flutter/services.dart'
+    show Clipboard, ClipboardData, PlatformException;
 import 'package:shared_preferences/shared_preferences.dart';
 import '../app_colors.dart';
 import '../models/reminder_urgency.dart';
@@ -803,17 +804,85 @@ class _SettingsScreenState extends State<SettingsScreen> {
   /// den Weg, den jede echte Erinnerung geht — Wecker über den AlarmManager,
   /// Empfänger, Kanal. Kommt die erste und die zweite nicht, liegt es nicht
   /// am Recht, sondern am Wecker.
+  ///
+  /// Darum sagt der Knopf jetzt auch, **wie** gestellt wurde. „Ungefähr"
+  /// heisst: die zweite Meldung kommt, aber Android darf sie um viele
+  /// Minuten verschieben — nach 15 Sekunden ist sie dann eben nicht da, und
+  /// das sieht wie ein Ausfall aus. Und ein Fehler beim Stellen ging vorher
+  /// stillschweigend unter: der Knopf meldete nichts, nicht einmal die
+  /// Fusszeile.
   Future<void> _testNotification() async {
-    await ReminderService.showTestNotification(
-      'Test-Erinnerung',
-      'Die App darf melden. Gleich kommt die zweite.',
-    );
-    await DepartureReminderService.probeStellen(_abfahrtStufe);
+    try {
+      await ReminderService.showTestNotification(
+        'Test-Erinnerung',
+        'Die App darf melden. Gleich kommt die zweite.',
+      );
+      final weise = await DepartureReminderService.probeStellen(_abfahrtStufe);
+      if (!mounted) return;
+      showInfoSnack(
+          context,
+          switch (weise) {
+            Weckweise.genau => 'Die zweite Meldung ist weckgenau auf 15 '
+                'Sekunden gestellt — die ist der eigentliche Test.',
+            Weckweise.ungenau =>
+              'Gestellt, aber nur ungefähr: weckgenaue Meldungen sind nicht '
+                  'erlaubt. Die zweite kann deutlich später kommen. Siehe '
+                  'Wecker-Diagnose.',
+            Weckweise.garnicht =>
+              'Die zweite Meldung wurde nicht gestellt — siehe '
+                  'Wecker-Diagnose.',
+          });
+    } catch (e) {
+      if (!mounted) return;
+      showErrorSnack(context, 'Die geplante Meldung liess sich nicht '
+          'stellen: $e');
+    }
+  }
+
+  /// Zeigt, was der Wecker gerade wirklich tut.
+  ///
+  /// „Geht nicht" kann vieles heissen: nichts geplant, nichts gestellt,
+  /// Kanal stumm, Meldung nur verschoben. Von aussen sehen alle vier gleich
+  /// aus — darum fragt dieser Knopf Android selbst und schreibt die Antwort
+  /// hin, zum Lesen und zum Mitschicken.
+  Future<void> _weckerDiagnose() async {
+    final befund = await DepartureReminderService.diagnose();
+    final text =
+        DepartureReminderService.bericht(befund, now: DateTime.now());
     if (!mounted) return;
-    showInfoSnack(
-        context,
-        'Die zweite Meldung kommt in 15 Sekunden — die ist der eigentliche '
-        'Test.');
+    await showDialog<void>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppColors.surface,
+        title: const Text('Wecker-Diagnose',
+            style: TextStyle(color: AppColors.textPrimary, fontSize: 15)),
+        content: SingleChildScrollView(
+          child: SelectableText(text,
+              style: const TextStyle(
+                  color: AppColors.textSecondary,
+                  fontSize: 12,
+                  height: 1.45)),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () async {
+              await Clipboard.setData(ClipboardData(text: text));
+              if (!ctx.mounted) return;
+              Navigator.pop(ctx);
+              if (!mounted) return;
+              showInfoSnack(context, 'Diagnose kopiert.');
+            },
+            child: const Text('Kopieren',
+                style: TextStyle(color: AppColors.primary)),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Schliessen',
+                style: TextStyle(color: AppColors.textSecondary)),
+          ),
+        ],
+      ),
+    );
   }
 
   // ── Update-Prüfung ────────────────────────────────────────────
@@ -1291,6 +1360,15 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 actionLabel: 'Testen',
                 actionColor: AppColors.primary,
                 onAction: _testNotification,
+              ),
+              _ActionTile(
+                icon: Icons.troubleshoot_outlined,
+                iconColor: AppColors.accent,
+                title: 'Wecker-Diagnose',
+                subtitle: 'Steht der Wecker wirklich? Android gefragt',
+                actionLabel: 'Prüfen',
+                actionColor: AppColors.accent,
+                onAction: _weckerDiagnose,
               ),
             ],
           ),
