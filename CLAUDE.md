@@ -169,6 +169,9 @@ Verschiebt überfällige pending Todos automatisch nach vorne:
 | Vorschlagsliste erscheint beim ersten Antippen des leeren Feldes nicht | `RawAutocomplete` rechnet die Vorschläge erst, wenn der Text sich **ändert** | Gewollt: Vorschläge beim Tippen. Soll es anders sein, braucht es einen eigenen `OverlayPortal` |
 | Vorlagen fehlen nach dem Einspielen einer Sicherung | `VorlagenService` hält die Liste im Speicher | `VorlagenService.neuLaden()` am Ende von `BackupService.restore`, wie `TravelService.load()` |
 | Nachgeschobenes To-do hängt 5 Minuten hinter der Jetzt-Linie statt davor | `Nachholen.fruehestens` zog `vorlauf` **ab**, damit die Linie durch den Block schneidet | `jetzt + vorlauf`; ein Block, der schon läuft, sieht aus wie etwas Verpasstes |
+| Jede **geplante** Meldung fällt im fertigen APK aus, im Debug läuft alles | Flutter schaltet R8 für jeden Release-Build selbst ein; R8 wirft die generischen Signaturen weg, und `flutter_local_notifications` legt seine Liste mit Gson ab → `TypeToken must be created with a type argument` | `android/app/proguard-rules.pro` (`-keepattributes Signature`, `TypeToken` behalten); Flutter hängt die Datei von allein an |
+| Die erste Benachrichtigung kommt, die zweite nicht | `show()` braucht kein Gson, `zonedSchedule` schon. Der Unterschied ist nicht „sofort gegen später", sondern „ohne gegen mit Ablage" | Immer beides prüfen: eine sofortige **und** eine geplante Meldung. Nur die geplante sagt etwas aus |
+| „Wecker insgesamt gestellt: 0", ohne dass je ein Fehler kam | `pendingNotificationRequests()` liest dieselbe Gson-Ablage, in die das Stellen schreibt. Der Lesefehler sah aus wie eine leere Liste | `geplanteKennungen()` gibt `Set<int>?`; `null` heißt **nicht feststellbar** und wird im Bericht so genannt |
 | Gebundenes To-do springt zurück, nachdem man es von Hand danebengezogen hat | Es hat keinen Gastgeber mehr — genau das ist das Zeichen zum Neusuchen | Gewollt. Soll es stehen bleiben, muss es **fest** sein; feste To-dos fasst die App nie an |
 
 
@@ -783,8 +786,15 @@ Antworten gar nicht:
 | Frage | Antwort | Was ein `null`/leer heißt |
 |-------|---------|---------------------------|
 | `darfMelden()` | `bool?` | `null` = Android hat nicht geantwortet, **nicht** „nein" |
-| `geplanteKennungen()` | `Set<int>` | leer = es steht kein einziger Wecker |
+| `geplanteKennungen()` | `Set<int>?` | leer = es steht kein einziger Wecker; `null` = **nicht feststellbar** |
 | `kanal(id)` | `Kanalbefund?` | `null` = Kanal gibt es nicht, in der Stufe hat es noch nie geklingelt |
+
+Der Unterschied zwischen `null` und leer ist bei `geplanteKennungen()` kein
+Feinschliff: das Plugin liest die Liste aus **derselben Ablage**, in die es
+beim Stellen schreibt. Ist die kaputt, ist beides kaputt — und wer daraus „es
+steht kein Wecker" macht, schickt den Leser zur Planung statt zur Ursache. Der
+Bericht schreibt deshalb „nicht feststellbar" und behauptet bei keiner Zeile
+„KEIN Wecker"; sie heißt dann `unklar`.
 
 Kanäle entstehen erst, wenn die erste Meldung darin **gezeigt** wird — „noch
 nicht angelegt" ist deshalb eine Aussage über die Vergangenheit, kein Fehler.
@@ -825,6 +835,48 @@ import 'package:flutter/services.dart';   // HardwareKeyboard
 import '../models/ics_source.dart';
 import '../todos/todo_edit_screen.dart';
 ```
+
+## R8 im Release-Build (`android/app/proguard-rules.pro`)
+
+**Das war die Ursache, nach der wir vier Runden gesucht haben.** Jede
+*geplante* Meldung fiel im fertigen APK aus — Serien-Erinnerungen,
+Orts-Vorschläge, der Wecker zum Losfahren. Im Debug lief alles.
+
+Flutter schaltet die Verkleinerung für **jeden** Release-Build selbst ein
+(`FlutterPlugin.kt`: `releaseBuildType.isMinifyEnabled = true`); im Workflow
+steht dazu keine Zeile, und in `build.gradle.kts` auch nicht. R8 wirft dabei
+die generischen Signaturen weg. `flutter_local_notifications` legt seine
+geplanten Meldungen mit Gson ab und braucht sie:
+
+```
+PlatformException(error, TypeToken must be created with a type argument:
+new TypeToken<ArrayList<NotificationDetails>>() {}; When using code shrinkers
+(ProGuard, R8, ...) make sure that generic signatures are preserved.)
+  at ...FlutterLocalNotificationsPlugin.loadScheduledNotifications
+  → saveScheduledNotification → zonedScheduleNotification → zonedSchedule
+```
+
+Drei Dinge daran sind gemein:
+
+- `show()` kommt ohne Gson aus und funktionierte weiter. Die Test-Meldung kam
+  also an, die 15 Sekunden später nicht — das sieht wie ein Rechte- oder
+  Weckerzeiten-Problem aus und ist keines.
+- Dasselbe Gson liest die Liste zurück. „Wecker insgesamt gestellt: 0" war
+  keine Antwort, sondern derselbe Absturz noch einmal.
+- „Kanal noch nicht angelegt" war Folge, nicht Ursache: Kanäle entstehen erst
+  beim ersten **gezeigten** Hinweis.
+
+Die Datei `android/app/proguard-rules.pro` behebt es; **Flutter hängt sie von
+allein an die Release-Regeln, sobald es sie gibt** — eine Zeile in
+`build.gradle.kts` braucht es nicht. Entscheidend sind `-keepattributes
+Signature` und das Behalten von `TypeToken` samt seinen anonymen Unterklassen.
+
+Merke für alles Künftige: R8 läuft **nur** im Release. Ein Fehler dieser Art
+taucht in keinem Test, keinem `flutter run` und keinem Emulator-Debug auf,
+sondern erst im APK aus dem Workflow. Wer eine Bibliothek einbaut, die zur
+Laufzeit über Typen nachdenkt (Gson, Reflection, `fromJson` über Generics),
+trägt ihre Regeln dort ein. `test/release_build_test.dart` hält die
+wichtigsten Zeilen fest, damit sie niemand still wieder löscht.
 
 ## Selbst-Update (wie in RHS Einsatz)
 

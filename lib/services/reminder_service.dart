@@ -427,16 +427,22 @@ class ReminderService {
 
   /// Die Kennungen der Meldungen, die wirklich beim Wecker stehen.
   ///
-  /// Der entscheidende Blick. Steht hier nichts, wurde nie ein Wecker
-  /// gestellt — dann liegt es am Stellen. Steht die Kennung hier und es
+  /// Der entscheidende Blick. Ist die Menge leer, wurde nie ein Wecker
+  /// gestellt — dann liegt es am Stellen. Steht eine Kennung darin und es
   /// klingelt trotzdem nicht, liegt es am Kanal oder am Akkusparen des
   /// Herstellers. Ohne diese Liste ist beides dasselbe „geht nicht".
-  static Future<Set<int>> geplanteKennungen() async {
+  ///
+  /// **`null` heisst „nicht feststellbar" und ist etwas anderes als leer.**
+  /// Das Plugin liest die Liste aus derselben Ablage, in die es beim Stellen
+  /// schreibt — geht das Stellen kaputt, geht auch das Nachsehen kaputt. Wer
+  /// daraus „es steht kein Wecker" macht, zeigt auf die falsche Stelle;
+  /// genau das ist hier einmal passiert.
+  static Future<Set<int>?> geplanteKennungen() async {
     try {
       final offen = await _notifications.pendingNotificationRequests();
       return offen.map((r) => r.id).toSet();
     } catch (_) {
-      return const {};
+      return null;
     }
   }
 

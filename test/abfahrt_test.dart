@@ -362,7 +362,8 @@ void main() {
       Kanalbefund? kanal = kanalDa,
       List<Abfahrt> geplant = const [],
       Set<int>? gestellt,
-      bool probeSteht = false,
+      bool gestelltUnbekannt = false,
+      bool? probeSteht = false,
       Weckweise? weise = Weckweise.genau,
       Stellversuch versuch = const (weise: Weckweise.genau, fehler: null),
       List<String> protokoll = const [],
@@ -375,10 +376,15 @@ void main() {
           kanal: kanal,
           geplant: geplant,
           // Ohne Angabe steht alles Geplante auch wirklich beim Wecker.
-          gestellt: gestellt ??
-              geplant
-                  .map((a) => DepartureReminderService.notificationId(a.id))
-                  .toSet(),
+          // `gestelltUnbekannt` ist der dritte Fall: Android hat die Frage
+          // nicht beantwortet. Weglassen kann das nicht heissen, sonst
+          // waere es der Normalfall.
+          gestellt: gestelltUnbekannt
+              ? null
+              : gestellt ??
+                  geplant
+                      .map((a) => DepartureReminderService.notificationId(a.id))
+                      .toSet(),
           probeSteht: probeSteht,
           weise: weise,
           versuch: versuch,
@@ -553,6 +559,24 @@ void main() {
           isNot(contains('Protokoll:')));
     });
 
+    test('nicht feststellbar ist nicht dasselbe wie keine', () {
+      final t = text(befund(
+        geplant: [eintrag('a')],
+        gestelltUnbekannt: true,
+        probeSteht: null,
+      ));
+      expect(t, contains('davon beim Wecker: nicht feststellbar'));
+      expect(t, contains('Wecker insgesamt gestellt: nicht feststellbar'));
+      expect(t, contains('Termin a (Abfahrt 07:40, Termin 08:00): unklar'));
+      expect(t, isNot(contains('KEIN Wecker')),
+          reason: 'wir wissen es nicht — behaupten duerfen wir es nicht');
+      expect(t, contains('kann gar nicht sagen'));
+      expect(
+        DepartureReminderService.stehen(befund(gestelltUnbekannt: true)),
+        isNull,
+      );
+    });
+
     test('Vorlauf, Stufe und Kanal stehen oben', () {
       final t = text(steht(vorlauf: 20, stufe: ReminderUrgency.alarm));
       expect(t, contains('Vorlauf: 20 Min.'));
@@ -641,8 +665,13 @@ void main() {
       expect(await ReminderService.darfMelden(), isNull);
     });
 
-    test('gestellte Kennungen ohne Plattform: leer statt Fehler', () async {
-      expect(await ReminderService.geplanteKennungen(), isEmpty);
+    test('gestellte Kennungen ohne Plattform: unbekannt, nicht leer',
+        () async {
+      // Der Unterschied ist der ganze Punkt. Das Plugin liest die Liste aus
+      // derselben Ablage, in die es beim Stellen schreibt: geht das Stellen
+      // kaputt, geht auch das Nachsehen kaputt. Wer daraus „es steht kein
+      // Wecker" macht, zeigt auf die falsche Stelle.
+      expect(await ReminderService.geplanteKennungen(), isNull);
     });
 
     test('Kanal ohne Plattform: unbekannt statt Fehler', () async {
@@ -659,8 +688,8 @@ void main() {
       expect(b.an, isTrue);
       expect(b.vorlauf, 7);
       expect(b.stufe, ReminderUrgency.alarm);
-      expect(b.gestellt, isEmpty);
-      expect(b.probeSteht, isFalse);
+      expect(b.gestellt, isNull);
+      expect(b.probeSteht, isNull);
       // Ohne Plattform muss der Stellversuch scheitern — und gefangen sein.
       expect(b.versuch.fehler, isNotNull);
       expect(b.versuch.weise, isNull);

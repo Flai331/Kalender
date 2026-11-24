@@ -56,10 +56,12 @@ typedef Weckerbefund = ({
   List<Abfahrt> geplant,
 
   /// Welche Kennungen wirklich beim Wecker stehen — auch fremde.
-  Set<int> gestellt,
+  /// `null`: Android hat es nicht sagen koennen.
+  Set<int>? gestellt,
 
-  /// Ob die Probe aus dem Test-Knopf noch aussteht.
-  bool probeSteht,
+  /// Ob die eben gestellte Probe danach beim Wecker steht.
+  /// `null`: nicht feststellbar.
+  bool? probeSteht,
 
   /// Wie die letzte Meldung gestellt wurde ([ReminderService.zuletztGestellt]).
   Weckweise? weise,
@@ -450,7 +452,7 @@ class DepartureReminderService {
       kanal: await ReminderService.kanal(channelId(stufe)),
       geplant: termine,
       gestellt: gestellt,
-      probeSteht: gestellt.contains(probeId),
+      probeSteht: gestellt?.contains(probeId),
       weise: ReminderService.zuletztGestellt,
     );
   }
@@ -483,10 +485,15 @@ class DepartureReminderService {
         .toList();
   }
 
-  /// Wie viele der geplanten Meldungen wirklich beim Wecker stehen.
-  static int stehen(Weckerbefund b) => b.geplant
-      .where((a) => b.gestellt.contains(notificationId(a.id)))
-      .length;
+  /// Wie viele der geplanten Meldungen wirklich beim Wecker stehen —
+  /// `null`, wenn Android es nicht sagen konnte.
+  static int? stehen(Weckerbefund b) {
+    final gestellt = b.gestellt;
+    if (gestellt == null) return null;
+    return b.geplant
+        .where((a) => gestellt.contains(notificationId(a.id)))
+        .length;
+  }
 
   /// Der Befund als Text — zum Lesen und zum Mitschicken.
   ///
@@ -503,22 +510,27 @@ class DepartureReminderService {
     ];
 
     final offen = stehen(b);
-    z.add('Geplant: ${b.geplant.length}, davon beim Wecker: $offen');
+    z.add('Geplant: ${b.geplant.length}, davon beim Wecker: '
+        '${offen ?? 'nicht feststellbar'}');
     for (final a in b.geplant.take(_zeilen)) {
-      final steht = b.gestellt.contains(notificationId(a.id));
+      final marke = switch (b.gestellt?.contains(notificationId(a.id))) {
+        true => 'Wecker steht',
+        false => 'KEIN Wecker',
+        null => 'unklar',
+      };
       z.add('  ${_wann(a.at, now)} — ${a.titel} '
-          '(Abfahrt ${_hm(a.los)}, Termin ${_hm(a.start)}): '
-          '${steht ? 'Wecker steht' : 'KEIN Wecker'}');
+          '(Abfahrt ${_hm(a.los)}, Termin ${_hm(a.start)}): $marke');
     }
     if (b.geplant.length > _zeilen) {
       z.add('  … und ${b.geplant.length - _zeilen} weitere');
     }
-    z.add('Wecker insgesamt gestellt: ${b.gestellt.length}');
+    z.add('Wecker insgesamt gestellt: '
+        '${b.gestellt?.length ?? 'nicht feststellbar'}');
     z.add('Letzte Meldung gestellt: ${b.weise?.label ?? 'seit dem Start '
         'keine'}');
     z.add('Stellversuch jetzt: '
         '${b.versuch.fehler ?? b.versuch.weise?.label ?? 'nicht versucht'}');
-    z.add('Probe steht danach: ${b.probeSteht ? 'ja' : 'nein'}');
+    z.add('Probe steht danach: ${_jaNein(b.probeSteht)}');
     if (b.protokoll.isNotEmpty) {
       z.add('');
       z.add('Protokoll:');
@@ -582,7 +594,7 @@ class DepartureReminderService {
   /// macht alles Weitere ohnehin wirkungslos. Ein ausgeschalteter Schalter
   /// erklaert ein leeres Ergebnis vollstaendig, ein blockierter Kanal
   /// erklaert einen stehenden Wecker, der nichts zeigt.
-  static String _befund(Weckerbefund b, int gestellt) {
+  static String _befund(Weckerbefund b, int? gestellt) {
     if (!b.an) {
       return 'Der Schalter steht auf aus — es wird nichts gemeldet.';
     }
@@ -595,7 +607,12 @@ class DepartureReminderService {
       return 'Das Stellen selbst schlägt fehl: $fehler — das ist die '
           'Ursache, alles andere ist Folge.';
     }
-    if (b.versuch.weise != null && !b.probeSteht) {
+    if (gestellt == null) {
+      return 'Android kann gar nicht sagen, welche Wecker stehen. Das Plugin '
+          'liest sie aus derselben Ablage, in die es beim Stellen schreibt — '
+          'ist die kaputt, ist beides kaputt. Der Fehler steht im Protokoll.';
+    }
+    if (b.versuch.weise != null && b.probeSteht == false) {
       return 'Android nimmt die Meldung an, merkt sie sich aber nicht: der '
           'Versuch lief ohne Fehler durch, und danach steht trotzdem kein '
           'Wecker. Das passt zu einem Empfänger, den das System nicht '
