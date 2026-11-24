@@ -9,6 +9,7 @@ import 'models/todo.dart';
 import 'services/backup_service.dart';
 import 'services/departure_reminder_service.dart';
 import 'services/feedback_service.dart';
+import 'services/listen_service.dart';
 import 'services/local_service.dart';
 import 'models/calendar_event.dart';
 import 'places/place_suggest_screen.dart';
@@ -59,6 +60,10 @@ void main() async {
   // Namen und Farben der Kategorien; ohne sie zeigen Termine und Todos nur
   // ihren Schluessel.
   await CategoryService.load();
+
+  // Die Listen der To-dos; ohne sie weiss keine Karte, in welcher Liste sie
+  // steht, und die Schublade waere leer.
+  await ListenService.laden();
 
   // Serien-Erinnerungen einplanen. Muss nach LocalService.init laufen.
   // Bewusst nicht awaited: die Fallback-Regel fragt Outlook ab, und

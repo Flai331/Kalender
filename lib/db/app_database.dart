@@ -106,6 +106,15 @@ class VorlagenCache extends Table {
   Set<Column> get primaryKey => {userId};
 }
 
+class TodoListenCache extends Table {
+  TextColumn get userId => text()();
+  TextColumn get data => text()();
+  IntColumn get updatedAt => integer()();
+
+  @override
+  Set<Column> get primaryKey => {userId};
+}
+
 @DriftDatabase(tables: [
   EventsCache,
   TodosCache,
@@ -116,6 +125,7 @@ class VorlagenCache extends Table {
   CategoriesCache,
   PlacesCache,
   VorlagenCache,
+  TodoListenCache,
 ])
 class AppDatabase extends _$AppDatabase {
   AppDatabase() : super(_openConnection());
@@ -124,7 +134,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase.forTesting(super.executor);
 
   @override
-  int get schemaVersion => 8;
+  int get schemaVersion => 9;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -165,6 +175,11 @@ class AppDatabase extends _$AppDatabase {
           // uebernehmen.
           if (from < 8) {
             await m.createTable(vorlagenCache);
+          }
+          // v9: Listen und Ordner fuer die To-dos. Neu; die Liste am To-do
+          // steckt im JSON-Beutel und braucht keine Wanderung.
+          if (from < 9) {
+            await m.createTable(todoListenCache);
           }
         },
       );

@@ -10,6 +10,7 @@ import '../models/annual_event.dart';
 import '../models/series_reminder.dart';
 import '../models/yearly_checklist.dart';
 import '../models/place.dart';
+import '../models/todo_liste.dart';
 import '../models/vorlage.dart';
 import '../models/week_note.dart';
 import '../models/app_category.dart';
@@ -606,6 +607,63 @@ class LocalService {
         );
   }
 
+  // ── To-do-Listen ──────────────────────────────────────────────────────────
+
+  static Future<List<TodoListe>> getTodoListen() async {
+    final rows = await (_db.select(_db.todoListenCache)
+          ..where((c) => c.userId.equals(_uid)))
+        .get();
+    if (rows.isEmpty) return [];
+    try {
+      return TodoListe.listFromJson(rows.first.data);
+    } catch (_) {
+      // Lieber keine Listen als ein Absturz beim Oeffnen: ohne Listen steht
+      // alles in der Standardliste, nichts geht verloren.
+      return [];
+    }
+  }
+
+  static Future<void> saveTodoListen(List<TodoListe> items) =>
+      _writeTodoListen(items);
+
+  /// Wie [saveTodoListen]; eigener Name fuer das Einspielen einer Sicherung.
+  static Future<void> seedTodoListen(List<TodoListe> items) =>
+      _writeTodoListen(items);
+
+  static Future<void> _writeTodoListen(List<TodoListe> items) async {
+    await _db.into(_db.todoListenCache).insertOnConflictUpdate(
+          TodoListenCacheCompanion(
+            userId: Value(_uid),
+            data: Value(TodoListe.listToJson(items)),
+            updatedAt: Value(DateTime.now().millisecondsSinceEpoch),
+          ),
+        );
+  }
+
+  /// Wie viele To-dos in dieser Liste stehen — erledigte mitgezaehlt.
+  static Future<int> countInListe(String id) async {
+    final todos = await getAllTodos();
+    return todos.where((t) => t.listeId == id).length;
+  }
+
+  /// Haengt alle To-dos von [von] nach [nach] um und gibt zurueck, wie viele
+  /// es waren. `null` als Ziel heisst Standardliste.
+  ///
+  /// Gedacht fuer das Loeschen einer Liste: ohne das zeigten die To-dos auf
+  /// eine Liste, die es nicht mehr gibt. Sichtbar waeren sie trotzdem — der
+  /// Dienst faellt auf die Standardliste zurueck —, aber „Liste loeschen"
+  /// soll aufraeumen und nicht Reste hinterlassen.
+  static Future<int> todosUmhaengen(String von, String? nach) async {
+    if (von == nach) return 0;
+    var geaendert = 0;
+    for (final todo in await getAllTodos()) {
+      if (todo.listeId != von) continue;
+      await saveTodo(todo.copyWith(listeId: nach));
+      geaendert++;
+    }
+    return geaendert;
+  }
+
   // ── Alles loeschen ────────────────────────────────────────────────────────
 
   /// Raeumt alle Daten dieses Benutzers weg.
@@ -634,6 +692,9 @@ class LocalService {
       await (_db.delete(_db.placesCache)..where((t) => t.userId.equals(_uid)))
           .go();
       await (_db.delete(_db.vorlagenCache)..where((t) => t.userId.equals(_uid)))
+          .go();
+      await (_db.delete(_db.todoListenCache)
+            ..where((t) => t.userId.equals(_uid)))
           .go();
     });
   }

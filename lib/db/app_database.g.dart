@@ -2652,6 +2652,272 @@ class VorlagenCacheCompanion extends UpdateCompanion<VorlagenCacheData> {
   }
 }
 
+class $TodoListenCacheTable extends TodoListenCache
+    with TableInfo<$TodoListenCacheTable, TodoListenCacheData> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $TodoListenCacheTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _userIdMeta = const VerificationMeta('userId');
+  @override
+  late final GeneratedColumn<String> userId = GeneratedColumn<String>(
+    'user_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _dataMeta = const VerificationMeta('data');
+  @override
+  late final GeneratedColumn<String> data = GeneratedColumn<String>(
+    'data',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _updatedAtMeta = const VerificationMeta(
+    'updatedAt',
+  );
+  @override
+  late final GeneratedColumn<int> updatedAt = GeneratedColumn<int>(
+    'updated_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [userId, data, updatedAt];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'todo_listen_cache';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<TodoListenCacheData> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('user_id')) {
+      context.handle(
+        _userIdMeta,
+        userId.isAcceptableOrUnknown(data['user_id']!, _userIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_userIdMeta);
+    }
+    if (data.containsKey('data')) {
+      context.handle(
+        _dataMeta,
+        this.data.isAcceptableOrUnknown(data['data']!, _dataMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_dataMeta);
+    }
+    if (data.containsKey('updated_at')) {
+      context.handle(
+        _updatedAtMeta,
+        updatedAt.isAcceptableOrUnknown(data['updated_at']!, _updatedAtMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_updatedAtMeta);
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {userId};
+  @override
+  TodoListenCacheData map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return TodoListenCacheData(
+      userId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}user_id'],
+      )!,
+      data: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}data'],
+      )!,
+      updatedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}updated_at'],
+      )!,
+    );
+  }
+
+  @override
+  $TodoListenCacheTable createAlias(String alias) {
+    return $TodoListenCacheTable(attachedDatabase, alias);
+  }
+}
+
+class TodoListenCacheData extends DataClass
+    implements Insertable<TodoListenCacheData> {
+  final String userId;
+  final String data;
+  final int updatedAt;
+  const TodoListenCacheData({
+    required this.userId,
+    required this.data,
+    required this.updatedAt,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['user_id'] = Variable<String>(userId);
+    map['data'] = Variable<String>(data);
+    map['updated_at'] = Variable<int>(updatedAt);
+    return map;
+  }
+
+  TodoListenCacheCompanion toCompanion(bool nullToAbsent) {
+    return TodoListenCacheCompanion(
+      userId: Value(userId),
+      data: Value(data),
+      updatedAt: Value(updatedAt),
+    );
+  }
+
+  factory TodoListenCacheData.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return TodoListenCacheData(
+      userId: serializer.fromJson<String>(json['userId']),
+      data: serializer.fromJson<String>(json['data']),
+      updatedAt: serializer.fromJson<int>(json['updatedAt']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'userId': serializer.toJson<String>(userId),
+      'data': serializer.toJson<String>(data),
+      'updatedAt': serializer.toJson<int>(updatedAt),
+    };
+  }
+
+  TodoListenCacheData copyWith({
+    String? userId,
+    String? data,
+    int? updatedAt,
+  }) => TodoListenCacheData(
+    userId: userId ?? this.userId,
+    data: data ?? this.data,
+    updatedAt: updatedAt ?? this.updatedAt,
+  );
+  TodoListenCacheData copyWithCompanion(TodoListenCacheCompanion data) {
+    return TodoListenCacheData(
+      userId: data.userId.present ? data.userId.value : this.userId,
+      data: data.data.present ? data.data.value : this.data,
+      updatedAt: data.updatedAt.present ? data.updatedAt.value : this.updatedAt,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('TodoListenCacheData(')
+          ..write('userId: $userId, ')
+          ..write('data: $data, ')
+          ..write('updatedAt: $updatedAt')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(userId, data, updatedAt);
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is TodoListenCacheData &&
+          other.userId == this.userId &&
+          other.data == this.data &&
+          other.updatedAt == this.updatedAt);
+}
+
+class TodoListenCacheCompanion extends UpdateCompanion<TodoListenCacheData> {
+  final Value<String> userId;
+  final Value<String> data;
+  final Value<int> updatedAt;
+  final Value<int> rowid;
+  const TodoListenCacheCompanion({
+    this.userId = const Value.absent(),
+    this.data = const Value.absent(),
+    this.updatedAt = const Value.absent(),
+    this.rowid = const Value.absent(),
+  });
+  TodoListenCacheCompanion.insert({
+    required String userId,
+    required String data,
+    required int updatedAt,
+    this.rowid = const Value.absent(),
+  }) : userId = Value(userId),
+       data = Value(data),
+       updatedAt = Value(updatedAt);
+  static Insertable<TodoListenCacheData> custom({
+    Expression<String>? userId,
+    Expression<String>? data,
+    Expression<int>? updatedAt,
+    Expression<int>? rowid,
+  }) {
+    return RawValuesInsertable({
+      if (userId != null) 'user_id': userId,
+      if (data != null) 'data': data,
+      if (updatedAt != null) 'updated_at': updatedAt,
+      if (rowid != null) 'rowid': rowid,
+    });
+  }
+
+  TodoListenCacheCompanion copyWith({
+    Value<String>? userId,
+    Value<String>? data,
+    Value<int>? updatedAt,
+    Value<int>? rowid,
+  }) {
+    return TodoListenCacheCompanion(
+      userId: userId ?? this.userId,
+      data: data ?? this.data,
+      updatedAt: updatedAt ?? this.updatedAt,
+      rowid: rowid ?? this.rowid,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (userId.present) {
+      map['user_id'] = Variable<String>(userId.value);
+    }
+    if (data.present) {
+      map['data'] = Variable<String>(data.value);
+    }
+    if (updatedAt.present) {
+      map['updated_at'] = Variable<int>(updatedAt.value);
+    }
+    if (rowid.present) {
+      map['rowid'] = Variable<int>(rowid.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('TodoListenCacheCompanion(')
+          ..write('userId: $userId, ')
+          ..write('data: $data, ')
+          ..write('updatedAt: $updatedAt, ')
+          ..write('rowid: $rowid')
+          ..write(')'))
+        .toString();
+  }
+}
+
 abstract class _$AppDatabase extends GeneratedDatabase {
   _$AppDatabase(QueryExecutor e) : super(e);
   $AppDatabaseManager get managers => $AppDatabaseManager(this);
@@ -2669,6 +2935,9 @@ abstract class _$AppDatabase extends GeneratedDatabase {
   );
   late final $PlacesCacheTable placesCache = $PlacesCacheTable(this);
   late final $VorlagenCacheTable vorlagenCache = $VorlagenCacheTable(this);
+  late final $TodoListenCacheTable todoListenCache = $TodoListenCacheTable(
+    this,
+  );
   @override
   Iterable<TableInfo<Table, Object?>> get allTables =>
       allSchemaEntities.whereType<TableInfo<Table, Object?>>();
@@ -2683,6 +2952,7 @@ abstract class _$AppDatabase extends GeneratedDatabase {
     categoriesCache,
     placesCache,
     vorlagenCache,
+    todoListenCache,
   ];
 }
 
@@ -4326,6 +4596,178 @@ typedef $$VorlagenCacheTableProcessedTableManager =
       VorlagenCacheData,
       PrefetchHooks Function()
     >;
+typedef $$TodoListenCacheTableCreateCompanionBuilder =
+    TodoListenCacheCompanion Function({
+      required String userId,
+      required String data,
+      required int updatedAt,
+      Value<int> rowid,
+    });
+typedef $$TodoListenCacheTableUpdateCompanionBuilder =
+    TodoListenCacheCompanion Function({
+      Value<String> userId,
+      Value<String> data,
+      Value<int> updatedAt,
+      Value<int> rowid,
+    });
+
+class $$TodoListenCacheTableFilterComposer
+    extends Composer<_$AppDatabase, $TodoListenCacheTable> {
+  $$TodoListenCacheTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<String> get userId => $composableBuilder(
+    column: $table.userId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get data => $composableBuilder(
+    column: $table.data,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get updatedAt => $composableBuilder(
+    column: $table.updatedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+}
+
+class $$TodoListenCacheTableOrderingComposer
+    extends Composer<_$AppDatabase, $TodoListenCacheTable> {
+  $$TodoListenCacheTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<String> get userId => $composableBuilder(
+    column: $table.userId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get data => $composableBuilder(
+    column: $table.data,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get updatedAt => $composableBuilder(
+    column: $table.updatedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+}
+
+class $$TodoListenCacheTableAnnotationComposer
+    extends Composer<_$AppDatabase, $TodoListenCacheTable> {
+  $$TodoListenCacheTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<String> get userId =>
+      $composableBuilder(column: $table.userId, builder: (column) => column);
+
+  GeneratedColumn<String> get data =>
+      $composableBuilder(column: $table.data, builder: (column) => column);
+
+  GeneratedColumn<int> get updatedAt =>
+      $composableBuilder(column: $table.updatedAt, builder: (column) => column);
+}
+
+class $$TodoListenCacheTableTableManager
+    extends
+        RootTableManager<
+          _$AppDatabase,
+          $TodoListenCacheTable,
+          TodoListenCacheData,
+          $$TodoListenCacheTableFilterComposer,
+          $$TodoListenCacheTableOrderingComposer,
+          $$TodoListenCacheTableAnnotationComposer,
+          $$TodoListenCacheTableCreateCompanionBuilder,
+          $$TodoListenCacheTableUpdateCompanionBuilder,
+          (
+            TodoListenCacheData,
+            BaseReferences<
+              _$AppDatabase,
+              $TodoListenCacheTable,
+              TodoListenCacheData
+            >,
+          ),
+          TodoListenCacheData,
+          PrefetchHooks Function()
+        > {
+  $$TodoListenCacheTableTableManager(
+    _$AppDatabase db,
+    $TodoListenCacheTable table,
+  ) : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$TodoListenCacheTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$TodoListenCacheTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$TodoListenCacheTableAnnotationComposer($db: db, $table: table),
+          updateCompanionCallback:
+              ({
+                Value<String> userId = const Value.absent(),
+                Value<String> data = const Value.absent(),
+                Value<int> updatedAt = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => TodoListenCacheCompanion(
+                userId: userId,
+                data: data,
+                updatedAt: updatedAt,
+                rowid: rowid,
+              ),
+          createCompanionCallback:
+              ({
+                required String userId,
+                required String data,
+                required int updatedAt,
+                Value<int> rowid = const Value.absent(),
+              }) => TodoListenCacheCompanion.insert(
+                userId: userId,
+                data: data,
+                updatedAt: updatedAt,
+                rowid: rowid,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
+              .toList(),
+          prefetchHooksCallback: null,
+        ),
+      );
+}
+
+typedef $$TodoListenCacheTableProcessedTableManager =
+    ProcessedTableManager<
+      _$AppDatabase,
+      $TodoListenCacheTable,
+      TodoListenCacheData,
+      $$TodoListenCacheTableFilterComposer,
+      $$TodoListenCacheTableOrderingComposer,
+      $$TodoListenCacheTableAnnotationComposer,
+      $$TodoListenCacheTableCreateCompanionBuilder,
+      $$TodoListenCacheTableUpdateCompanionBuilder,
+      (
+        TodoListenCacheData,
+        BaseReferences<
+          _$AppDatabase,
+          $TodoListenCacheTable,
+          TodoListenCacheData
+        >,
+      ),
+      TodoListenCacheData,
+      PrefetchHooks Function()
+    >;
 
 class $AppDatabaseManager {
   final _$AppDatabase _db;
@@ -4348,4 +4790,6 @@ class $AppDatabaseManager {
       $$PlacesCacheTableTableManager(_db, _db.placesCache);
   $$VorlagenCacheTableTableManager get vorlagenCache =>
       $$VorlagenCacheTableTableManager(_db, _db.vorlagenCache);
+  $$TodoListenCacheTableTableManager get todoListenCache =>
+      $$TodoListenCacheTableTableManager(_db, _db.todoListenCache);
 }

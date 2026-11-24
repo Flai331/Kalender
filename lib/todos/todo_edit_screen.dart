@@ -9,12 +9,14 @@ import '../models/todo.dart';
 import '../models/calendar_event.dart';
 import '../services/departure_reminder_service.dart';
 import '../services/ics_service.dart';
+import '../services/listen_service.dart';
 import '../services/local_service.dart';
 import '../services/travel_service.dart';
 import '../models/ics_source.dart';
 import '../models/vorlage.dart';
 import '../services/vorlagen_service.dart';
 import '../widgets/feedback_button.dart';
+import '../widgets/listen_picker.dart';
 import '../widgets/save_feedback.dart';
 import '../widgets/vorlagen_feld.dart';
 
@@ -23,7 +25,12 @@ const _uuid = Uuid();
 class TodoEditScreen extends StatefulWidget {
   final Todo? todo;
 
-  const TodoEditScreen({super.key, this.todo});
+  /// Die Liste, in der ein **neues** To-do landen soll — die, die im
+  /// To-do-Bildschirm offen war. Beim Bearbeiten zaehlt die Liste des
+  /// To-dos selbst.
+  final String? listeId;
+
+  const TodoEditScreen({super.key, this.todo, this.listeId});
 
   @override
   State<TodoEditScreen> createState() => _TodoEditScreenState();
@@ -49,6 +56,7 @@ class _TodoEditScreenState extends State<TodoEditScreen> {
   late List<int> _allowedWeekdays;
   late DaylightMode _daylightMode;
   late List<SubTask> _subTasks;
+  late String _liste;
 
   bool get _isNew => widget.todo == null;
 
@@ -88,6 +96,7 @@ class _TodoEditScreenState extends State<TodoEditScreen> {
     _allowedWeekdays = List.from(t?.allowedWeekdays ?? []);
     _daylightMode = t?.daylightMode ?? DaylightMode.none;
     _subTasks = List.from(t?.subTasks ?? []);
+    _liste = ListenService.echteListe(t?.listeId ?? widget.listeId);
   }
 
   /// Das To-do, wie es gerade im Formular steht — noch ungespeichert.
@@ -129,6 +138,7 @@ class _TodoEditScreenState extends State<TodoEditScreen> {
         daylightMode: _daylightMode,
         repeatConfig: widget.todo?.repeatConfig,
         subTasks: _subTasks,
+        listeId: _liste,
       );
 
   /// Merkt sich das To-do als Vorlage — ohne es auf die Liste zu setzen.
@@ -164,6 +174,11 @@ class _TodoEditScreenState extends State<TodoEditScreen> {
       _allowedWeekdays = List.of(neu.allowedWeekdays ?? const []);
       _daylightMode = neu.daylightMode;
       _subTasks = List.of(neu.subTasks);
+      // Eine Vorlage aus der Zeit vor den Listen nennt keine. Dann bleibt
+      // die offene Liste stehen, statt in die Standardliste zu rutschen.
+      if (v.felder.containsKey('listeId')) {
+        _liste = ListenService.echteListe(neu.listeId);
+      }
     });
   }
 
@@ -331,6 +346,14 @@ class _TodoEditScreenState extends State<TodoEditScreen> {
           _DurationPicker(
             minutes: _estimatedMinutes,
             onChanged: (v) => setState(() => _estimatedMinutes = v),
+          ),
+          const SizedBox(height: 16),
+
+          // Kategorie
+          _SectionLabel('Liste'),
+          ListenPicker(
+            gewaehlt: _liste,
+            onChanged: (id) => setState(() => _liste = id),
           ),
           const SizedBox(height: 16),
 

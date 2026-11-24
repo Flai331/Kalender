@@ -14,6 +14,7 @@ import 'package:kalender/models/yearly_checklist.dart';
 import 'package:kalender/services/backup_service.dart';
 import 'package:kalender/services/category_service.dart';
 import 'package:kalender/services/local_service.dart';
+import 'package:kalender/services/listen_service.dart';
 import 'package:kalender/services/vorlagen_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -31,11 +32,15 @@ void main() {
     await LocalService.init(db);
     CategoryService.resetForTesting();
     VorlagenService.resetForTesting();
+    ListenService.resetForTesting();
     await CategoryService.load();
+    await ListenService.laden();
   });
   tearDown(() async => db.close());
 
   Future<void> bestand() async {
+    final liste = await ListenService.anlegen('Einkauf',
+        ordner: 'Privat', farbe: 0xFF69F0AE);
     await LocalService.saveEvent(CalendarEvent(
       id: 'e1',
       title: 'Besprechung',
@@ -49,6 +54,7 @@ void main() {
       estimatedMinutes: 15,
       createdAt: DateTime(2026, 11, 20),
       category: 'personal',
+      listeId: liste.id,
     ));
     await LocalService.saveAnnualEvent(AnnualEvent(
       id: 'a1',
@@ -132,6 +138,8 @@ void main() {
       expect(daten['categories'], hasLength(5));
       expect(daten['places'], hasLength(1));
       expect(daten['vorlagen'], hasLength(1));
+      // Standardliste und die angelegte.
+      expect(daten['todoListen'], hasLength(2));
       expect(daten['settings'], isA<Map>());
     });
 
@@ -205,6 +213,46 @@ void main() {
       expect(v.felder['travelBeforeOverride'], 20);
       expect(v.felder['travelAfterOverride'], 10);
       expect(v.felder['category'], 'work');
+    });
+
+    test('Listen kommen mit Ordner und Farbe zurueck', () async {
+      await bestand();
+      final text = await BackupService.build();
+      await LocalService.clearAll();
+      ListenService.resetForTesting();
+      expect(await LocalService.getTodoListen(), isEmpty);
+
+      await BackupService.restore(BackupService.parse(text));
+
+      final l = ListenService.alle
+          .firstWhere((l) => l.id != ListenService.standardId);
+      expect(l.name, 'Einkauf');
+      expect(l.ordner, 'Privat');
+      expect(l.farbe, 0xFF69F0AE);
+
+      // Und das To-do steht wieder darin.
+      final todos = await LocalService.getAllTodos();
+      expect(todos.single.listeId, l.id);
+    });
+
+    test('eine Sicherung ohne Listen legt die Standardliste an', () async {
+      await bestand();
+      final daten = BackupService.parse(await BackupService.build());
+      daten.remove('todoListen');
+      await LocalService.clearAll();
+      ListenService.resetForTesting();
+
+      await BackupService.restore(daten);
+
+      // Nichts wird heimatlos: die To-dos nennen keine Liste mehr, und
+      // genau dafuer ist die Standardliste da.
+      expect(ListenService.alle.single.id, ListenService.standardId);
+      final todos = await LocalService.getAllTodos();
+      expect(
+          todos.every((t) =>
+              ListenService.echteListe(t.listeId) ==
+              ListenService.standardId),
+          isTrue);
     });
 
     test('Kategorien kommen mit Namen und Farbe zurueck', () async {

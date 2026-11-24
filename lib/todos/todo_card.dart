@@ -2,6 +2,7 @@
 import '../app_colors.dart';
 import '../models/todo.dart';
 import '../models/calendar_event.dart' show RepeatType;
+import '../services/listen_service.dart';
 
 /// Draggable Todo-Karte für den Todo-Pool
 class TodoCard extends StatelessWidget {
@@ -9,11 +10,16 @@ class TodoCard extends StatelessWidget {
   final VoidCallback onTap;
   final VoidCallback onDelete;
 
+  /// Den Namen der Liste mit anzeigen. Gedacht fuer die Gesamtschau: in
+  /// einer offenen Liste steht er schon im Titel.
+  final bool zeigeListe;
+
   const TodoCard({
     super.key,
     required this.todo,
     required this.onTap,
     required this.onDelete,
+    this.zeigeListe = false,
   });
 
   @override
@@ -26,7 +32,7 @@ class TodoCard extends StatelessWidget {
       ),
       childWhenDragging: Opacity(
         opacity: 0.3,
-        child: _CardContent(todo: todo),
+        child: _CardContent(todo: todo, zeigeListe: zeigeListe),
       ),
       child: Dismissible(
         key: Key(todo.id),
@@ -43,7 +49,7 @@ class TodoCard extends StatelessWidget {
         ),
         child: GestureDetector(
           onTap: onTap,
-          child: _CardContent(todo: todo),
+          child: _CardContent(todo: todo, zeigeListe: zeigeListe),
         ),
       ),
     );
@@ -53,8 +59,13 @@ class TodoCard extends StatelessWidget {
 class _CardContent extends StatelessWidget {
   final Todo todo;
   final bool isDragging;
+  final bool zeigeListe;
 
-  const _CardContent({required this.todo, this.isDragging = false});
+  const _CardContent({
+    required this.todo,
+    this.isDragging = false,
+    this.zeigeListe = false,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -93,6 +104,27 @@ class _CardContent extends StatelessWidget {
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                 ),
+                if (zeigeListe) ...[
+                  const SizedBox(height: 3),
+                  Row(
+                    children: [
+                      Icon(Icons.circle,
+                          size: 8,
+                          color: Color(
+                              ListenService.farbeOf(todo.listeId))),
+                      const SizedBox(width: 5),
+                      Flexible(
+                        child: Text(
+                          ListenService.nameOf(todo.listeId),
+                          style: const TextStyle(
+                              fontSize: 11, color: AppColors.textSecondary),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
                 if (todo.subTasks.isNotEmpty)
                   Padding(
                     padding: const EdgeInsets.only(top: 2),

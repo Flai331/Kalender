@@ -11,6 +11,7 @@ import '../models/todo.dart';
 import '../models/yearly_checklist.dart';
 import '../services/daylight_service.dart';
 import '../services/departure_reminder_service.dart';
+import '../services/listen_service.dart';
 import '../services/local_service.dart';
 import '../services/place_reminder_service.dart';
 import '../services/shift_service.dart';
@@ -75,6 +76,11 @@ class WeekScreenState extends State<WeekScreen> {
   /// Siehe [_belegteZeitenHeute].
   (DateTime, List<Zeitblock>)? _belegtHeute;
   List<Todo> _unscheduled = [];
+
+  /// Auf welche Liste die Todo-Leiste gefiltert ist. `null` heisst: alle.
+  /// Nur hier gemerkt, nicht gespeichert — ein Filter ist ein Handgriff,
+  /// keine Einstellung.
+  String? _poolListe;
   List<YearlyChecklist> _pendingChecklists = [];
   List<IcsSource> _icsSources = [];
   bool _outlookAllowTodoDrop = false;
@@ -1103,8 +1109,16 @@ class WeekScreenState extends State<WeekScreen> {
     return StreamBuilder<List<Todo>>(
       stream: _unscheduledStream,
       builder: (ctx, snap) {
-        _unscheduled = snap.data ?? [];
-        if (_unscheduled.isEmpty) {
+        final alle = snap.data ?? [];
+        // Gefiltert wird nur, was die Leiste zeigt. Alles andere in der
+        // Wochenansicht arbeitet weiter mit allen offenen To-dos.
+        _unscheduled = _poolListe == null
+            ? alle
+            : alle
+                .where(
+                    (t) => ListenService.echteListe(t.listeId) == _poolListe)
+                .toList();
+        if (alle.isEmpty) {
           return Container(
             height: 52,
             color: AppColors.surface,
@@ -1119,71 +1133,165 @@ class WeekScreenState extends State<WeekScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Padding(
-                padding: EdgeInsets.only(left: 10, top: 4),
-                child: Text('TODOS – Haken erledigt, lange halten & ziehen',
-                    style: TextStyle(
-                        color: AppColors.textDisabled,
-                        fontSize: 9,
-                        fontWeight: FontWeight.w700,
-                        letterSpacing: 0.5)),
-              ),
+              _poolKopf(alle.length),
               Expanded(
-                child: ListView.separated(
-                  scrollDirection: Axis.horizontal,
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                  itemCount: _unscheduled.length,
-                  separatorBuilder: (context, index) => const SizedBox(width: 6),
-                  itemBuilder: (ctx, i) {
-                    final todo = _unscheduled[i];
-                    return LongPressDraggable<Todo>(
-                      data: todo,
-                      // Ohne diese beiden blieb das feine Raster nach einem
-                      // abgebrochenen Zug stehen: der naechste Zug fing bei
-                      // 1 Minute an und liess sich nicht mehr heranzoomen.
-                      onDragStarted: SnapState.begin,
-                      onDragEnd: (_) => SnapState.stop(),
-                      feedback: Material(
-                        color: Colors.transparent,
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 12, vertical: 6),
-                          decoration: BoxDecoration(
-                            color: AppColors.primary,
-                            borderRadius: BorderRadius.circular(8),
-                            boxShadow: [
-                              BoxShadow(
-                                  color: Colors.black26,
-                                  blurRadius: 6,
-                                  offset: const Offset(0, 3))
-                            ],
-                          ),
-                          child: Text(todo.title,
+                child: _unscheduled.isEmpty
+                    ? Align(
+                        alignment: Alignment.centerLeft,
+                        child: Padding(
+                          padding: const EdgeInsets.only(left: 10),
+                          child: Text(
+                              'In „${ListenService.nameOf(_poolListe)}" ist '
+                              'nichts offen',
                               style: const TextStyle(
-                                  color: Colors.white,
-                                  fontSize: 12,
-                                  fontWeight: FontWeight.w600)),
+                                  color: AppColors.textDisabled,
+                                  fontSize: 12)),
                         ),
-                      ),
-                      childWhenDragging: Opacity(
-                        opacity: 0.3,
-                        child: _TodoChip(todo: todo),
-                      ),
-                      child: GestureDetector(
-                        onTap: () => _onTodoTap(todo),
-                        child: _TodoChip(
-                          todo: todo,
-                          onToggleDone: () => _toggleTodoDone(todo),
-                        ),
-                      ),
-                    );
-                  },
-                ),
+                      )
+                    : _poolChips(),
               ),
             ],
           ),
         );
       },
+    );
+  }
+
+  /// Die Reihe Todo-Chips in der Leiste. Eigene Methode, damit der leere
+  /// Fall daneben stehen kann, ohne die Reihe zu verschachteln.
+  Widget _poolChips() {
+    return ListView.separated(
+      scrollDirection: Axis.horizontal,
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      itemCount: _unscheduled.length,
+      separatorBuilder: (context, index) => const SizedBox(width: 6),
+      itemBuilder: (ctx, i) {
+        final todo = _unscheduled[i];
+        return LongPressDraggable<Todo>(
+          data: todo,
+          // Ohne diese beiden blieb das feine Raster nach einem
+          // abgebrochenen Zug stehen: der naechste Zug fing bei
+          // 1 Minute an und liess sich nicht mehr heranzoomen.
+          onDragStarted: SnapState.begin,
+          onDragEnd: (_) => SnapState.stop(),
+          feedback: Material(
+            color: Colors.transparent,
+            child: Container(
+              padding: const EdgeInsets.symmetric(
+                  horizontal: 12, vertical: 6),
+              decoration: BoxDecoration(
+                color: AppColors.primary,
+                borderRadius: BorderRadius.circular(8),
+                boxShadow: [
+                  BoxShadow(
+                      color: Colors.black26,
+                      blurRadius: 6,
+                      offset: const Offset(0, 3))
+                ],
+              ),
+              child: Text(todo.title,
+                  style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600)),
+            ),
+          ),
+          childWhenDragging: Opacity(
+            opacity: 0.3,
+            child: _TodoChip(todo: todo),
+          ),
+          child: GestureDetector(
+            onTap: () => _onTodoTap(todo),
+            child: _TodoChip(
+              todo: todo,
+              onToggleDone: () => _toggleTodoDone(todo),
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  /// Die Kopfzeile der Todo-Leiste: Hinweis, und — sobald es mehr als eine
+  /// Liste gibt — der Filter auf eine davon.
+  ///
+  /// Wer nie eine zweite Liste anlegt, sieht hier nichts Neues.
+  Widget _poolKopf(int gesamt) {
+    final mehrere = ListenService.alle.length > 1;
+    return SizedBox(
+      height: 20,
+      child: Padding(
+        padding: const EdgeInsets.only(left: 10, right: 4, top: 4),
+        child: Row(
+          children: [
+            Expanded(
+              child: Text(
+                  mehrere
+                      ? 'TODOS – lange halten & ziehen'
+                      : 'TODOS – Haken erledigt, lange halten & ziehen',
+                  style: const TextStyle(
+                      color: AppColors.textDisabled,
+                      fontSize: 9,
+                      fontWeight: FontWeight.w700,
+                      letterSpacing: 0.5),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis),
+            ),
+            if (mehrere) _poolFilter(gesamt),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _poolFilter(int gesamt) {
+    final name = _poolListe == null
+        ? 'Alle Listen'
+        : ListenService.nameOf(_poolListe);
+    return PopupMenuButton<String>(
+      padding: EdgeInsets.zero,
+      tooltip: 'Nach Liste filtern',
+      color: AppColors.card,
+      position: PopupMenuPosition.over,
+      onSelected: (wahl) => setState(
+          () => _poolListe = wahl == _alleListen ? null : wahl),
+      itemBuilder: (_) => [
+        PopupMenuItem(
+          value: _alleListen,
+          child: Text('Alle Listen ($gesamt)'),
+        ),
+        for (final l in ListenService.alle)
+          PopupMenuItem(
+            value: l.id,
+            child: Row(
+              children: [
+                Icon(Icons.circle, size: 10, color: Color(l.farbe)),
+                const SizedBox(width: 8),
+                Text(l.imOrdner ? '${l.ordner} · ${l.name}' : l.name),
+              ],
+            ),
+          ),
+      ],
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (_poolListe != null) ...[
+            Icon(Icons.circle,
+                size: 8, color: Color(ListenService.farbeOf(_poolListe))),
+            const SizedBox(width: 4),
+          ],
+          Text(name,
+              style: TextStyle(
+                  color: _poolListe == null
+                      ? AppColors.textDisabled
+                      : AppColors.textSecondary,
+                  fontSize: 9,
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: 0.5)),
+          const Icon(Icons.arrow_drop_down,
+              size: 14, color: AppColors.textDisabled),
+        ],
+      ),
     );
   }
 
@@ -2198,6 +2306,10 @@ class _NowLine extends StatelessWidget {
 
 // ── Todo-Pool Chip ────────────────────────────────────────────────────────────
 
+/// Steht im Listen-Filter fuer „alle Listen" — eine Kennung, die keine
+/// echte Liste tragen kann.
+const String _alleListen = '\u0000alle';
+
 class _TodoChip extends StatelessWidget {
   final Todo todo;
 
@@ -2240,10 +2352,23 @@ class _TodoChip extends StatelessWidget {
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
               ),
-              Text(
-                '${todo.estimatedMinutes} min',
-                style: const TextStyle(
-                    color: AppColors.textDisabled, fontSize: 10),
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  // Der Punkt nur, wenn es ueberhaupt mehrere Listen gibt:
+                  // mit einer einzigen sagt er nichts und nimmt Platz.
+                  if (ListenService.alle.length > 1) ...[
+                    Icon(Icons.circle,
+                        size: 7,
+                        color: Color(ListenService.farbeOf(todo.listeId))),
+                    const SizedBox(width: 4),
+                  ],
+                  Text(
+                    '${todo.estimatedMinutes} min',
+                    style: const TextStyle(
+                        color: AppColors.textDisabled, fontSize: 10),
+                  ),
+                ],
               ),
             ],
           ),

@@ -267,6 +267,7 @@ void main() {
       expect(tables, contains('categories_cache'));
       expect(tables, contains('places_cache'));
       expect(tables, contains('vorlagen_cache'));
+      expect(tables, contains('todo_listen_cache'));
       expect(tables, isNot(contains('sync_queue')));
       expect(raw.userVersion, db.schemaVersion);
     });

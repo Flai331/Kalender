@@ -70,6 +70,12 @@ class Todo {
   final int pausedMinutes;
   final DateTime? pauseStart;
   final String category;
+
+  /// Die Liste, in der das To-do steht — wie bei Microsoft To Do gehoert es
+  /// in genau eine. `null` heisst Standardliste („Aufgaben"): so steht alles
+  /// da, was es vor den Listen schon gab, und nichts verschwindet.
+  final String? listeId;
+
   final DateTime createdAt;
   final String? outlookTaskId;  // Microsoft To Do Task ID
   final String? outlookListId;  // Microsoft To Do List ID
@@ -115,6 +121,7 @@ class Todo {
     this.pausedMinutes = 0,
     this.pauseStart,
     this.category = 'personal',
+    this.listeId,
     required this.createdAt,
     this.outlookTaskId,
     this.outlookListId,
@@ -193,6 +200,7 @@ class Todo {
     int? pausedMinutes,
     Object? pauseStart = _unset,
     String? category,
+    Object? listeId = _unset,
     DateTime? createdAt,
     Object? outlookTaskId = _unset,
     Object? outlookListId = _unset,
@@ -227,6 +235,7 @@ class Todo {
       pausedMinutes: pausedMinutes ?? this.pausedMinutes,
       pauseStart: pauseStart == _unset ? this.pauseStart : pauseStart as DateTime?,
       category: category ?? this.category,
+      listeId: listeId == _unset ? this.listeId : listeId as String?,
       createdAt: createdAt ?? this.createdAt,
       outlookTaskId: outlookTaskId == _unset ? this.outlookTaskId : outlookTaskId as String?,
       outlookListId: outlookListId == _unset ? this.outlookListId : outlookListId as String?,
@@ -263,6 +272,7 @@ class Todo {
         'pausedMinutes': pausedMinutes,
         'pauseStart': pauseStart?.toUtc().toIso8601String(),
         'category': category,
+        'listeId': listeId,
         'createdAt': createdAt.toUtc().toIso8601String(),
         'outlookTaskId': outlookTaskId,
         'outlookListId': outlookListId,
@@ -314,6 +324,7 @@ class Todo {
             ? DateTime.parse(json['pauseStart'] as String).toLocal()
             : null,
         category: json['category'] as String? ?? 'personal',
+        listeId: json['listeId'] as String?,
         createdAt: json['createdAt'] != null
             ? DateTime.parse(json['createdAt'] as String).toLocal()
             : DateTime.now(),

@@ -12,12 +12,14 @@ import '../models/calendar_event.dart';
 import '../models/place.dart';
 import '../models/series_reminder.dart';
 import '../models/todo.dart';
+import '../models/todo_liste.dart';
 import '../models/vorlage.dart';
 import '../models/week_note.dart';
 import '../models/yearly_checklist.dart';
 import 'category_service.dart';
 import 'local_service.dart';
 import 'travel_service.dart';
+import 'listen_service.dart';
 import 'vorlagen_service.dart';
 
 /// Was in einer Sicherung steckt — zum Anzeigen, bevor etwas passiert.
@@ -32,6 +34,7 @@ class BackupSummary {
   final int kategorien;
   final int orte;
   final int vorlagen;
+  final int listen;
   final int einstellungen;
 
   const BackupSummary({
@@ -45,6 +48,7 @@ class BackupSummary {
     required this.kategorien,
     this.orte = 0,
     this.vorlagen = 0,
+    this.listen = 0,
     required this.einstellungen,
   });
 
@@ -59,6 +63,7 @@ class BackupSummary {
         if (kategorien > 0) '$kategorien Kategorien',
         if (orte > 0) '$orte Orte',
         if (vorlagen > 0) '$vorlagen Vorlagen',
+        if (listen > 0) '$listen To-do-Listen',
         if (einstellungen > 0) '$einstellungen Einstellungen',
       ];
 }
@@ -150,6 +155,9 @@ class BackupService {
           (await LocalService.getPlaces()).map((p) => p.toJson()).toList(),
       'vorlagen':
           (await LocalService.getVorlagen()).map((v) => v.toJson()).toList(),
+      'todoListen': (await LocalService.getTodoListen())
+          .map((l) => l.toJson())
+          .toList(),
       'settings': await _settings(),
     };
     return const JsonEncoder.withIndent('  ').convert(daten);
@@ -379,6 +387,7 @@ class BackupService {
       kategorien: zaehle('categories'),
       orte: zaehle('places'),
       vorlagen: zaehle('vorlagen'),
+      listen: zaehle('todoListen'),
       einstellungen: einstellungen is Map ? einstellungen.length : 0,
     );
   }
@@ -406,6 +415,10 @@ class BackupService {
         .toList();
     final places = liste('places').map(Place.fromJson).toList();
     final vorlagen = liste('vorlagen').map(Vorlage.fromJson).toList();
+    final listen = liste('todoListen')
+        .map(TodoListe.fromJson)
+        .whereType<TodoListe>()
+        .toList();
 
     await LocalService.clearAll();
     await LocalService.seedEvents(events);
@@ -419,6 +432,12 @@ class BackupService {
     }
     await LocalService.seedPlaces(places);
     await LocalService.seedVorlagen(vorlagen);
+    // Eine Sicherung von vor den Listen bringt keine mit. Dann bleibt die
+    // Tabelle leer, und ListenService legt die Standardliste neu an —
+    // die To-dos stehen alle darin, weil sie keine Liste nennen.
+    if (listen.isNotEmpty) {
+      await LocalService.seedTodoListen(listen);
+    }
 
     final einstellungen = daten['settings'];
     if (einstellungen is Map) {
@@ -430,6 +449,7 @@ class BackupService {
     await TravelService.load();
     await CategoryService.load();
     await VorlagenService.neuLaden();
+    await ListenService.neuLaden();
   }
 
   // ── Einstellungen ─────────────────────────────────────────────────────────

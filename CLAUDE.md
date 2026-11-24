@@ -109,6 +109,8 @@ Verschiebt überfällige pending Todos automatisch nach vorne:
 - `dueWindowStartHour: int?`, `dueWindowEndHour: int?` — Erledigungszeitraum
 - `requiredCategory: String?`, `requiredCalendarId: String?` — die Bindung an
   einen Termin (siehe „Nur im Termin")
+- `listeId: String?` — die Liste, in der es steht (siehe „Listen und Ordner
+  für To-dos"); `null` heisst Standardliste
 - In copyWith (_unset-Pattern), toJson, fromJson
 
 ### Todo bearbeiten
@@ -132,6 +134,12 @@ Verschiebt überfällige pending Todos automatisch nach vorne:
 | Speichern-Knopf reagiert nicht mehr | `_saving = true` vor dem `await`, Exception (z.B. offline) → Flag wird nie zurückgesetzt | `try/finally` + `guardedAction()` aus `widgets/save_feedback.dart` |
 | Speichern schlägt still fehl | `await …save…()` ohne try/catch — Nutzer sieht keine Meldung | `guardedAction()` zeigt SnackBar + schreibt ins Protokoll |
 | Termin/Todo landet nicht in der Ansicht | Screen schreibt nicht über `LocalService` | `LocalService.saveEvent/saveTodo` (wie in `week_screen.dart`) |
+| To-do verschwindet nach dem Löschen einer Liste | `listeId` zeigt auf eine Liste, die es nicht mehr gibt | `ListenService.echteListe` fällt auf die Standardliste zurück; `loeschen` hängt zusätzlich wirklich um |
+| „Neuer Ordner" legt nichts an | Ein Ordner ist nur der Name an seinen Listen — ohne Liste gibt es ihn nicht | Ordner im Menü einer Liste anlegen (`inOrdner`), nicht für sich |
+| Schublade zeigt überall dieselbe Zahl | Gezählt wurde nach dem Filtern | Zahlen aus der **ungefilterten** Liste (`_anzahl(alle)`) |
+| „A Timer is still pending" im Widget-Test | Beim Abmelden von einem drift-Stream läuft ein Null-Sekunden-Zeitgeber | Am Testende `pumpWidget(SizedBox.shrink())` + `pump(Duration.zero)` (siehe `test/todo_listen_screen_test.dart`) |
+| `pumpAndSettle` läuft ewig | Der `StreamBuilder` zeigt noch den Kreisel, und der dreht sich endlos | Statt `pumpAndSettle` ein paar `pump(Duration(milliseconds: 20))` |
+| ListTile-Farbe verschluckt den Tipp-Schatten | `ListTile` in einem gefärbten `Container` | `tileColor` am `ListTile` selbst |
 | Plus-Knopf deckt das letzte To-do zu | Todo-Leiste als letztes Element der Body-Spalte; `endFloat` setzt den FAB an den Scaffold-Boden | Leiste in `bottomNavigationBar:` — dann hebt Flutter den FAB von selbst darüber, in der tatsächlichen Höhe |
 | Ranzoomen beim Ziehen bleibt aus | `_onDragMove` setzte den Ruhe-Zähler bei **jeder** Regung zurück; ein Daumen zittert um 1–2 px | Erst ab `_zittergrenze` (8 px) als Bewegung zählen |
 | Ranzoomen klappt gar nicht mehr, bis zum App-Neustart | Abgebrochener Zug ließ `SnapState` auf 1 Minute stehen; der nächste stand schon am Ende der Leiter | `SnapState.begin()` beim Start **jedes** Zuges, `stop()` an **jedem** Ende (auch `onDragEnd` der Todo-Leiste) |
@@ -205,6 +213,10 @@ Migration, Termine liegen als JSON-Blob in `events_cache.data`.
 Schema v8 bringt `vorlagen_cache`, genauso gebaut: eine Zeile je Benutzer mit
 allen Vorlagen als JSON-Liste.
 
+Schema v9 bringt `todo_listen_cache`, ebenso — die Reihenfolge der Listen
+gehört zur Liste. `Todo.listeId` brauchte **keine** Migration, To-dos liegen
+als JSON-Blob in `todos_cache.data`.
+
 Zeitraum-Abfragen (`eventsForRange`, `todosForRange`) nehmen alles mit, was in
 den Zeitraum **hineinreicht**, nicht nur was darin beginnt — sonst fehlt eine
 Reise über den Monatswechsel im zweiten Monat.
@@ -230,9 +242,10 @@ Migrationen sind in `test/annual_events_offline_test.dart` getestet
 (alte DB per rohem sqlite3 anlegen, dann `AppDatabase.forTesting(...)` öffnen).
 Getestet werden v1→v2, v2→v3, v3→v4, v4→v5, v5→v6 und der Sprung v1→v6.
 
-Aktueller Stand (Schema v8): `events_cache`, `todos_cache`,
+Aktueller Stand (Schema v9): `events_cache`, `todos_cache`,
 `annual_events_cache`, `series_reminders_cache`, `yearly_checklists_cache`,
-`week_notes_cache`, `categories_cache`, `places_cache`, `vorlagen_cache`.
+`week_notes_cache`, `categories_cache`, `places_cache`, `vorlagen_cache`,
+`todo_listen_cache`.
 
 Netz braucht die App nur für drei Dinge, alle ohne Konto:
 - ICS-Abos (`IcsService`) — auch die Outlook-Kalender kommen so herein,
@@ -326,6 +339,56 @@ verschobener fremder Dienst sperrte danach wieder den eigenen Tag.
 
 **Kein Migrationsschritt** — die Termine liegen als JSON im Cache, fehlendes
 `infoOnly` liest sich als `false`, Altbestand redet also weiter mit.
+
+## Listen und Ordner für To-dos (`models/todo_liste.dart`, `services/listen_service.dart`, `todos/listen_schublade.dart`)
+
+Wie bei Microsoft To Do: **Ordner** enthalten **Listen**, Listen enthalten
+To-dos. Ein To-do gehört in genau eine Liste (`Todo.listeId`).
+
+**Die Standardliste** (`ListenService.standardId == 'aufgaben'`, „Aufgaben")
+fängt alles auf: `listeId == null` *und* eine Kennung, die es nicht mehr gibt,
+zählen beide dazu (`ListenService.echteListe`). Darum kann kein To-do
+unsichtbar werden — nicht durch eine gelöschte Liste, nicht durch eine
+Sicherung von vor den Listen. Sie lässt sich nicht löschen, und `_mitStandard`
+setzt sie beim Laden wieder davor, wenn eine Sicherung sie nicht mitbringt.
+
+**Ein Ordner ist nur ein Name** an seinen Listen (`TodoListe.ordner`), genau
+wie `Place.group` bei den Orten — keine zweite Tabelle, keine zweite
+Verwaltung. Folgen davon:
+- Einen *leeren* Ordner gibt es nicht. „Neuer Ordner" steht darum nicht für
+  sich, sondern im Menü einer Liste („In Ordner" → „Neuer Ordner …")
+- Umbenennen fasst alle Listen des Ordners an (`ordnerUmbenennen`)
+- Die letzte Liste heraus, und der Ordner ist weg
+- `ordnerAufloesen` lässt die Listen stehen — in ihnen stecken die To-dos
+
+**Die Reihenfolge** steckt in der Liste selbst, nicht als Zahl am Eintrag
+(wie bei den Kategorien): `sortieren(alt, neu)` verschiebt. Die Ordner stehen
+in der Reihenfolge ihrer ersten Liste.
+
+**Löschen einer Liste** hängt ihre To-dos in die Standardliste um
+(`LocalService.todosUmhaengen`) — gelöscht wird keines. Der Dialog nennt die
+Zahl, bevor er fragt.
+
+**Wo das sichtbar wird:**
+- `todos/listen_schublade.dart` — die Seitenleiste: „Alle To-dos", die Listen
+  ohne Ordner, dann die Ordner als aufklappbare Gruppen. Verwalten
+  (umbenennen, Farbe, einordnen, löschen) über das `⋮` an der Zeile. Ein
+  Stream für den ganzen Bildschirm, nicht nur für den Rumpf: die Schublade
+  braucht dieselben To-dos für ihre Zahlen
+- `todos/todo_list_screen.dart` — filtert auf die offene Liste, zeigt sie im
+  Titel; in der Gesamtschau steht der Listenname an jeder Karte
+  (`TodoCard.zeigeListe`)
+- `widgets/listen_picker.dart` — die Auswahl im Formular, gebaut wie der
+  `CategoryPicker`. Neue To-dos landen in der offenen Liste
+  (`TodoEditScreen.listeId`)
+- `week_screen.dart` — `_poolKopf`/`_poolFilter` filtern die Todo-Leiste,
+  `_TodoChip` trägt einen Farbpunkt. **Beides erst ab zwei Listen**: wer nie
+  eine zweite anlegt, sieht nichts Neues
+
+Eine Vorlage trägt die Liste mit (`listeId` steht nicht in
+`Vorlage._nurEinmalig`): „Milch holen" gehört immer in „Einkauf". Eine Vorlage
+von *vor* den Listen nennt keine — dann bleibt die offene Liste stehen, statt
+in die Standardliste zu rutschen (`felder.containsKey('listeId')`).
 
 ## Vorlagen (`models/vorlage.dart`, `services/vorlagen_service.dart`, `vorlagen/`)
 
