@@ -1,3 +1,4 @@
+import 'package:flutter/services.dart' show PlatformException;
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:kalender/models/calendar_event.dart';
@@ -363,6 +364,8 @@ void main() {
       Set<int>? gestellt,
       bool probeSteht = false,
       Weckweise? weise = Weckweise.genau,
+      Stellversuch versuch = const (weise: Weckweise.genau, fehler: null),
+      List<String> protokoll = const [],
     }) =>
         (
           an: an,
@@ -378,32 +381,60 @@ void main() {
                   .toSet(),
           probeSteht: probeSteht,
           weise: weise,
+          versuch: versuch,
+          protokoll: protokoll,
         );
 
     String text(Weckerbefund b) =>
         DepartureReminderService.bericht(b, now: jetzt);
 
+    // Fast alle Faelle unten setzen voraus, dass der Stellversuch geklappt
+    // hat — sonst ist der Fehler die Ursache und alles andere Folge.
+    Weckerbefund steht({
+      bool an = true,
+      int vorlauf = 5,
+      ReminderUrgency stufe = ReminderUrgency.dringend,
+      bool? darfMelden = true,
+      Kanalbefund? kanal = kanalDa,
+      List<Abfahrt> geplant = const [],
+      Set<int>? gestellt,
+      Weckweise? weise = Weckweise.genau,
+      List<String> protokoll = const [],
+    }) =>
+        befund(
+          an: an,
+          vorlauf: vorlauf,
+          stufe: stufe,
+          darfMelden: darfMelden,
+          kanal: kanal,
+          geplant: geplant,
+          gestellt: gestellt,
+          probeSteht: true,
+          weise: weise,
+          protokoll: protokoll,
+        );
+
     test('der Schalter kommt vor allem anderen', () {
-      final t = text(befund(an: false, geplant: [eintrag('a')]));
+      final t = text(steht(an: false, geplant: [eintrag('a')]));
       expect(t, contains('Schalter: aus'));
       expect(t, contains('Befund: Der Schalter steht auf aus'));
     });
 
     test('ohne Erlaubnis kommt nichts an', () {
-      final t = text(befund(darfMelden: false, geplant: [eintrag('a')]));
+      final t = text(steht(darfMelden: false, geplant: [eintrag('a')]));
       expect(t, contains('Melden erlaubt: nein'));
       expect(t, contains('lässt die App nicht melden'));
     });
 
     test('keine Antwort von Android ist nicht dasselbe wie nein', () {
-      final t = text(befund(darfMelden: null, geplant: [eintrag('a')]));
+      final t = text(steht(darfMelden: null, geplant: [eintrag('a')]));
       expect(t, contains('Melden erlaubt: keine Antwort von Android'));
       expect(t, isNot(contains('lässt die App nicht melden')),
           reason: 'wer nicht antwortet, hat nicht verboten');
     });
 
     test('ein blockierter Kanal stellt den Wecker und zeigt nichts', () {
-      final t = text(befund(
+      final t = text(steht(
         kanal: (
           id: 'abfahrt_dringend',
           name: 'Losfahren (Dringend)',
@@ -418,27 +449,27 @@ void main() {
     });
 
     test('einen Kanal, den es nicht gibt, hat noch nie geklingelt', () {
-      final t = text(befund(kanal: null, geplant: [eintrag('a')]));
+      final t = text(steht(kanal: null, geplant: [eintrag('a')]));
       expect(t, contains('noch nicht angelegt'));
     });
 
     test('ohne Anfahrt gibt es nichts zu melden', () {
-      final t = text(befund());
+      final t = text(steht());
       expect(t, contains('Geplant: 0'));
       expect(t, contains('Anfahrtszeit'),
           reason: 'das ist die haeufigste harmlose Ursache und muss '
               'dastehen, bevor jemand nach Fehlern sucht');
     });
 
-    test('geplant, aber kein Wecker: dann liegt es am Stellen', () {
-      final t = text(befund(geplant: [eintrag('a')], gestellt: const {}));
+    test('Probe steht, echte Meldungen nicht: die Planung lief nicht', () {
+      final t = text(steht(geplant: [eintrag('a')], gestellt: const {}));
       expect(t, contains('KEIN Wecker'));
-      expect(t, contains('Das Stellen schlägt fehl'));
+      expect(t, contains('Planung beim Start'));
     });
 
     test('nur ein Teil steht', () {
       final zwei = [eintrag('a'), eintrag('b', stunde: 9)];
-      final t = text(befund(
+      final t = text(steht(
         geplant: zwei,
         gestellt: {DepartureReminderService.notificationId('a')},
       ));
@@ -448,7 +479,7 @@ void main() {
 
     test('ungenau gestellt erklaert die ausgebliebene Probe', () {
       final t = text(
-          befund(geplant: [eintrag('a')], weise: Weckweise.ungenau));
+          steht(geplant: [eintrag('a')], weise: Weckweise.ungenau));
       expect(t, contains('Letzte Meldung gestellt: ungefähr'));
       expect(t, contains('nur ungefähr'));
       expect(t, contains('15'),
@@ -456,13 +487,13 @@ void main() {
     });
 
     test('steht alles weckgenau, verschluckt es das Handy', () {
-      final t = text(befund(geplant: [eintrag('a')]));
+      final t = text(steht(geplant: [eintrag('a')]));
       expect(t, contains('Die Wecker stehen alle'));
       expect(t, contains('Akkusparen'));
     });
 
     test('jede Meldung steht mit Uhrzeit und Zustand im Bericht', () {
-      final t = text(befund(geplant: [eintrag('a')]));
+      final t = text(steht(geplant: [eintrag('a')]));
       expect(
           t,
           contains('heute 07:35 — Termin a '
@@ -473,13 +504,13 @@ void main() {
       final viele = [
         for (var i = 0; i < 8; i++) eintrag('e$i', stunde: 7 + i),
       ];
-      final t = text(befund(geplant: viele));
+      final t = text(steht(geplant: viele));
       expect(t, contains('Geplant: 8'));
       expect(t, contains('und 3 weitere'));
     });
 
     test('stehen() zaehlt nur die geplanten, nicht fremde Wecker', () {
-      final b = befund(
+      final b = steht(
         geplant: [eintrag('a')],
         gestellt: {DepartureReminderService.notificationId('a'), 4711},
       );
@@ -487,8 +518,43 @@ void main() {
       expect(text(b), contains('Wecker insgesamt gestellt: 2'));
     });
 
+    test('ein Fehler beim Stellen ist die Ursache, nicht die Folge', () {
+      final t = text(befund(
+        geplant: [eintrag('a')],
+        gestellt: const {},
+        versuch: const (
+          weise: null,
+          fehler: 'PlatformException [kaputt] so nicht',
+        ),
+      ));
+      expect(t, contains('Stellversuch jetzt: PlatformException [kaputt]'));
+      expect(t, contains('Das Stellen selbst schlägt fehl'));
+      expect(t, contains('so nicht'),
+          reason: 'der Text von Android muss wortwoertlich dastehen');
+    });
+
+    test('angenommen und doch nicht gemerkt: der Empfaenger fehlt', () {
+      final t = text(befund(geplant: [eintrag('a')], probeSteht: false));
+      expect(t, contains('Probe steht danach: nein'));
+      expect(t, contains('merkt sie sich aber nicht'));
+    });
+
+    test('das Protokoll kommt mit, die juengste Zeile zuerst', () {
+      final t = text(steht(
+        geplant: [eintrag('a')],
+        protokoll: const ['[07:00:01] Abfahrt-Meldung nicht stellbar: boom'],
+      ));
+      expect(t, contains('Protokoll:'));
+      expect(t, contains('Abfahrt-Meldung nicht stellbar: boom'));
+    });
+
+    test('ohne Protokollzeilen fehlt die Ueberschrift', () {
+      expect(text(steht(geplant: [eintrag('a')])),
+          isNot(contains('Protokoll:')));
+    });
+
     test('Vorlauf, Stufe und Kanal stehen oben', () {
-      final t = text(befund(vorlauf: 20, stufe: ReminderUrgency.alarm));
+      final t = text(steht(vorlauf: 20, stufe: ReminderUrgency.alarm));
       expect(t, contains('Vorlauf: 20 Min.'));
       expect(t, contains('Stufe: Wie ein Wecker (Kanal abfahrt_alarm)'));
     });
@@ -514,6 +580,56 @@ void main() {
       expect(Weckweise.genau.label, 'weckgenau');
       expect(Weckweise.ungenau.label, 'ungefähr');
       expect(Weckweise.garnicht.label, 'gar nicht gestellt');
+    });
+  });
+
+  group('Der Zeitpunkt haengt nicht an tz.local', () {
+    // tz.local ist ein late-Feld ohne Vorgabe. Faesst man es an, bevor
+    // initializeTimeZones() gelaufen ist, wirft es — und zwar bevor Android
+    // ueberhaupt gefragt wird. Dann faellt jede geplante Meldung aus,
+    // waehrend show() weiter geht. Dieser Test laeuft genau in dem Zustand:
+    // in main() kommt initialize() zuerst, hier nie.
+    test('ohne initializeTimeZones wirft das Rechnen nicht', () {
+      expect(() => ReminderService.zeitpunkt(DateTime(2026, 11, 26, 4, 55)),
+          returnsNormally);
+    });
+
+    test('der Zeitpunkt bleibt derselbe Moment', () {
+      final wann = DateTime(2026, 11, 26, 4, 55);
+      expect(ReminderService.zeitpunkt(wann).millisecondsSinceEpoch,
+          wann.millisecondsSinceEpoch,
+          reason: 'die Zone aendert die Darstellung, nicht den Augenblick');
+    });
+
+    test('und die Wanduhr, die das Plugin schickt, passt dazu', () {
+      final z = ReminderService.zeitpunkt(DateTime.utc(2026, 11, 26, 4, 55));
+      expect(z.toIso8601String(), startsWith('2026-11-26T04:55:00'));
+    });
+  });
+
+  group('Fehler lesbar machen', () {
+    test('der code einer PlatformException steht vorn', () {
+      final t = ReminderService.fehlertext(PlatformException(
+          code: 'exact_alarms_not_permitted', message: 'nicht erlaubt'));
+      expect(t, 'PlatformException [exact_alarms_not_permitted] '
+          'nicht erlaubt');
+    });
+
+    test('eine Ausnahme ohne Text bleibt trotzdem brauchbar', () {
+      expect(ReminderService.fehlertext(PlatformException(code: 'leer')),
+          contains('[leer] ohne Text'));
+    });
+
+    test('Details kommen mit, wenn es welche gibt', () {
+      expect(
+          ReminderService.fehlertext(PlatformException(
+              code: 'x', message: 'y', details: 'Stapel')),
+          endsWith('/ Stapel'));
+    });
+
+    test('alles andere mit Typ', () {
+      expect(ReminderService.fehlertext(StateError('kaputt')),
+          contains('StateError'));
     });
   });
 
@@ -545,6 +661,11 @@ void main() {
       expect(b.stufe, ReminderUrgency.alarm);
       expect(b.gestellt, isEmpty);
       expect(b.probeSteht, isFalse);
+      // Ohne Plattform muss der Stellversuch scheitern — und gefangen sein.
+      expect(b.versuch.fehler, isNotNull);
+      expect(b.versuch.weise, isNull);
+      expect(b.protokoll, isNotEmpty,
+          reason: 'der gefangene Fehler gehoert ins Protokoll');
       // Der Bericht muss aus dem Befund in jedem Fall herauskommen.
       expect(DepartureReminderService.bericht(b, now: jetzt),
           contains('Wecker zum Losfahren'));

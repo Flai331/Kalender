@@ -1,5 +1,6 @@
 import 'dart:typed_data';
 
+import 'package:flutter/foundation.dart' show visibleForTesting;
 import 'package:flutter/services.dart' show PlatformException;
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:timezone/data/latest.dart' as tz;
@@ -296,11 +297,30 @@ class ReminderService {
       id: id,
       title: title,
       body: body,
-      wann: tz.TZDateTime.from(scheduledAt, tz.local),
+      wann: zeitpunkt(scheduledAt),
       details: NotificationDetails(android: androidDetails),
       payload: payload,
     );
   }
+
+  /// Der Zeitpunkt, wie das Plugin ihn braucht — **immer in UTC**.
+  ///
+  /// `tz.local` waere das Naheliegende und ist eine Falle. Es ist ein
+  /// `late`-Feld ohne Vorgabe: wer es anfasst, bevor
+  /// `tz.initializeTimeZones()` gelaufen ist, bekommt einen
+  /// `LateInitializationError` — und zwar *hier*, beim Rechnen des
+  /// Zeitpunkts, also noch vor jedem Kontakt mit Android. Damit fiele jede
+  /// geplante Meldung aus, waehrend `show()` weiter funktioniert; genau das
+  /// ist das Bild, das man dann sucht und nicht findet.
+  ///
+  /// Dass es UTC statt der Geraetezone ist, aendert nichts: `TZDateTime.from`
+  /// behaelt den **Zeitpunkt** und wechselt nur die Darstellung, und das
+  /// Plugin rechnet auf Android aus Wanduhr plus Zonennamen wieder denselben
+  /// Moment. `tz.local` war ohnehin UTC — `setLocalLocation()` ruft die App
+  /// nirgends. Jetzt steht es wenigstens da, statt nur so zu sein.
+  @visibleForTesting
+  static tz.TZDateTime zeitpunkt(DateTime wann) =>
+      tz.TZDateTime.from(wann, tz.UTC);
 
   static Weckweise? _zuletzt;
 
@@ -375,6 +395,17 @@ class ReminderService {
       const NotificationDetails(android: androidDetails),
     );
   }
+
+  /// Ein Fehler in einer Zeile, lesbar und vollstaendig genug.
+  ///
+  /// Bei einer [PlatformException] zaehlt vor allem der `code`: daran haengt,
+  /// ob es ein fehlendes Recht, ein kaputter Kanal oder etwas Drittes ist.
+  /// `toString()` allein schreibt ihn in eine Klammer, die man leicht
+  /// uebersieht — und ohne ihn ist die Meldung nicht zu gebrauchen.
+  static String fehlertext(Object e) => e is PlatformException
+      ? 'PlatformException [${e.code}] ${e.message ?? 'ohne Text'}'
+          '${e.details == null ? '' : ' / ${e.details}'}'
+      : '${e.runtimeType}: $e';
 
   // ── Nachfragen ───────────────────────────────────────────────────────────
   //

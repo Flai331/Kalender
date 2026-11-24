@@ -138,6 +138,8 @@ Verschiebt überfällige pending Todos automatisch nach vorne:
 | Ein kaputter Termin, und kein Wecker steht mehr | `_einmalPlanen` hatte **ein** try um die ganze Schleife | je Meldung ein eigenes try/catch |
 | Kanal lauter stellen wirkt nicht | Wichtigkeit eines Kanals steht ab Anlage fest | je Stufe ein eigener `channelId` (`abfahrt_<id>`) |
 | Diagnose stürzt ab, statt zu berichten | `getNotificationChannels()` wirft bei unbekannter Wichtigkeit; ohne Plattform wirft jeder Plugin-Aufruf | jede Nachfrage in `ReminderService` fängt selbst und gibt `null`/leer |
+| Keine einzige geplante Meldung, `show()` geht | `tz.local` ist ein `late`-Feld ohne Vorgabe → `LateInitializationError` beim Rechnen des Zeitpunkts, falls `initializeTimeZones()` nicht lief (eigener Isolate, geänderte Startreihenfolge) | `ReminderService.zeitpunkt()` rechnet in `tz.UTC` — gleicher Moment, kein `late` |
+| „Das Stellen schlägt fehl", aber wo? | Der Fehler von `zonedSchedule` landete nur im Protokoll | `diagnose()` macht einen echten Stellversuch und zeigt `PlatformException [code] Text` im Bericht |
 | Termin/Todo landet nicht in der Ansicht | Screen schreibt nicht über `LocalService` | `LocalService.saveEvent/saveTodo` (wie in `week_screen.dart`) |
 | To-do verschwindet nach dem Löschen einer Liste | `listeId` zeigt auf eine Liste, die es nicht mehr gibt | `ListenService.echteListe` fällt auf die Standardliste zurück; `loeschen` hängt zusätzlich wirklich um |
 | „Neuer Ordner" legt nichts an | Ein Ordner ist nur der Name an seinen Listen — ohne Liste gibt es ihn nicht | Ordner im Menü einer Liste anlegen (`inOrdner`), nicht für sich |
@@ -765,8 +767,11 @@ sie gleich aus:
    Probe „in 15 Sekunden" kommt dann erst viel später und sieht wie ein
    Ausfall aus.
 
-`diagnose()` fragt für jeden dieser Punkte **Android selbst** und gibt einen
-`Weckerbefund` zurück; `bericht(befund, now:)` macht daraus Text — rein
+`diagnose()` **stellt zuerst wirklich eine Probe** (`probeVersuch`, fängt den
+Fehler und schreibt ihn ins Protokoll) und sieht dann nach, ob sie angekommen
+ist. Der Weg selbst ist die Frage; alles drumherum war schon in Ordnung, als
+nichts kam. Danach fragt es für jeden der vier Punkte **Android selbst** und
+gibt einen `Weckerbefund` zurück; `bericht(befund, now:)` macht daraus Text — rein
 gerechnet, ohne Plugin und ohne Datenbank, darum zeilenweise testbar und
 geeignet für den Fehlerbericht. In den Einstellungen hängt der Knopf
 *Wecker-Diagnose* daran (mit *Kopieren*).
@@ -791,6 +796,20 @@ Abfrage in `try`.
 `garnicht`) und merkt die letzte in `ReminderService.zuletztGestellt`. Damit
 sagt der Test-Knopf, **wie** gestellt wurde, statt es zu verschweigen — der
 Rückfall auf ungenau stand vorher nur im Protokoll.
+
+**`tz.local` ist eine Falle, nicht die naheliegende Lösung.** Es ist ein
+`late`-Feld *ohne Vorgabe*: wer es anfasst, bevor `tz.initializeTimeZones()`
+gelaufen ist, bekommt einen `LateInitializationError` — und das passiert beim
+**Rechnen des Zeitpunkts**, noch vor jedem Kontakt mit Android. Damit fällt
+jede geplante Meldung aus, während `show()` weiter funktioniert; genau dieses
+Bild sucht man dann und findet es nicht. Darum rechnet
+`ReminderService.zeitpunkt()` immer in `tz.UTC`.
+
+Das ändert nichts am Ergebnis: `TZDateTime.from` behält den **Zeitpunkt** und
+wechselt nur die Darstellung (`_toNative(other).toUtc()`), und das Plugin
+rechnet auf Android aus Wanduhr plus Zonenname wieder denselben Moment. Die
+App ruft nirgends `setLocalLocation()`, `tz.local` war also ohnehin UTC — es
+steht jetzt nur da, statt es bloß zu sein.
 
 `_einmalPlanen()` gibt jeder einzelnen Meldung ihr eigenes `try`. Vorher nahm
 die erste, die Android ablehnte, alle übrigen mit: der Durchgang brach ab, die

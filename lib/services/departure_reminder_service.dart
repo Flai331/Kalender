@@ -26,6 +26,13 @@ typedef Abfahrt = ({
   DateTime at,
 });
 
+/// Was beim Stellen wirklich herauskam.
+///
+/// Entweder eine [Weckweise] oder ein Fehler, nie beides. Der Punkt ist der
+/// Fehler: ein fehlgeschlagenes `zonedSchedule` verschwand bisher im
+/// Protokoll, und die App sagte nur „es kommt nichts".
+typedef Stellversuch = ({Weckweise? weise, String? fehler});
+
 /// Was der Wecker zum Losfahren gerade wirklich tut.
 ///
 /// Gesammelt, nicht geraten: die Einstellung kommt aus den Vorgaben, der
@@ -56,6 +63,13 @@ typedef Weckerbefund = ({
 
   /// Wie die letzte Meldung gestellt wurde ([ReminderService.zuletztGestellt]).
   Weckweise? weise,
+
+  /// Was ein frischer Versuch ergab — der eigentliche Test.
+  Stellversuch versuch,
+
+  /// Die Zeilen aus dem Protokoll, die den Wecker betreffen, die jüngste
+  /// zuerst. Hier steht der Grund, wenn das Stellen fehlschlaegt.
+  List<String> protokoll,
 });
 
 /// Meldet sich, bevor man losfahren muss.
@@ -407,6 +421,11 @@ class DepartureReminderService {
     final vorlauf = prefs.getInt(prefLead) ?? defaultLeadMinutes;
     final stufe = _stufeAus(prefs);
 
+    // Zuerst wirklich stellen, dann nachsehen, ob es angekommen ist. Der
+    // Weg selbst ist die Frage — alles andere drumherum war schon in
+    // Ordnung, als nichts kam.
+    final versuch = await probeVersuch(stufe);
+
     var termine = const <Abfahrt>[];
     try {
       termine = plan(
@@ -422,6 +441,8 @@ class DepartureReminderService {
 
     final gestellt = await ReminderService.geplanteKennungen();
     return (
+      versuch: versuch,
+      protokoll: _protokoll(),
       an: prefs.getBool(prefAn) ?? true,
       vorlauf: vorlauf,
       stufe: stufe,
@@ -432,6 +453,34 @@ class DepartureReminderService {
       probeSteht: gestellt.contains(probeId),
       weise: ReminderService.zuletztGestellt,
     );
+  }
+
+  /// Stellt eine Probe und faengt den Fehler, statt ihn wegzuwerfen.
+  ///
+  /// Genau hier bricht es ab, wenn „die zweite Meldung nicht kommt": der
+  /// Fehler flog bisher aus dem Knopf heraus ins Nichts.
+  static Future<Stellversuch> probeVersuch(ReminderUrgency stufe) async {
+    try {
+      return (weise: await probeStellen(stufe), fehler: null);
+    } catch (e) {
+      final text = ReminderService.fehlertext(e);
+      FeedbackService.log('Probe nicht stellbar: $text');
+      return (weise: null, fehler: text);
+    }
+  }
+
+  /// Die letzten Protokollzeilen, die mit dem Wecker zu tun haben.
+  ///
+  /// Beim Start plant [scheduleAll] alles — scheitert das, steht der Grund
+  /// schon da, bevor jemand die Diagnose oeffnet.
+  static List<String> _protokoll() {
+    const worte = ['Abfahrt', 'Meldung', 'Erinnerung', 'Wecker', 'Probe'];
+    return FeedbackService.logEntries
+        .where((z) => worte.any(z.contains))
+        .toList()
+        .reversed
+        .take(6)
+        .toList();
   }
 
   /// Wie viele der geplanten Meldungen wirklich beim Wecker stehen.
@@ -467,8 +516,16 @@ class DepartureReminderService {
     z.add('Wecker insgesamt gestellt: ${b.gestellt.length}');
     z.add('Letzte Meldung gestellt: ${b.weise?.label ?? 'seit dem Start '
         'keine'}');
-    z.add('Probe aus dem Test-Knopf: '
-        '${b.probeSteht ? 'steht noch' : 'steht nicht'}');
+    z.add('Stellversuch jetzt: '
+        '${b.versuch.fehler ?? b.versuch.weise?.label ?? 'nicht versucht'}');
+    z.add('Probe steht danach: ${b.probeSteht ? 'ja' : 'nein'}');
+    if (b.protokoll.isNotEmpty) {
+      z.add('');
+      z.add('Protokoll:');
+      for (final zeile in b.protokoll) {
+        z.add('  $zeile');
+      }
+    }
     z.add('');
     z.add('Befund: ${_befund(b, offen)}');
     return z.join('\n');
@@ -533,6 +590,17 @@ class DepartureReminderService {
       return 'Android lässt die App nicht melden. In den '
           'Android-Einstellungen unter „Benachrichtigungen" erlauben.';
     }
+    final fehler = b.versuch.fehler;
+    if (fehler != null) {
+      return 'Das Stellen selbst schlägt fehl: $fehler — das ist die '
+          'Ursache, alles andere ist Folge.';
+    }
+    if (b.versuch.weise != null && !b.probeSteht) {
+      return 'Android nimmt die Meldung an, merkt sie sich aber nicht: der '
+          'Versuch lief ohne Fehler durch, und danach steht trotzdem kein '
+          'Wecker. Das passt zu einem Empfänger, den das System nicht '
+          'auflösen kann.';
+    }
     final k = b.kanal;
     if (k != null && k.wichtigkeit == 0) {
       return 'Der Kanal „${k.name}" ist in den Android-Einstellungen '
@@ -545,8 +613,9 @@ class DepartureReminderService {
           'Vorgabe beim Kalender.';
     }
     if (gestellt == 0) {
-      return 'Nichts davon steht beim Wecker. Das Stellen schlägt fehl — der '
-          'Grund steht im Protokoll unter „Fehler melden".';
+      return 'Die Probe steht, die echten Meldungen nicht. Die Planung beim '
+          'Start ist also nicht durchgelaufen — ein Mal einen Termin '
+          'speichern stellt sie neu.';
     }
     if (b.weise == Weckweise.ungenau) {
       return 'Die Wecker stehen, aber nur ungefähr: weckgenaue Meldungen '
